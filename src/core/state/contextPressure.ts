@@ -66,6 +66,24 @@ export function windowForModel(model: string | null): number {
 }
 
 /**
+ * One estimate, no history: the window from the model, widened when the observation already
+ * exceeds it (or when `forceWide` says a previous observation did). Used directly for
+ * subagent runs — those are one-shot, so there is nothing to keep sticky.
+ */
+export function pressureFor(
+  model: string | null,
+  usage: UsageTotals,
+  forceWide = false,
+): ContextPressure {
+  const used = usedTokens(usage);
+  let window = windowForModel(model);
+  const widened = forceWide || used > window;
+  if (widened) window = Math.max(window, WIDE_CONTEXT_WINDOW);
+  const ratio = window > 0 ? used / window : 0;
+  return { used, window, ratio, band: bandFor(ratio), widened, model };
+}
+
+/**
  * Tracks per-session auto-widening. Sticky: once a session is known to exceed the assumed
  * window it stays on the wider tier, because usage drops back after a compaction and the
  * session would otherwise flip between tiers.
@@ -75,26 +93,10 @@ export class ContextWindowEstimator {
 
   estimate(sessionId: SessionId, model: string | null, usage: UsageTotals | null): ContextPressure | null {
     if (!usage) return null;
-    const used = usedTokens(usage);
-    let window = windowForModel(model);
-
-    if (this.widened.has(sessionId)) {
-      window = Math.max(window, WIDE_CONTEXT_WINDOW);
-    } else if (used > window) {
-      // Observed usage exceeds the assumption → this session runs the wider tier (§6.4).
-      this.widened.add(sessionId);
-      window = Math.max(window, WIDE_CONTEXT_WINDOW);
-    }
-
-    const ratio = window > 0 ? used / window : 0;
-    return {
-      used,
-      window,
-      ratio,
-      band: bandFor(ratio),
-      widened: this.widened.has(sessionId),
-      model,
-    };
+    // Observed usage exceeding the assumption promotes the session to the wider tier (§6.4).
+    const pressure = pressureFor(model, usage, this.widened.has(sessionId));
+    if (pressure.widened) this.widened.add(sessionId);
+    return pressure;
   }
 
   forget(sessionId: SessionId): void {

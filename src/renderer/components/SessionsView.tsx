@@ -3,7 +3,7 @@
  */
 
 import type { AppState, ProjectGroup, SessionView } from '../../shared/ipc.ts';
-import { STATUS_LABEL } from '../../shared/presentation.ts';
+import { STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
 import { formatAge } from '../lib/format.ts';
 import { StatusDot } from './StatusDot.tsx';
 
@@ -118,9 +118,9 @@ function SessionRow({
       title={session.statusReason}
     >
       <StatusDot status={session.status} />
-      <span className="name">
-        {session.name}
-        {session.title && <span className="title">{session.title}</span>}
+      <span className="name" title={sessionLabel(session)}>
+        {sessionLabel(session)}
+        <span className="slug">{session.name}</span>
       </span>
       <span className="status">
         {STATUS_LABEL[session.status]}

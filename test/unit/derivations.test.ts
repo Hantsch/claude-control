@@ -42,6 +42,7 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     alive: true,
     startedAt: T0,
     lastActivityAt: T0,
+    run: null,
     pendingTool: null,
     context: null,
     subagents: [],

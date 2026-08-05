@@ -20,9 +20,12 @@ import type {
   ProjectRef,
   SessionDetail,
   SessionId,
+  SessionRun,
   SessionSnapshot,
+  SessionStatus,
   SessionView,
   StatusTransition,
+  TranscriptTailFacts,
 } from './model/types.ts';
 import {
   attentionCount,
@@ -303,7 +306,11 @@ export class ControlEngine {
       this.emitter.emit('transitions', transitions);
       // A session that just ended should show up in history without waiting for a restart.
       for (const transition of transitions) {
-        if (transition.to === 'ended') this.indexOne(transition.view.transcriptPath);
+        if (transition.to !== 'ended') continue;
+        this.indexOne(transition.view.transcriptPath);
+        // Nothing will ask about this session again, so drop its per-session caches.
+        this.context.forget(transition.sessionId);
+        this.adapter.forgetSession?.(transition.sessionId);
       }
     }
     this.emitter.emit('sessions', this.getSnapshot());
@@ -369,6 +376,7 @@ export class ControlEngine {
       alive: snapshot.alive,
       startedAt: ref.startedAt,
       lastActivityAt: facts.last?.at ?? null,
+      run: describeRun(facts, derived.status),
       pendingTool: facts.pendingTool ?? facts.stalledTools[0] ?? null,
       context: this.context.estimate(snapshot.sessionId, facts.model, facts.usage),
       subagents: facts.subagents,
@@ -423,4 +431,23 @@ export class ControlEngine {
         /* best effort: the transcript may already be gone */
       });
   }
+}
+
+/** Statuses in which the current run is still going, so its duration keeps ticking. */
+const ONGOING_STATUSES = new Set<SessionStatus>(['working', 'waiting', 'queued']);
+
+/**
+ * The run the session is in, or the last one it finished: from the newest prompt to the end
+ * of that turn. `endedAt` stays null while the turn is ongoing; for a finished one the newest
+ * semantic record is the end. Null when the tail window holds no prompt at all — a very long
+ * turn can push its own prompt out of the window, and guessing then would be a lie (§5.2).
+ */
+function describeRun(facts: TranscriptTailFacts, status: SessionStatus): SessionRun | null {
+  const startedAt = facts.runStartedAt;
+  if (startedAt === null) return null;
+  if (ONGOING_STATUSES.has(status)) return { startedAt, endedAt: null };
+  // The prompt is itself a semantic record, so `last` is normally at or after it; the
+  // fallback keeps a finished run from rendering as one that is still ticking.
+  const last = facts.last?.at ?? null;
+  return { startedAt, endedAt: last !== null && last >= startedAt ? last : startedAt };
 }

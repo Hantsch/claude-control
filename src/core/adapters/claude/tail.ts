@@ -84,6 +84,95 @@ export async function readTail(path: string, options: TailReadOptions): Promise<
   }
 }
 
+export interface ScanFromEndOptions {
+  /** Bytes per read. Chunks are stitched, so a record on a boundary is not lost. */
+  chunkBytes: number;
+  /** Hard ceiling on bytes read. Reaching it means "not found within budget", not "absent". */
+  maxBytes: number;
+}
+
+export interface ScanFromEndResult {
+  record: TranscriptRecord | null;
+  bytesScanned: number;
+  /** True when the scan saw the start of the file, so a null record means "really absent". */
+  reachedStart: boolean;
+}
+
+/**
+ * Newest record matching `predicate`, searching backwards from the end of the file in
+ * chunks and stopping at the first hit.
+ *
+ * The tail window is sized for "what happened recently" and a single turn can be megabytes
+ * of tool traffic, so anything anchored to the *start* of a turn is regularly outside it.
+ * This is the bounded way to find such an anchor without parsing the whole file: chunks are
+ * read newest-first and the partial line at a chunk boundary is carried over as a Buffer and
+ * joined with the next chunk, so no record is lost or mangled by the split. Unparseable
+ * lines are skipped, exactly as in the forward reader.
+ */
+export async function scanRecordsFromEnd(
+  path: string,
+  predicate: (record: TranscriptRecord) => boolean,
+  options: ScanFromEndOptions,
+): Promise<ScanFromEndResult> {
+  const info = await stat(path);
+  const size = info.size;
+  if (size === 0) return { record: null, bytesScanned: 0, reachedStart: true };
+
+  const chunk = Math.max(4096, Math.floor(options.chunkBytes));
+  const budget = Math.min(size, Math.max(chunk, Math.floor(options.maxBytes)));
+  const floor = size - budget;
+
+  const handle = await open(path, 'r');
+  try {
+    let end = size;
+    // Raw bytes of a record's tail whose head lies in an earlier chunk. Kept as bytes, not
+    // text: decoding a chunk that begins mid-character would replace it with U+FFFD and
+    // corrupt exactly the record the stitch is meant to save.
+    let carry = Buffer.alloc(0);
+    while (end > floor) {
+      const start = Math.max(floor, end - chunk);
+      const length = end - start;
+      const buffer = Buffer.allocUnsafe(length);
+      if (length > 0) await handle.read(buffer, 0, length, start);
+      const region = Buffer.concat([buffer, carry]);
+
+      let body = region;
+      if (start > floor) {
+        const newline = region.indexOf(0x0a);
+        if (newline === -1) {
+          // The whole region sits inside one record — carry all of it further back.
+          carry = region;
+          end = start;
+          continue;
+        }
+        carry = region.subarray(0, newline);
+        body = region.subarray(newline + 1);
+      } else {
+        carry = Buffer.alloc(0);
+      }
+
+      const lines = body.toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = lines[i]!.trim();
+        if (!line) continue;
+        let record: TranscriptRecord;
+        try {
+          record = JSON.parse(line) as TranscriptRecord;
+        } catch {
+          continue;
+        }
+        if (predicate(record)) {
+          return { record, bytesScanned: size - start, reachedStart: start === 0 };
+        }
+      }
+      end = start;
+    }
+    return { record: null, bytesScanned: size - floor, reachedStart: floor === 0 };
+  } finally {
+    await handle.close();
+  }
+}
+
 /** Newest record satisfying `predicate`, scanning backwards (§5.2). */
 export function findLast<T>(records: readonly T[], predicate: (record: T) => boolean): T | null {
   for (let i = records.length - 1; i >= 0; i -= 1) {

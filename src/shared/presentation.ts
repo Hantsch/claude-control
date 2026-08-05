@@ -63,3 +63,19 @@ export const BAND_LABEL: Record<ContextBand, string> = {
   red: '80–92 %',
   critical: 'above 92 %',
 };
+
+/**
+ * How a session is named on every surface. Claude Code's own slug (`hantsch-mmo-dc`) is
+ * never shown inside the IDE, so a row here could not be matched to a VS Code tab by it.
+ * The generated title is what VS Code puts on the Claude Code panel and in its history, so
+ * that comes first; the slug is the fallback for sessions that have no title yet.
+ */
+export function sessionLabel(view: { name: string; title?: string | null }): string {
+  return view.title?.trim() || view.name;
+}
+
+/** Single-line label for the tray and the toasts, where long titles must not wrap. */
+export function clampLabel(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}

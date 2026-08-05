@@ -117,6 +117,108 @@ export function toolResult(
   };
 }
 
+/**
+ * Result of a finished subagent: an ordinary tool result whose `toolUseResult` carries the
+ * run's own numbers. Shape measured on Claude Code 2.1.222 — including the `prompt` and
+ * `content` fields that must never be retained (§4), so the privacy test has something real
+ * to check against.
+ */
+export function agentResult(
+  uuid: string,
+  at: number,
+  options: {
+    assistantUuid: string;
+    toolUseId: string;
+    status?: string;
+    agentId?: string;
+    agentType?: string;
+    model?: string;
+    durationMs?: number;
+    totalTokens?: number;
+    toolUses?: number;
+    usage?: { input?: number; cacheRead?: number; cacheCreation?: number; output?: number };
+    linesAdded?: number;
+    linesRemoved?: number;
+  },
+): Record<string, unknown> {
+  const record = toolResult(uuid, at, {
+    assistantUuid: options.assistantUuid,
+    toolUseId: options.toolUseId,
+    isError: options.status === 'failed',
+  });
+  record.toolUseResult = {
+    status: options.status ?? 'completed',
+    prompt: 'PRIVATE PROMPT — must not be retained',
+    agentId: options.agentId ?? 'agent-1',
+    agentType: options.agentType ?? 'general-purpose',
+    content: [{ type: 'text', text: 'PRIVATE OUTPUT — must not be retained' }],
+    resolvedModel: options.model ?? 'claude-opus-5[1m]',
+    totalDurationMs: options.durationMs ?? 900_106,
+    totalTokens: options.totalTokens ?? 67_430,
+    totalToolUseCount: options.toolUses ?? 10,
+    usage: {
+      input_tokens: options.usage?.input ?? 2,
+      cache_creation_input_tokens: options.usage?.cacheCreation ?? 318,
+      cache_read_input_tokens: options.usage?.cacheRead ?? 64_400,
+      output_tokens: options.usage?.output ?? 2_710,
+      service_tier: 'standard',
+      iterations: [{ input_tokens: 2, output_tokens: 2_710 }],
+    },
+    toolStats: {
+      readCount: 6,
+      searchCount: 0,
+      bashCount: 2,
+      editFileCount: 1,
+      linesAdded: options.linesAdded ?? 122,
+      linesRemoved: options.linesRemoved ?? 26,
+      otherToolCount: 0,
+    },
+  };
+  return record;
+}
+
+/**
+ * Result of a subagent started with `run_in_background`: it comes back within seconds and
+ * says only that the run was launched — no duration, no tokens.
+ */
+export function agentLaunchedResult(
+  uuid: string,
+  at: number,
+  options: { assistantUuid: string; toolUseId: string; agentId?: string; model?: string },
+): Record<string, unknown> {
+  const record = toolResult(uuid, at, {
+    assistantUuid: options.assistantUuid,
+    toolUseId: options.toolUseId,
+  });
+  record.toolUseResult = {
+    isAsync: true,
+    status: 'async_launched',
+    agentId: options.agentId ?? 'agent-bg',
+    description: 'background work',
+    resolvedModel: options.model ?? 'claude-opus-5[1m]',
+    prompt: 'PRIVATE PROMPT — must not be retained',
+    outputFile: 'C:\\temp\\agent-bg.jsonl',
+    canReadOutputFile: true,
+  };
+  return record;
+}
+
+/** A run that died: the result is a plain string, not the metrics object. */
+export function agentErrorResult(
+  uuid: string,
+  at: number,
+  options: { assistantUuid: string; toolUseId: string; text?: string },
+): Record<string, unknown> {
+  const record = toolResult(uuid, at, {
+    assistantUuid: options.assistantUuid,
+    toolUseId: options.toolUseId,
+    isError: true,
+  });
+  record.toolUseResult =
+    options.text ?? 'Error: Agent terminated early due to an API error: API Error: 529 Overloaded.';
+  return record;
+}
+
 /** Bookkeeping tail — the last line of 237 of 290 real files (RESEARCH.md §2). */
 export function lastPrompt(leafUuid: string): Record<string, unknown> {
   return { type: 'last-prompt', leafUuid, timestamp: iso(0) };

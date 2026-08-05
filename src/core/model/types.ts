@@ -73,21 +73,79 @@ export interface PendingTool {
   hint: string | null;
 }
 
-export type SubagentStatus = 'running' | 'completed' | 'failed' | 'unknown';
+/**
+ * `launched` is the background case (`run_in_background`): the tool call returns within
+ * seconds with `status: "async_launched"` while the subagent keeps working. Calling that
+ * "completed" would report a two-second run for an agent that runs for an hour, so it gets
+ * its own state — and no end time, because the parent transcript never sees it finish.
+ */
+export type SubagentStatus = 'running' | 'launched' | 'completed' | 'failed' | 'unknown';
+
+/**
+ * What a subagent's own tool result reports about its run. Measured on this Claude Code
+ * version (2.1.222): an `Agent` result carries `agentId`, `agentType`, `resolvedModel`,
+ * `totalDurationMs`, `totalTokens`, `totalToolUseCount`, `usage` and `toolStats`.
+ *
+ * All of it arrives with the *result*, so a still-running subagent has none of it — that is
+ * the honest ceiling here, not an omission. `totalDurationMs` was checked against the record
+ * timestamps and agrees to within a few seconds, so the two never contradict each other.
+ *
+ * **Privacy (§4):** the result also carries the subagent's full `prompt` and `content`.
+ * Neither is read here; only these numbers are.
+ */
+export interface SubagentRunResult {
+  status: string | null;
+  agentId: string | null;
+  agentType: string | null;
+  /** `resolvedModel` — unlike `message.model` this one carries the `[1m]` suffix. */
+  model: string | null;
+  durationMs: number | null;
+  /** Everything the run spent, cumulative over all its turns — not its context size. */
+  totalTokens: number | null;
+  toolUses: number | null;
+  /** Usage of the subagent's final turn, i.e. how full its context was when it finished. */
+  usage: UsageTotals | null;
+  linesAdded: number | null;
+  linesRemoved: number | null;
+  /**
+   * A run that died gets a plain string result instead of the object above, e.g.
+   * "Error: Agent terminated early due to an API error: 529 Overloaded". Clipped, because it
+   * is the one case where the *reason* is the only thing the result has to offer.
+   */
+  errorText: string | null;
+}
+
+/** Per-run numbers of a *finished* subagent, ready for display. */
+export interface SubagentMetrics {
+  model: string | null;
+  totalTokens: number | null;
+  toolUses: number | null;
+  /** Final context of the run, estimated with the same rule as a session's (§6.4). */
+  context: ContextPressure | null;
+  linesAdded: number | null;
+  linesRemoved: number | null;
+}
 
 /**
  * A subagent invocation (§8). Derived from `Agent` tool_use blocks in the parent
- * transcript: label + start from the call, completion from the paired result. The
- * subagent's *inner* timeline is not available (see RESEARCH.md §2, `isSidechain`).
+ * transcript: label + start from the call, completion and metrics from the paired result.
+ * The subagent's *inner* timeline is not available (see RESEARCH.md §2, `isSidechain`).
  */
 export interface SubagentNode {
   id: string;
   label: string;
   agentType: string | null;
+  /** Claude Code's own id for the run, from the result. */
+  agentId: string | null;
   startedAt: number;
+  /** Null while running and for `launched` runs, whose end is never observable. */
   endedAt: number | null;
   durationMs: number | null;
   status: SubagentStatus;
+  /** Null while the subagent runs; the numbers only exist once it has finished. */
+  metrics: SubagentMetrics | null;
+  /** Why the run failed, when the result said so. */
+  errorText: string | null;
   children: SubagentNode[];
 }
 
@@ -112,6 +170,18 @@ export interface ToolCallEvent {
   agentType: string | null;
   endedAt: number | null;
   errored: boolean;
+  /** Filled from the paired result for subagent calls only (see `SubagentRunResult`). */
+  runResult: SubagentRunResult | null;
+}
+
+/**
+ * One *run* of a session: a prompt and the turn it triggered. `endedAt` is null while the
+ * turn is still going, so the UI can tick it. Null on the view when the transcript window
+ * holds no prompt — a long turn can push its own prompt out of the tail (§5.2).
+ */
+export interface SessionRun {
+  startedAt: number;
+  endedAt: number | null;
 }
 
 /**
@@ -153,6 +223,8 @@ export interface TranscriptTailFacts {
   aiTitle: string | null;
   /** Newest human prompt text, trimmed. Used as a fallback label. */
   lastPromptText: string | null;
+  /** Time of that prompt — the start of the current or most recent run. */
+  runStartedAt: number | null;
   /** Last assistant sentence, used in the `done` toast body (§6.6). */
   lastAssistantText: string | null;
   subagents: SubagentNode[];
@@ -204,6 +276,8 @@ export interface SessionView {
   alive: boolean;
   startedAt: number;
   lastActivityAt: number | null;
+  /** Current or most recent run — how long this prompt has been / was worked on. */
+  run: SessionRun | null;
   pendingTool: PendingTool | null;
   context: ContextPressure | null;
   subagents: SubagentNode[];

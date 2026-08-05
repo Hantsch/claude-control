@@ -4,8 +4,8 @@
  */
 
 import { useState } from 'react';
-import type { FocusResult, SessionView } from '../../shared/ipc.ts';
-import { STATUS_HINT, STATUS_LABEL } from '../../shared/presentation.ts';
+import type { FocusResult, SessionRun, SessionView } from '../../shared/ipc.ts';
+import { STATUS_HINT, STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
 import { api } from '../api.ts';
 import { formatAge, formatDateTime, formatDuration } from '../lib/format.ts';
 import { ContextGauge } from './ContextGauge.tsx';
@@ -35,8 +35,33 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
     <div>
       <div className="detail-head">
         <StatusDot status={session.status} />
-        <span className="name">{session.name}</span>
+        <span className="name">{sessionLabel(session)}</span>
       </div>
+
+      {/* The slug is Claude Code's own session name — kept visible because the tray and the
+          notifications still fall back to it, but it is not what the IDE shows. */}
+      <div className="detail-slug">{session.name}</div>
+
+      <div className="detail-jump">
+        <button type="button" onClick={() => void jump()}>
+          Jump to session
+        </button>
+      </div>
+
+      {focusResult && (
+        <div className={`notice${focusResult.ok ? '' : ' error'}`}>
+          {focusResult.message}
+          {!focusResult.ok && focusResult.method === 'none' && (
+            <>
+              <br />
+              <code>{focusResult.cwd}</code>{' '}
+              <button type="button" onClick={() => void copy('directory', focusResult.cwd)}>
+                Copy
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="estimate" title={STATUS_HINT[session.status]}>
         {STATUS_LABEL[session.status]} — {session.statusReason}
@@ -53,6 +78,10 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
         <dd>{formatDateTime(session.startedAt)}</dd>
         <dt>Last activity</dt>
         <dd>{formatAge(session.lastActivityAt ? Date.now() - session.lastActivityAt : null)}</dd>
+        <dt title="From the last prompt to the end of that turn. A running turn keeps counting.">
+          Run
+        </dt>
+        <dd>{describeRun(session.run)}</dd>
         <dt>In status</dt>
         <dd>{formatDuration(Date.now() - session.statusSince)}</dd>
         <dt>Current tool</dt>
@@ -84,9 +113,6 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
       )}
 
       <div className="row-actions">
-        <button type="button" onClick={() => void jump()}>
-          Jump to session
-        </button>
         <button type="button" onClick={() => void copy('directory', session.cwd)}>
           Copy directory
         </button>
@@ -98,21 +124,16 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
       </div>
 
       {copied && <div className="notice">Copied the {copied} to the clipboard.</div>}
-
-      {focusResult && (
-        <div className={`notice${focusResult.ok ? '' : ' error'}`}>
-          {focusResult.message}
-          {!focusResult.ok && focusResult.method === 'none' && (
-            <>
-              <br />
-              <code>{focusResult.cwd}</code>{' '}
-              <button type="button" onClick={() => void copy('directory', focusResult.cwd)}>
-                Copy
-              </button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
+}
+
+/**
+ * How long the current or last run took. An open run is still counting, so it is labelled
+ * as such rather than presented as a total. No run means the tail window held no prompt.
+ */
+function describeRun(run: SessionRun | null): string {
+  if (!run) return '—';
+  if (run.endedAt === null) return `${formatDuration(Date.now() - run.startedAt)} · running`;
+  return formatDuration(run.endedAt - run.startedAt);
 }

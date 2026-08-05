@@ -41,6 +41,7 @@ import {
 } from './paths.ts';
 import {
   isAssistantRecord,
+  isPromptRecord,
   isSemanticRecord,
   recordText,
   recordTime,
@@ -49,10 +50,18 @@ import {
   type TranscriptRecord,
 } from './records.ts';
 import { cleanPromptText, collectToolCalls, semanticKind, summarizeRecords, usageOf } from './summarize.ts';
-import { readHead, readTail } from './tail.ts';
+import { readHead, readTail, scanRecordsFromEnd } from './tail.ts';
 
 const HISTORY_HEAD_BYTES = 32 * 1024;
 const HISTORY_TAIL_BYTES = 64 * 1024;
+/**
+ * Budget for the one-off backward scan that finds the prompt a run started with. Measured on
+ * the real directory: with the 64 KB tail window, 9 of 10 live sessions had their prompt
+ * outside it — a single subagent-heavy turn is easily megabytes — so without this the run
+ * duration would read "—" almost always.
+ */
+const RUN_START_SCAN_BYTES = 4 * 1024 * 1024;
+const RUN_START_CHUNK_BYTES = 256 * 1024;
 /** Upper bound on timeline events returned by `readDetail`, to keep the IPC payload sane. */
 const DETAIL_EVENT_LIMIT = 10_000;
 /** Directory listing cache TTL — project directories change rarely. */
@@ -73,6 +82,13 @@ export class ClaudeAdapter implements AgentAdapter {
   private readonly options: ClaudeAdapterOptions;
   private readonly now: () => number;
   private projectDirs: { names: string[]; at: number } | null = null;
+  /**
+   * Run start per session, for runs whose prompt is no longer in the tail window. Written
+   * once and then left alone: a *new* prompt always shows up in the tail window while the
+   * app is watching, so the scan never has to run twice for the same session. `null` means
+   * "scanned, nothing found within budget" — cached too, so a hopeless case stays cheap.
+   */
+  private readonly runStarts = new Map<SessionId, number | null>();
 
   constructor(options: ClaudeAdapterOptions) {
     this.options = options;
@@ -162,6 +178,7 @@ export class ClaudeAdapter implements AgentAdapter {
           exhausted: tail.exhausted,
         },
       });
+      facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
       return {
@@ -173,6 +190,41 @@ export class ClaudeAdapter implements AgentAdapter {
         readAt,
       };
     }
+  }
+
+  /**
+   * When the tail window contained the prompt, that is the answer (and it refreshes the
+   * cache). Otherwise fall back to the cache, scanning backwards once per session to fill it.
+   */
+  private async resolveRunStart(
+    sessionId: SessionId,
+    path: string,
+    fromTail: number | null,
+  ): Promise<number | null> {
+    if (fromTail !== null) {
+      this.runStarts.set(sessionId, fromTail);
+      return fromTail;
+    }
+    const cached = this.runStarts.get(sessionId);
+    if (cached !== undefined) return cached;
+
+    let found: number | null = null;
+    try {
+      const hit = await scanRecordsFromEnd(path, isPromptRecord, {
+        chunkBytes: RUN_START_CHUNK_BYTES,
+        maxBytes: RUN_START_SCAN_BYTES,
+      });
+      found = hit.record ? recordTime(hit.record) : null;
+    } catch {
+      // Same rule as the tail read: a failed read is a missing fact, not an error.
+    }
+    this.runStarts.set(sessionId, found);
+    return found;
+  }
+
+  /** Drop the cached run start of a session that is gone, so the map cannot grow forever. */
+  forgetSession(sessionId: SessionId): void {
+    this.runStarts.delete(sessionId);
   }
 
   /**
@@ -416,6 +468,7 @@ function emptyFacts(note: string): TranscriptTailFacts {
     usage: null,
     aiTitle: null,
     lastPromptText: null,
+    runStartedAt: null,
     lastAssistantText: note,
     subagents: [],
     agentVersion: null,

@@ -263,6 +263,86 @@ describe('engine', () => {
     await engine.stop();
   });
 
+  it('reports how long the current run has taken, and closes it when the turn ends', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-run', name: 'cc-run' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    // Prompt, then a turn still in progress: one tool call with no result yet.
+    await tree.writeTranscript(
+      slug,
+      'sess-run',
+      toJsonl([
+        prompt('u1', 0, 'do the long thing'),
+        assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 't1', name: 'Read' }] }),
+      ]),
+    );
+
+    let clock = T0 + 4_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now: () => clock,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    // Still working: the run has a start but no end, so the UI can keep counting.
+    const running = engine.getSnapshot().sessions[0]!;
+    expect(running.status).toBe('working');
+    expect(running.run).toEqual({ startedAt: T0, endedAt: null });
+
+    // The turn finishes 30 s after the prompt.
+    await tree.writeTranscript(
+      slug,
+      'sess-run',
+      toJsonl([
+        prompt('u1', 0, 'do the long thing'),
+        assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 't1', name: 'Read' }] }),
+        toolResult('u2', 2_000, { assistantUuid: 'a1', toolUseId: 't1' }),
+        assistant({ uuid: 'a2', at: 30_000, stopReason: 'end_turn', text: 'Done.' }),
+      ]),
+    );
+    clock = T0 + 45_000;
+    await engine.refreshNow();
+
+    const finished = engine.getSnapshot().sessions[0]!;
+    expect(finished.status).toBe('done');
+    expect(finished.run).toEqual({ startedAt: T0, endedAt: T0 + 30_000 });
+
+    await engine.stop();
+  });
+
+  it('still finds the run start when the prompt is far outside the tail window', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-far', name: 'cc-far' }));
+    // ~150 KB of turn traffic after the prompt, against a 64 KB tail window: this is the
+    // normal case for an agent-heavy turn, and the whole reason for the backward scan.
+    const noise = Array.from({ length: 400 }, (_, i) =>
+      assistant({ uuid: `n${i}`, at: 1_000 + i, text: `tool traffic line ${i} `.repeat(10) }),
+    );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-far',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        ...noise,
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    expect(engine.getSnapshot().sessions[0]!.run).toEqual({ startedAt: T0, endedAt: T0 + 90_000 });
+    await engine.stop();
+  });
+
   it('re-derives elapsed-time transitions without re-reading the transcript', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-b', name: 'cc-b' }));

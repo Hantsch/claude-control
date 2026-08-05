@@ -347,23 +347,43 @@ Two surfaces, both English.
 A compact popover — the fast path, no window management:
 
 ```
-● claude-control-d5    claude-control · main      done      3m ago
-◐ hantsch-mmo-3c       Hantsch-MMO · feature/x    working   now
-◑ ai-diary-2f          ai-diary · main            waiting?  1m ago
-○ claude-a0            claude · main              idle      42m ago
+● Icons nacharbeiten     claude-control · main      done      3m ago
+◐ G0 freigegeben        Hantsch-MMO · feature/x    working   now
+◑ AI scrum sprint 02    ai-diary · main            waiting?  1m ago
+○ claude-a0             claude · main              idle      42m ago
 ─────────────────────────────────────────────────────────
 Open Claude Control                    Settings      Quit
 ```
 
+### Session label
+
+A session is labelled with its generated title (`aiTitle`, falling back to the last prompt)
+on every surface — list, popover, tray menu, toasts, CLI. That is the same string VS Code
+puts on its Claude Code panel and history, so a row here can be matched to a window by eye.
+The registry slug (`hantsch-mmo-dc`) never appears in the IDE, so it is only a secondary,
+dimmed identifier; it becomes the label just for sessions that have no title yet.
+
 ### Main window
 
 - **Sessions** — live list, grouped by project → branch/worktree. Expanding a session
-  shows the context gauge, model, elapsed time, current tool, and the subagent tree.
+  shows the context gauge, model, elapsed time, the current run, the current tool, and the
+  subagent tree. Jump to session sits directly under the name, above the facts.
 - **History** — past sessions with a project filter, a date range, and free-text search
   over titles. Uses `aiTitle` from the transcript as the session label when present, which
   saves inventing our own summarizer.
 - **Settings** — thresholds (`T_work`, `T_idle`, per-tool overrides), notification
   toggles, and the Claude data directory path.
+
+### Run duration
+
+One *run* is a prompt and the turn it triggered: from the newest prompt record to the end of
+that turn, still counting while the turn is open. The anchor is the prompt, and a single
+agent-heavy turn is easily megabytes, so the prompt is usually **outside** the tail window —
+measured against the real directory, 9 of 10 live sessions. The adapter therefore falls back
+to a bounded backward scan (256 KB chunks, 4 MB ceiling) that stops at the first prompt, and
+caches the answer per session: a *new* prompt always lands in the tail window while the app
+is watching, so the scan never repeats. Beyond the ceiling the run reads `—` rather than a
+guess.
 
 ### Subagent tree
 
@@ -371,10 +391,26 @@ Derived from `Agent` `tool_use` blocks in the parent transcript: label from the 
 start time from the record, completion from the paired result. That yields a real tree
 (603 `Agent` calls exist in the sample history, so this is worth building).
 
+A *finished* subagent's result carries its own numbers — `resolvedModel`, `totalDurationMs`,
+`totalTokens`, `totalToolUseCount`, `usage`, `toolStats` — so each node shows the model, the
+tokens the run spent, how full its context got (same estimate as a session's, and
+`resolvedModel` spells out the 1M tier), its tool count and the lines it touched. While a
+subagent runs, none of that exists yet; the node says so instead of showing zeros.
+
+Two result shapes matter beyond the happy path:
+
+- **`status: "async_launched"`** — a background subagent (`run_in_background`). The call
+  returns within seconds while the run continues, so calling it *completed* would report a
+  two-second run for an hour of work. It gets its own state, `launched`, with the time since
+  launch and no end time, because the parent transcript never reports one.
+- **A plain string result** (`"Error: Agent terminated early due to an API error: 529
+  Overloaded"`) — a run that died. There are no numbers, so the node shows the reason.
+
 **Caveat carried from research:** `isSidechain` was `true` on zero records, so a
 subagent's *internal* transcript is not interleaved into the parent and its location is
-unverified. v1 therefore shows the subagent as a node with status and duration, not its
-inner timeline. Locating subagent transcripts is a tracked research task.
+unverified. v1 therefore shows the subagent as a node with status, duration and its run
+numbers, not its inner timeline. Locating subagent transcripts is a tracked research task —
+the `outputFile` on an `async_launched` result is a lead.
 
 ---
 

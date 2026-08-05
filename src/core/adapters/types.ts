@@ -49,4 +49,10 @@ export interface AgentAdapter {
 
   /** Window mapping for "jump to session" (§7). Empty array if unsupported. */
   listIdeWindows(): Promise<IdeWindowRef[]>;
+
+  /**
+   * Optional: release whatever the adapter cached for a session that has ended. Adapters
+   * that keep no per-session state can leave it out.
+   */
+  forgetSession?(id: SessionId): void;
 }

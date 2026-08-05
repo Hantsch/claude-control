@@ -9,6 +9,7 @@
 import { Menu, Tray, nativeImage, type NativeImage } from 'electron';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import type { AppState } from '../shared/ipc.ts';
+import { clampLabel, sessionLabel } from '../shared/presentation.ts';
 import { renderTrayIcon } from './tray-icons.ts';
 
 export interface TrayPresenterDeps {
@@ -74,7 +75,7 @@ export class TrayPresenter {
     } else {
       for (const session of sessions.slice(0, 12)) {
         items.push({
-          label: `${session.name} — ${STATUS_LABEL[session.status]} · ${session.project.name}${session.branch ? ` · ${session.branch}` : ''}`,
+          label: `${clampLabel(sessionLabel(session), 48)} — ${STATUS_LABEL[session.status]} · ${session.project.name}${session.branch ? ` · ${session.branch}` : ''}`,
           click: () => this.deps.onFocusSession(session.sessionId),
         });
       }

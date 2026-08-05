@@ -1,10 +1,10 @@
 /**
  * The tray popover (§8) — the fast path, no window management:
  *
- *   ● claude-control-d5    claude-control · main      done      3m ago
- *   ◐ hantsch-mmo-3c       Hantsch-MMO · feature/x    working   now
- *   ◑ ai-diary-2f          ai-diary · main            waiting?  1m ago
- *   ○ claude-a0            claude · main              idle      42m ago
+ *   ● Icons nacharbeiten     claude-control · main      done      3m ago
+ *   ◐ G0 freigegeben        Hantsch-MMO · feature/x    working   now
+ *   ◑ AI scrum sprint 02    ai-diary · main            waiting?  1m ago
+ *   ○ claude-a0             claude · main              idle      42m ago
  *   ───────────────────────────────────────────────────────────
  *   Open Claude Control                    Settings      Quit
  *
@@ -14,7 +14,7 @@
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AppState } from '../shared/ipc.ts';
-import { STATUS_LABEL } from '../shared/presentation.ts';
+import { STATUS_LABEL, sessionLabel } from '../shared/presentation.ts';
 import { EMPTY_STATE, api } from './api.ts';
 import { StatusDot } from './components/StatusDot.tsx';
 import { formatAge } from './lib/format.ts';
@@ -54,7 +54,9 @@ function Popover(): React.JSX.Element {
             onClick={() => void api.focusSession(session.sessionId)}
           >
             <StatusDot status={session.status} />
-            <span className="name">{session.name}</span>
+            <span className="name" title={sessionLabel(session)}>
+              {sessionLabel(session)}
+            </span>
             <span className="where">
               {session.project.name}
               {session.branch ? ` · ${session.branch}` : ''}

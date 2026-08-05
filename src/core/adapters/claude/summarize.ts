@@ -9,6 +9,7 @@
 import type {
   PendingTool,
   SemanticRecordKind,
+  SubagentRunResult,
   ToolCallEvent,
   TranscriptTailFacts,
   UsageTotals,
@@ -70,6 +71,7 @@ export function summarizeRecords(
     usage: lastAssistant ? usageOf(lastAssistant) : null,
     aiTitle: lastTitleRecord ? aiTitleOf(lastTitleRecord) : null,
     lastPromptText: lastPrompt ? clip(cleanPromptText(recordText(lastPrompt))) : null,
+    runStartedAt: lastPrompt ? recordTime(lastPrompt) : null,
     lastAssistantText: clip(newestAssistantText(records)),
     subagents: buildSubagentTree(toolCalls, options.now),
     agentVersion: newestField(records, (r) => (typeof r.version === 'string' && r.version ? r.version : null)),
@@ -142,6 +144,7 @@ export function collectToolCalls(records: readonly TranscriptRecord[]): ToolCall
           agentType: agentTypeOf(block.input),
           endedAt: null,
           errored: false,
+          runResult: null,
         },
       });
     });
@@ -155,8 +158,7 @@ export function collectToolCalls(records: readonly TranscriptRecord[]): ToolCall
     if (!result) continue;
     consumed.add(result);
     block.matchedById = true;
-    block.call.endedAt = recordTime(result);
-    block.call.errored = resultIsError(result);
+    finishCall(block.call, result);
   }
 
   // Pass 2: fall back to `sourceToolAssistantUUID`, which identifies the issuing assistant
@@ -171,11 +173,100 @@ export function collectToolCalls(records: readonly TranscriptRecord[]): ToolCall
     const result = bucket[index];
     if (!result) continue;
     consumed.add(result);
-    block.call.endedAt = recordTime(result);
-    block.call.errored = resultIsError(result);
+    finishCall(block.call, result);
   }
 
   return blocks.map((block) => block.call);
+}
+
+function finishCall(call: ToolCallEvent, result: TranscriptRecord): void {
+  call.endedAt = recordTime(result);
+  call.errored = resultIsError(result);
+  if (call.isSubagent) call.runResult = subagentRunResultOf(result);
+}
+
+/**
+ * Numbers a finished subagent reports about itself (see `SubagentRunResult`). Returns null
+ * for ordinary tool results, which carry none of these fields — the presence of `agentId`,
+ * `totalDurationMs` or `totalTokens` is what identifies an agent result.
+ *
+ * Field-by-field by design: the same object also holds the subagent's prompt and full
+ * output, and §4 says neither may be retained.
+ */
+export function subagentRunResultOf(record: TranscriptRecord): SubagentRunResult | null {
+  const raw = record.toolUseResult;
+  // A run that died reports a plain string instead of the object; the reason is all there is.
+  if (typeof raw === 'string' && raw.trim()) {
+    return { ...EMPTY_RUN_RESULT, status: 'failed', errorText: clipError(raw) };
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const result = raw as Record<string, unknown>;
+  const identifying =
+    typeof result.agentId === 'string' ||
+    typeof result.totalDurationMs === 'number' ||
+    typeof result.totalTokens === 'number';
+  if (!identifying) return null;
+
+  const stats = (result.toolStats && typeof result.toolStats === 'object'
+    ? result.toolStats
+    : {}) as Record<string, unknown>;
+
+  return {
+    status: stringOrNull(result.status),
+    agentId: stringOrNull(result.agentId),
+    agentType: stringOrNull(result.agentType),
+    model: stringOrNull(result.resolvedModel),
+    durationMs: numberOrNull(result.totalDurationMs),
+    totalTokens: numberOrNull(result.totalTokens),
+    toolUses: numberOrNull(result.totalToolUseCount),
+    usage: agentUsageOf(result.usage),
+    linesAdded: numberOrNull(stats.linesAdded),
+    linesRemoved: numberOrNull(stats.linesRemoved),
+    errorText: null,
+  };
+}
+
+const EMPTY_RUN_RESULT: SubagentRunResult = {
+  status: null,
+  agentId: null,
+  agentType: null,
+  model: null,
+  durationMs: null,
+  totalTokens: null,
+  toolUses: null,
+  usage: null,
+  linesAdded: null,
+  linesRemoved: null,
+  errorText: null,
+};
+
+/** One line, short enough for a tree row. */
+function clipError(text: string): string {
+  const oneLine = text.replace(/\s+/g, ' ').trim();
+  return oneLine.length > 160 ? `${oneLine.slice(0, 159)}…` : oneLine;
+}
+
+/**
+ * The `usage` block of an agent result uses the same field names as `message.usage`, plus
+ * extras (`iterations`, `server_tool_use`, …) that are deliberately ignored.
+ */
+function agentUsageOf(raw: unknown): UsageTotals | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const usage = raw as Record<string, unknown>;
+  return {
+    inputTokens: numberOr(usage.input_tokens, 0),
+    cacheReadTokens: numberOr(usage.cache_read_input_tokens, 0),
+    cacheCreationTokens: numberOr(usage.cache_creation_input_tokens, 0),
+    outputTokens: numberOr(usage.output_tokens, 0),
+  };
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function unpairedFor(record: TranscriptRecord, calls: readonly ToolCallEvent[]): PendingTool[] {

@@ -14,6 +14,7 @@ import type { NotificationSettings } from '../core/model/settings.ts';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import type { SessionId, StatusTransition } from '../core/model/types.ts';
 import { NotificationGate, firstSentence } from '../core/state/notifications.ts';
+import { clampLabel, sessionLabel } from '../shared/presentation.ts';
 
 export interface NotifierDeps {
   settings: () => NotificationSettings;
@@ -48,7 +49,7 @@ export class Notifier {
         : (firstSentence(view.lastAssistantText) ?? 'Turn finished');
 
     const notification = new Notification({
-      title: `${view.name} — ${STATUS_LABEL[transition.to]}`,
+      title: `${clampLabel(sessionLabel(view), 40)} — ${STATUS_LABEL[transition.to]}`,
       body: `${where}\n${detail}`,
       silent: true,
       timeoutType: 'default',

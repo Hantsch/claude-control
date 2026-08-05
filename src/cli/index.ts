@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS, mergeSettings } from '../core/model/settings.ts';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import type { EngineSnapshot } from '../core/engine.ts';
 import type { SessionView, StatusTransition } from '../core/model/types.ts';
+import { sessionLabel } from '../shared/presentation.ts';
 
 interface CliOptions {
   watch: boolean;
@@ -163,16 +164,31 @@ function printSession(session: SessionView, options: CliOptions): void {
   const subagents = session.subagents.length > 0 ? ` agents=${session.subagents.length}` : '';
 
   process.stdout.write(
-    `    ${symbol(session.status)} ${pad(session.name, 22)} ${pad(STATUS_LABEL[session.status], 16)} ` +
+    `    ${symbol(session.status)} ${pad(sessionLabel(session), 32)} ${pad(STATUS_LABEL[session.status], 16)} ` +
       `${pad(age, 8)} ctx=${pad(context, 6)} ${session.model ?? '—'}${tool}${subagents}\n`,
   );
   if (options.verbose) {
     process.stdout.write(`        why: ${session.statusReason}\n`);
     process.stdout.write(`        pid=${session.pid} entrypoint=${session.entrypoint} v${session.agentVersion ?? '?'}\n`);
+    const run = session.run
+      ? `${formatAge(
+          (session.run.endedAt ?? Date.now()) - session.run.startedAt,
+        )}${session.run.endedAt === null ? ' (running)' : ''}`
+      : '—';
+    process.stdout.write(`        run: ${run}\n`);
     if (session.transcriptPath) process.stdout.write(`        ${session.transcriptPath}\n`);
     for (const node of session.subagents) {
       const duration = node.durationMs !== null ? formatAge(node.durationMs) : '—';
       process.stdout.write(`        └─ ${node.status.padEnd(9)} ${duration.padEnd(8)} ${node.label}\n`);
+      if (node.errorText) process.stdout.write(`           ${node.errorText}\n`);
+      const metrics = node.metrics;
+      if (metrics) {
+        const ctx = metrics.context ? `ctx=${Math.round(metrics.context.ratio * 100)}%` : 'ctx=—';
+        process.stdout.write(
+          `           ${metrics.model ?? '—'} tokens=${metrics.totalTokens ?? '—'} ${ctx} ` +
+            `tools=${metrics.toolUses ?? '—'} +${metrics.linesAdded ?? 0}/-${metrics.linesRemoved ?? 0}\n`,
+        );
+      }
     }
   }
 }
@@ -186,7 +202,7 @@ function printTransitions(transitions: readonly StatusTransition[], options: Cli
     const stamp = new Date(transition.at).toISOString().slice(11, 19);
     const seeded = transition.seeded ? ' (seed)' : '';
     process.stdout.write(
-      `${stamp} ${transition.view.name}: ${transition.from ?? '—'} → ${transition.to}${seeded}\n`,
+      `${stamp} ${sessionLabel(transition.view)}: ${transition.from ?? '—'} → ${transition.to}${seeded}\n`,
     );
     if (options.verbose) process.stdout.write(`         ${transition.view.statusReason}\n`);
   }

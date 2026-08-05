@@ -216,7 +216,7 @@ code,
 
 .session-row {
   display: grid;
-  grid-template-columns: 14px minmax(90px, 1.4fr) minmax(70px, 0.9fr) 62px 48px;
+  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 48px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -242,7 +242,8 @@ code,
   white-space: nowrap;
 }
 
-.session-row .title {
+/* Claude Code's own slug under the title the IDE shows — dim, it is only an identifier. */
+.session-row .slug {
   display: block;
   color: var(--text-faint);
   font-size: 11px;
@@ -288,14 +289,36 @@ code,
 
 .detail-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
 }
 
 .detail-head .name {
   font-size: 15px;
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.detail-slug {
+  color: var(--text-faint);
+  font-size: 11px;
+  margin-bottom: 8px;
+  /* Aligned with the name, past the status dot. */
+  padding-left: 18px;
+}
+
+.detail-jump {
+  margin-bottom: 10px;
+}
+
+.detail-jump button {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail-jump button:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .kv {
@@ -385,8 +408,22 @@ code,
 }
 
 .subagents .meta {
+  display: block;
   color: var(--text-faint);
   font-size: 11px;
+}
+
+/* Run numbers of a finished subagent — a line of their own, dimmer than the status line. */
+.subagents .metrics {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.subagents .meta.error {
+  color: var(--band-red);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assistant-text {
@@ -537,7 +574,7 @@ table.history .title {
 
 .popover-row {
   display: grid;
-  grid-template-columns: 14px minmax(84px, 1fr) minmax(80px, 1.1fr) 76px 52px;
+  grid-template-columns: 14px minmax(84px, 1.8fr) minmax(80px, 1.1fr) 76px 52px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -553,12 +590,17 @@ table.history .title {
   background: var(--bg-hover);
 }
 
+.popover-row .name,
 .popover-row .where,
 .popover-row .age {
-  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.popover-row .where,
+.popover-row .age {
+  color: var(--text-dim);
 }
 
 .popover-row .age {

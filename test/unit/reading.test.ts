@@ -13,12 +13,16 @@ import {
   projectRefForCwd,
   slugForCwd,
 } from '../../src/core/adapters/claude/paths.ts';
-import { isSemanticRecord } from '../../src/core/adapters/claude/records.ts';
+import { isPromptRecord, isSemanticRecord } from '../../src/core/adapters/claude/records.ts';
 import { summarizeRecords } from '../../src/core/adapters/claude/summarize.ts';
-import { readHead, readTail } from '../../src/core/adapters/claude/tail.ts';
+import { runningSubagentCount } from '../../src/core/state/subagents.ts';
+import { readHead, readTail, scanRecordsFromEnd } from '../../src/core/adapters/claude/tail.ts';
 import { matchIdeWindow, parseIdeLock, readIdeWindows } from '../../src/core/adapters/claude/ide.ts';
 import {
   T0,
+  agentErrorResult,
+  agentLaunchedResult,
+  agentResult,
   assistant,
   aiTitle,
   fileHistorySnapshot,
@@ -171,6 +175,65 @@ describe('readTail', () => {
   });
 });
 
+describe('scanRecordsFromEnd', () => {
+  /**
+   * The run-start anchor is regularly outside the tail window — a single turn can be
+   * megabytes of tool traffic — so this scan is what makes "how long did the run take"
+   * answerable at all. Its risk is the chunk boundary, which is what these tests aim at.
+   */
+  it('finds the newest prompt far outside any tail window, across chunk boundaries', async () => {
+    const tree = await makeFixtureTree();
+    const records = [
+      prompt('old', 0, 'the first prompt'),
+      // Umlauts on purpose: a chunk can split a multi-byte character, and the stitched line
+      // must still parse.
+      ...Array.from({ length: 300 }, (_, i) =>
+        assistant({ uuid: `a${i}`, at: 1_000 + i, text: `Zwischenschritt über Änderungen ${i}` }),
+      ),
+      prompt('newest', 500_000, 'the prompt that started this run'),
+      ...Array.from({ length: 300 }, (_, i) =>
+        assistant({ uuid: `b${i}`, at: 600_000 + i, text: `Weiter mit Größen ${i}` }),
+      ),
+    ];
+    const path = await tree.writeTranscript('proj', 'session-scan', toJsonl(records));
+    const size = (await readFile(path)).byteLength;
+
+    const hit = await scanRecordsFromEnd(path, isPromptRecord, {
+      chunkBytes: 4096,
+      maxBytes: 4 * 1024 * 1024,
+    });
+    expect(hit.record?.uuid).toBe('newest');
+    // It stopped at the hit instead of walking the whole file.
+    expect(hit.bytesScanned).toBeLessThan(size);
+  });
+
+  it('gives up at its byte budget instead of reading the whole file', async () => {
+    const tree = await makeFixtureTree();
+    const records = [
+      prompt('old', 0, 'unreachable prompt'),
+      ...Array.from({ length: 400 }, (_, i) => assistant({ uuid: `a${i}`, at: 1_000 + i, text: `step ${i}` })),
+    ];
+    const path = await tree.writeTranscript('proj', 'session-budget', toJsonl(records));
+
+    const hit = await scanRecordsFromEnd(path, isPromptRecord, { chunkBytes: 4096, maxBytes: 8 * 1024 });
+    expect(hit.record).toBeNull();
+    expect(hit.reachedStart).toBe(false);
+    expect(hit.bytesScanned).toBeLessThanOrEqual(8 * 1024);
+  });
+
+  it('reports reaching the start, so "not found" can be told apart from "out of budget"', async () => {
+    const tree = await makeFixtureTree();
+    const path = await tree.writeTranscript(
+      'proj',
+      'session-nostart',
+      toJsonl([assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn' })]),
+    );
+    const hit = await scanRecordsFromEnd(path, isPromptRecord, { chunkBytes: 4096, maxBytes: 1024 * 1024 });
+    expect(hit.record).toBeNull();
+    expect(hit.reachedStart).toBe(true);
+  });
+});
+
 describe('readHead', () => {
   it('recovers the first semantic record for the history index', async () => {
     const tree = await makeFixtureTree();
@@ -220,6 +283,90 @@ describe('tool pairing and subagents', () => {
     expect(facts.subagents[0]!.status).toBe('completed');
     expect(facts.subagents[0]!.durationMs).toBe(30_000);
     expect(facts.pendingTools).toHaveLength(0);
+  });
+
+  it('reads a finished subagent\'s own run numbers, including its context estimate', () => {
+    const records = [
+      prompt('u0', 0, 'delegate it'),
+      assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentResult('u1', 901_106, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 950_000, read: READ_DIAG });
+    const node = facts.subagents[0]!;
+
+    expect(node.status).toBe('completed');
+    expect(node.agentId).toBe('agent-1');
+    // The run's own `totalDurationMs`, not the timestamp difference (900 106 vs 900 106+).
+    expect(node.durationMs).toBe(900_106);
+    expect(node.metrics).toMatchObject({
+      model: 'claude-opus-5[1m]',
+      totalTokens: 67_430,
+      toolUses: 10,
+      linesAdded: 122,
+      linesRemoved: 26,
+    });
+    // 2 + 318 + 64 400 against the 1M window the `[1m]` suffix resolves to.
+    expect(node.metrics!.context).toMatchObject({ used: 64_720, window: 1_000_000, band: 'green' });
+  });
+
+  it('keeps a running subagent free of run numbers, because none exist yet', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 5_000, read: READ_DIAG });
+    expect(facts.subagents[0]!.status).toBe('running');
+    expect(facts.subagents[0]!.metrics).toBeNull();
+    expect(facts.subagents[0]!.durationMs).toBe(5_000);
+  });
+
+  it('never retains the subagent prompt or output carried by its result (§4)', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentResult('u1', 60_000, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
+    expect(JSON.stringify(facts.subagents)).not.toMatch(/PRIVATE/);
+  });
+
+  it('ignores the run-number shape for ordinary tool results', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] }),
+      toolResult('u1', 1_000, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 2_000, read: READ_DIAG });
+    expect(facts.subagents).toHaveLength(0);
+  });
+
+  it('reports a background subagent as launched, not as a two-second completed run', () => {
+    const records = [
+      assistant({
+        uuid: 'a1',
+        at: 0,
+        tools: [{ id: 't1', name: 'Agent', input: { description: 'background work' } }],
+      }),
+      agentLaunchedResult('u1', 2_400, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 3_600_000, read: READ_DIAG });
+    const node = facts.subagents[0]!;
+
+    expect(node.status).toBe('launched');
+    // The result is not an end: the elapsed time counts from the launch, not to the result.
+    expect(node.endedAt).toBeNull();
+    expect(node.durationMs).toBe(3_600_000);
+    expect(node.metrics).toMatchObject({ model: 'claude-opus-5[1m]', totalTokens: null });
+    // And it must not be mistaken for a subagent we can watch finish.
+    expect(runningSubagentCount(facts.subagents)).toBe(0);
+  });
+
+  it('keeps the reason a subagent run died', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentErrorResult('u1', 5_000, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 6_000, read: READ_DIAG });
+    expect(facts.subagents[0]!.status).toBe('failed');
+    expect(facts.subagents[0]!.errorText).toMatch(/529 Overloaded/);
+    expect(facts.subagents[0]!.metrics?.totalTokens ?? null).toBeNull();
   });
 
   it('marks a failed subagent as failed', () => {

@@ -18,7 +18,9 @@ import type {
   ProjectRef,
   SessionDetail,
   SessionId,
+  SessionRun,
   SessionView,
+  SubagentMetrics,
   SubagentNode,
 } from '../core/model/types.ts';
 
@@ -31,8 +33,10 @@ export type {
   ProjectRef,
   SessionDetail,
   SessionId,
+  SessionRun,
   SessionStatus,
   SessionView,
+  SubagentMetrics,
   SubagentNode,
   TrayState,
 };

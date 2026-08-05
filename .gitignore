@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+release/
+*.tsbuildinfo
+
+# Electron packaging
+app.asar
+*.exe
+*.msi
+*.nsis
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+Thumbs.db
+desktop.ini
+
+# Local config and scratch
+.env
+.env.local
+scratch/
+tmp/
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/

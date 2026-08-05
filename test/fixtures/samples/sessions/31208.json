@@ -1,0 +1,13 @@
+{
+  "pid": 31208,
+  "sessionId": "subagent-run",
+  "cwd": "c:\\development\\Hantsch\\Browser-MMO",
+  "startedAt": 1785918000000,
+  "procStart": "134303940000000000",
+  "version": "2.1.222",
+  "peerProtocol": 1,
+  "kind": "interactive",
+  "entrypoint": "claude-vscode",
+  "name": "browser-mmo-a8",
+  "nameSource": "derived"
+}

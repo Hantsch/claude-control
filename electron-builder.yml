@@ -1,0 +1,27 @@
+appId: solutions.aidu.claude-control
+productName: Claude Control
+copyright: MIT
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - out/**/*
+  - package.json
+  - assets/icons/**/*
+
+# N3: portable EXE, started manually. No installer, no autostart.
+win:
+  target:
+    - portable
+  icon: assets/icons/app.ico
+  # The app has no network features (N1); no auto-update channel is configured.
+
+portable:
+  artifactName: ClaudeControl-${version}-portable.exe
+  requestExecutionLevel: user
+  unpackDirName: false
+
+# No publish target: nothing is uploaded anywhere.
+publish: null

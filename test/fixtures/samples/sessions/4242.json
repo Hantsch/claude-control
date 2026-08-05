@@ -1,0 +1,13 @@
+{
+  "pid": 4242,
+  "sessionId": "stale-entry",
+  "cwd": "c:\\development\\Hantsch\\claude-control",
+  "startedAt": 1785900000000,
+  "procStart": "134303900000000000",
+  "version": "2.1.222",
+  "peerProtocol": 1,
+  "kind": "interactive",
+  "entrypoint": "claude-vscode",
+  "name": "claude-control-stale",
+  "nameSource": "derived"
+}

@@ -1,0 +1,8 @@
+{
+  "pid": 25196,
+  "workspaceFolders": ["c:\\development\\Hantsch\\claude-control"],
+  "ideName": "Visual Studio Code",
+  "transport": "ws",
+  "runningInWindows": true,
+  "authToken": "FIXTURE-FAKE-TOKEN-must-never-be-read-or-logged"
+}

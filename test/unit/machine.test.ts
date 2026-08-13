@@ -83,16 +83,23 @@ const rows: Row[] = [
     expected: 'working',
   },
   {
-    name: 'unpaired Bash past its override → waiting',
+    // Slow by nature, so overdue means "taking a while", not "asking you something".
+    name: 'unpaired Bash past its override → stale, not waiting',
     records: [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] })],
     at: 121 * SECOND,
-    expected: 'waiting',
+    expected: 'stale',
   },
   {
-    name: 'unpaired Agent at 150 s is still working (180 s override)',
+    name: 'a subagent running for ten minutes is still working',
     records: [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent' }] })],
-    at: 150 * SECOND,
+    at: 10 * MINUTE,
     expected: 'working',
+  },
+  {
+    name: 'a subagent past its 20 min budget → stale',
+    records: [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent' }] })],
+    at: 21 * MINUTE,
+    expected: 'stale',
   },
   {
     name: 'parallel Read + Bash uses the most permissive threshold',
@@ -108,6 +115,23 @@ const rows: Row[] = [
     ],
     at: 30 * SECOND,
     expected: 'working',
+  },
+  {
+    // …and the tool that set that threshold also sets the speed class, so the pair reads as
+    // "the slow one is still going", not "the fast one is blocked".
+    name: 'parallel Read + Bash past the Bash budget → stale',
+    records: [
+      assistant({
+        uuid: 'a1',
+        at: 0,
+        tools: [
+          { id: 't1', name: 'Read' },
+          { id: 't2', name: 'Bash' },
+        ],
+      }),
+    ],
+    at: 121 * SECOND,
+    expected: 'stale',
   },
   {
     name: 'unknown tool falls back to the 25 s default',
@@ -131,16 +155,18 @@ const rows: Row[] = [
     expected: 'working',
   },
   {
-    name: 'silence beyond T_idle → idle, even after end_turn',
+    // Status says *what*, never *how long ago* — the old T_idle rule turned this into `idle`
+    // and made a finished session indistinguishable from a forgotten one.
+    name: 'a turn that ended hours ago is still done',
     records: [assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn' })],
-    at: 16 * MINUTE,
-    expected: 'idle',
+    at: 3 * 60 * MINUTE,
+    expected: 'done',
   },
   {
-    name: 'silence beyond T_idle while a tool is unpaired → idle',
+    name: 'a long-unpaired tool stays stale rather than decaying to something else',
     records: [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] })],
-    at: 20 * MINUTE,
-    expected: 'idle',
+    at: 3 * 60 * MINUTE,
+    expected: 'stale',
   },
   {
     name: 'enqueue without dequeue after a finished turn → queued',
@@ -216,7 +242,18 @@ const rows: Row[] = [
       queueOperation('remove', 1_500),
     ],
     at: 200 * SECOND,
-    expected: 'waiting',
+    expected: 'working',
+  },
+  {
+    // `stale` is still a turn in flight, so a prompt sitting in the queue behind it must not
+    // overwrite it — otherwise the one row that might want a look reads as merely queued.
+    name: 'a queued prompt does not mask an overdue tool either',
+    records: [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] }),
+      queueOperation('enqueue', 1_000),
+    ],
+    at: 200 * SECOND,
+    expected: 'stale',
   },
   {
     name: 'a queued prompt does not mask an actively running tool',
@@ -334,7 +371,7 @@ describe('deriveStatus', () => {
 describe('deriveHistoricalStatus', () => {
   it('evaluates at the moment of the last record, not now', () => {
     const records = [assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn' })];
-    // Long past T_idle in wall-clock terms, yet the session did finish its turn.
+    // Hours old in wall-clock terms, yet the session did finish its turn.
     expect(deriveHistoricalStatus(facts(records, T0 + 5 * 60 * MINUTE), DEFAULT_THRESHOLDS)).toBe('done');
   });
 

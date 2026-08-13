@@ -16,13 +16,18 @@ grouping / context gauge / subagent tree, history with filters, and a portable E
 - [docs/RESEARCH.md](docs/RESEARCH.md) — the measured facts about Claude Code's on-disk data
 - [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) — where each concept section lives in the
   code, and the decisions taken where the concept left a choice open
+- [docs/BACKLOG.md](docs/BACKLOG.md) — deliverables for what comes next, derived from a
+  comparison with Irrlicht and ClaudeSessionTray
 
 ## What it does
 
-- **Live status** for every running session: working / probably waiting / done / idle /
-  queued
+- **Live status** for every running session: working / needs you? / stale / done / queued.
+  A status says what is going on, never how long ago it was — a turn that finished an hour
+  ago still reads `done`, and a subagent that has been running for ten minutes still reads
+  `working`
 - **Tray indicator** that takes on the most urgent status across all sessions, with an
-  overlay badge counting sessions that need attention
+  overlay badge counting sessions that need attention. The popover shows what is running,
+  what you have not acknowledged, and what you touched recently — not every live session
 - **Windows toast** when a session finishes a turn or appears to be blocked on a permission
   prompt — click the toast to jump to that session's window
 - **History** of past sessions, filterable by project, date and free text

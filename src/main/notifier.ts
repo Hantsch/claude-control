@@ -44,8 +44,8 @@ export class Notifier {
     const detail =
       transition.to === 'waiting'
         ? view.pendingTool
-          ? `Waiting on ${view.pendingTool.name}${view.pendingTool.hint ? `: ${view.pendingTool.hint}` : ''}`
-          : 'Probably waiting for input'
+          ? `${view.pendingTool.name} has been pending${view.pendingTool.hint ? `: ${view.pendingTool.hint}` : ''}`
+          : 'A fast tool is overdue — probably a prompt waiting for you'
         : (firstSentence(view.lastAssistantText) ?? 'Turn finished');
 
     const notification = new Notification({

@@ -18,11 +18,21 @@ import {
   usedTokens,
   windowForModel,
 } from '../../src/core/state/contextPressure.ts';
-import { attentionCount, groupSessions, trayStateFor } from '../../src/core/state/aggregate.ts';
+import {
+  attentionCount,
+  groupSessions,
+  selectTraySessions,
+  trayStateFor,
+} from '../../src/core/state/aggregate.ts';
 import { NotificationGate, decideNotification, firstSentence } from '../../src/core/state/notifications.ts';
 import { cleanPromptText } from '../../src/core/adapters/claude/summarize.ts';
 import { InMemorySessionStore } from '../../src/core/store/sessionStore.ts';
-import { DEFAULT_SETTINGS } from '../../src/core/model/settings.ts';
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_THRESHOLDS,
+  SETTINGS_SCHEMA_VERSION,
+  mergeSettings,
+} from '../../src/core/model/settings.ts';
 import type { SessionStatus } from '../../src/core/model/status.ts';
 import type { HistoryEntry, SessionView, StatusTransition } from '../../src/core/model/types.ts';
 import { T0, makeFixtureTree, registryEntry } from '../fixtures/builders.ts';
@@ -120,14 +130,14 @@ describe('context pressure', () => {
 });
 
 describe('tray aggregation', () => {
-  it('uses the order waiting > done > working > idle > none', () => {
+  it('uses the order waiting > done > stale > working > none', () => {
     expect(trayStateFor([])).toBe('none');
-    expect(trayStateFor([view({ sessionId: 'a', status: 'idle' })])).toBe('idle');
+    expect(trayStateFor([view({ sessionId: 'a', status: 'working' })])).toBe('working');
     expect(
-      trayStateFor([view({ sessionId: 'a', status: 'idle' }), view({ sessionId: 'b', status: 'working' })]),
-    ).toBe('working');
+      trayStateFor([view({ sessionId: 'a', status: 'stale' }), view({ sessionId: 'b', status: 'working' })]),
+    ).toBe('stale');
     expect(
-      trayStateFor([view({ sessionId: 'a', status: 'working' }), view({ sessionId: 'b', status: 'done' })]),
+      trayStateFor([view({ sessionId: 'a', status: 'stale' }), view({ sessionId: 'b', status: 'done' })]),
     ).toBe('done');
     expect(
       trayStateFor([view({ sessionId: 'a', status: 'done' }), view({ sessionId: 'b', status: 'waiting' })]),
@@ -140,7 +150,8 @@ describe('tray aggregation', () => {
         view({ sessionId: 'a', status: 'waiting' }),
         view({ sessionId: 'b', status: 'done' }),
         view({ sessionId: 'c', status: 'working' }),
-        view({ sessionId: 'd', status: 'idle' }),
+        // `stale` is a hint, not a demand: it must never put a number on the tray icon.
+        view({ sessionId: 'd', status: 'stale' }),
         view({ sessionId: 'e', status: 'queued' }),
       ]),
     ).toBe(2);
@@ -160,10 +171,55 @@ describe('tray aggregation', () => {
     expect(trayStateFor([seenDone, unseenDone])).toBe('done');
   });
 
+  it('keeps everything in flight in the tray, however old it is', () => {
+    const ancient = 4 * 60 * 60_000;
+    const ids = (sessions: SessionView[]): string[] => sessions.map((s) => s.sessionId);
+    const old = (status: SessionStatus, sessionId: string): SessionView =>
+      view({ sessionId, status, seen: true, lastActivityAt: T0 - ancient });
+
+    expect(
+      ids(
+        selectTraySessions(
+          [old('working', 'a'), old('stale', 'b'), old('queued', 'c'), old('waiting', 'd')],
+          T0,
+          30 * 60_000,
+        ),
+      ),
+    ).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('drops settled sessions once they are old and acknowledged', () => {
+    const recentMs = 30 * 60_000;
+    const seenAndOld = view({
+      sessionId: 'old',
+      status: 'done',
+      seen: true,
+      lastActivityAt: T0 - 2 * 60 * 60_000,
+    });
+    // Unacknowledged is news at any age — dropping it would lose the result silently.
+    const unseenAndOld = { ...seenAndOld, sessionId: 'unseen', seen: false };
+    // Acknowledged but recent: you were just in it, so it stays reachable for a while.
+    const seenAndRecent = { ...seenAndOld, sessionId: 'fresh', lastActivityAt: T0 - 60_000 };
+
+    const kept = selectTraySessions([seenAndOld, unseenAndOld, seenAndRecent], T0, recentMs);
+    expect(kept.map((s) => s.sessionId)).toEqual(['unseen', 'fresh']);
+  });
+
+  it('falls back to the start time for a session that never recorded activity', () => {
+    const noActivity = view({
+      sessionId: 'x',
+      status: 'unknown',
+      seen: true,
+      lastActivityAt: null,
+      startedAt: T0 - 2 * 60 * 60_000,
+    });
+    expect(selectTraySessions([noActivity], T0, 30 * 60_000)).toEqual([]);
+  });
+
   it('groups by project, then by branch/worktree', () => {
     const groups = groupSessions([
       view({ sessionId: 'a', status: 'working' }),
-      view({ sessionId: 'b', status: 'idle', branch: 'feature/x' }),
+      view({ sessionId: 'b', status: 'stale', branch: 'feature/x' }),
       view({
         sessionId: 'c',
         status: 'waiting',
@@ -425,5 +481,44 @@ describe('session store', () => {
     // A session that is live now belongs to the live list, not to history.
     store.putLive([view({ sessionId: 'h1', status: 'working' })], T0);
     expect(store.listHistory().map((entry) => entry.sessionId)).toEqual(['h2']);
+  });
+});
+
+describe('settings migration', () => {
+  /** A v1 file: written in full, so every untouched default is in there verbatim. */
+  function v1File(perToolWorkMs: Record<string, number>) {
+    return {
+      claudeDir: null,
+      thresholds: { tWorkMs: 25_000, tIdleMs: 600_000, perToolWorkMs },
+      list: { hideUnusedSessions: true },
+    };
+  }
+
+  it('lifts subagent budgets that were never changed away from the old default', () => {
+    const merged = mergeSettings(v1File({ Agent: 180_000, Workflow: 180_000, Bash: 120_000 }));
+    expect(merged.thresholds.perToolWorkMs.Agent).toBe(DEFAULT_THRESHOLDS.perToolWorkMs.Agent);
+    expect(merged.thresholds.perToolWorkMs.Workflow).toBe(DEFAULT_THRESHOLDS.perToolWorkMs.Workflow);
+    // Untouched by this migration, and still the user's to keep.
+    expect(merged.thresholds.perToolWorkMs.Bash).toBe(120_000);
+    expect(merged.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
+  });
+
+  it('keeps a budget the user actually chose', () => {
+    const merged = mergeSettings(v1File({ Agent: 90_000 }));
+    expect(merged.thresholds.perToolWorkMs.Agent).toBe(90_000);
+  });
+
+  it('does not re-run on a current file, so the new default is overridable', () => {
+    const merged = mergeSettings({
+      ...v1File({ Agent: 180_000 }),
+      schemaVersion: SETTINGS_SCHEMA_VERSION,
+    });
+    expect(merged.thresholds.perToolWorkMs.Agent).toBe(180_000);
+  });
+
+  it('drops the retired T_idle without complaining', () => {
+    const merged = mergeSettings(v1File({}));
+    expect(merged).not.toHaveProperty('thresholds.tIdleMs');
+    expect(merged.list.trayRecentMs).toBe(DEFAULT_SETTINGS.list.trayRecentMs);
   });
 });

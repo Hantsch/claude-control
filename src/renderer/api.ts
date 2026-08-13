@@ -25,6 +25,7 @@ export const api: FullApi = window.claudeControl;
 
 export const EMPTY_STATE: AppState = {
   sessions: [],
+  traySessions: [],
   groups: [],
   trayState: 'none',
   attention: 0,

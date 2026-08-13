@@ -74,9 +74,10 @@ describe('committed sample transcripts', () => {
     const at = Date.parse('2026-08-05T10:10:06.000Z');
     expect(await statusOf(path, at)).toMatchObject({ status: 'working' });
 
-    // …and past it, the same file must read as "probably waiting".
+    // …and past it, the same file must read as "stale" — Bash is slow by nature, so an
+    // overdue one is a hint, not a permission prompt.
     const later = Date.parse('2026-08-05T10:13:00.000Z');
-    expect((await statusOf(path, later)).status).toBe('waiting');
+    expect((await statusOf(path, later)).status).toBe('stale');
   });
 
   it('queue-remove: a withdrawn queued prompt does not pin the session to queued', async () => {

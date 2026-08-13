@@ -1,5 +1,6 @@
 /**
- * Settings (§8): thresholds (`T_work`, `T_idle`, per-tool overrides), notification toggles
+ * Settings (§8): thresholds (`T_work` and the per-tool overrides that double as speed
+ * classes), how long settled sessions stay in the tray, notification toggles
  * and the Claude data directory path.
  */
 
@@ -33,7 +34,7 @@ export function SettingsView(): React.JSX.Element {
     setTimeout(() => setSaved(false), 1200);
   };
 
-  const setSeconds = (key: 'tWorkMs' | 'tIdleMs', seconds: number): void => {
+  const setSeconds = (key: 'tWorkMs', seconds: number): void => {
     void apply({
       ...settings,
       thresholds: { ...settings.thresholds, [key]: Math.max(1, seconds) * 1000 },
@@ -55,30 +56,10 @@ export function SettingsView(): React.JSX.Element {
           s
         </span>
         <span className="hint">
-          How long an unpaired tool call may run before the session is called “probably
-          waiting”. Concept default: 25 s.
+          How long an unpaired tool call may run before it counts as overdue. This is also the
+          line between the two speed classes: a tool budgeted above it is “slow by nature”, so
+          an overdue one reads as “stale” instead of “needs you?”. Default: 25 s.
         </span>
-      </div>
-      <div className="field">
-        <span>T_idle</span>
-        <span>
-          <input
-            type="number"
-            min={1}
-            value={Math.round(settings.thresholds.tIdleMs / 60000)}
-            onChange={(event) =>
-              void apply({
-                ...settings,
-                thresholds: {
-                  ...settings.thresholds,
-                  tIdleMs: Math.max(1, Number(event.target.value)) * 60000,
-                },
-              })
-            }
-          />{' '}
-          min
-        </span>
-        <span className="hint">Silence after which a live session counts as idle. Default: 15 min.</span>
       </div>
 
       <div className="section-title">Per-tool T_work overrides</div>
@@ -135,6 +116,32 @@ export function SettingsView(): React.JSX.Element {
           until its first message.
         </span>
       </div>
+      <div className="field">
+        <span>Keep settled sessions in the tray for</span>
+        <span>
+          <input
+            type="number"
+            min={1}
+            value={Math.round(settings.list.trayRecentMs / 60000)}
+            onChange={(event) =>
+              void apply({
+                ...settings,
+                list: {
+                  ...settings.list,
+                  trayRecentMs: Math.max(1, Number(event.target.value)) * 60000,
+                },
+              })
+            }
+          />{' '}
+          min
+        </span>
+        <span className="hint">
+          The popover and the tray menu always show what is running and anything you have not
+          acknowledged yet, at any age. This only decides how long a finished, already-seen
+          session stays listed there. The main window keeps showing every live session.
+          Default: 30 min.
+        </span>
+      </div>
 
       <div className="section-title">Notifications</div>
       <div className="field">
@@ -164,7 +171,7 @@ export function SettingsView(): React.JSX.Element {
         />
       </div>
       <div className="field">
-        <span>Toast when probably waiting</span>
+        <span>Toast when a session may need you</span>
         <input
           type="checkbox"
           checked={settings.notifications.onWaiting}

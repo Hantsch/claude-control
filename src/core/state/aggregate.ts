@@ -15,7 +15,7 @@ function isSeenAttention(session: SessionView): boolean {
   return needsAttention(session.status) && session.seen;
 }
 
-/** Icon colour = most urgent state present: waiting > done > working > idle > none (§6.5). */
+/** Icon colour = most urgent state present: waiting > done > stale > working > none (§6.5). */
 export function trayStateFor(sessions: readonly SessionView[]): TrayState {
   const present = new Set<SessionStatus>(
     sessions.filter((s) => !isSeenAttention(s)).map((s) => s.status),
@@ -29,6 +29,43 @@ export function trayStateFor(sessions: readonly SessionView[]): TrayState {
 /** Badge count = unacknowledged sessions in `waiting` or `done`; empty badge at zero (§6.5). */
 export function attentionCount(sessions: readonly SessionView[]): number {
   return sessions.filter((s) => needsAttention(s.status) && !s.seen).length;
+}
+
+/** A turn is in flight — the session is doing something right now, at any age. */
+const ONGOING_STATUSES = new Set<SessionStatus>(['working', 'waiting', 'stale', 'queued']);
+
+/**
+ * Does this session belong on the *tray* surfaces — the popover and the tray menu (§6.5)?
+ *
+ * The tray answers "what needs me right now", so it is not the live list minus nothing; it
+ * is the live list minus what has been settled and acknowledged. Three ways in:
+ *
+ *   1. something is in flight (`working`, `waiting`, `stale`, `queued`) — age is irrelevant,
+ *      a subagent that has been running for two hours is still the most interesting row
+ *      there is;
+ *   2. it wants attention and has not been acknowledged — a `done` you have not seen is news
+ *      however long it has been sitting there, and dropping it would lose the result;
+ *   3. it did something recently — the session you were just in stays reachable for a while
+ *      even once you have clicked it away.
+ *
+ * What this drops is exactly the case that made the popover useless: finished sessions from
+ * hours ago that you have already dealt with. They stay in the main window, which is the
+ * complete list, and in history once the process ends.
+ */
+export function isTrayWorthy(session: SessionView, now: number, recentMs: number): boolean {
+  if (ONGOING_STATUSES.has(session.status)) return true;
+  if (needsAttention(session.status) && !session.seen) return true;
+  const at = session.lastActivityAt ?? session.startedAt;
+  return now - at < recentMs;
+}
+
+/** The tray surfaces' session list — already sorted by urgency (§6.5). */
+export function selectTraySessions(
+  sessions: readonly SessionView[],
+  now: number,
+  recentMs: number,
+): SessionView[] {
+  return sessions.filter((session) => isTrayWorthy(session, now, recentMs));
 }
 
 export interface BranchGroup {
@@ -94,9 +131,9 @@ export function groupSessions(sessions: readonly SessionView[]): ProjectGroup[] 
 const STATUS_SORT_RANK: Record<SessionStatus, number> = {
   waiting: 0,
   done: 1,
-  working: 2,
-  queued: 3,
-  idle: 4,
+  stale: 2,
+  working: 3,
+  queued: 4,
   starting: 5,
   unknown: 6,
   ended: 7,

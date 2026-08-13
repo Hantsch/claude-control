@@ -68,11 +68,14 @@ export class TrayPresenter {
    * sessions are listed so the fast path works even if the popover is unavailable.
    */
   private buildMenu(): Menu {
-    const sessions = this.state?.sessions ?? [];
+    // Same list as the popover: what is in flight, unacknowledged, or recent. "Open Claude
+    // Control" is one item below for everything else.
+    const sessions = this.state?.traySessions ?? [];
+    const hidden = (this.state?.sessions.length ?? 0) - sessions.length;
     const items: Electron.MenuItemConstructorOptions[] = [];
 
     if (sessions.length === 0) {
-      items.push({ label: 'No live sessions', enabled: false });
+      items.push({ label: 'Nothing needs you', enabled: false });
     } else {
       for (const session of sessions.slice(0, 12)) {
         items.push({
@@ -83,6 +86,9 @@ export class TrayPresenter {
       if (sessions.length > 12) {
         items.push({ label: `… ${sessions.length - 12} more`, enabled: false });
       }
+    }
+    if (hidden > 0) {
+      items.push({ label: `${hidden} settled session(s) hidden`, enabled: false });
     }
 
     // The badge has to be dismissible, otherwise the icon claims something is open with no
@@ -122,9 +128,10 @@ function iconFor(state: AppState['trayState'], badge: number): NativeImage {
 function tooltipFor(state: AppState): string {
   if (state.sessions.length === 0) return 'Claude Control — no sessions';
   const counts = new Map<string, number>();
-  for (const session of state.sessions) {
+  for (const session of state.traySessions) {
     counts.set(session.status, (counts.get(session.status) ?? 0) + 1);
   }
+  if (counts.size === 0) return `Claude Control — ${state.sessions.length} session(s), all settled`;
   const parts = [...counts.entries()].map(([status, count]) => `${count} ${status}`);
   return `Claude Control — ${state.sessions.length} session(s): ${parts.join(', ')}`;
 }

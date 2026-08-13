@@ -44,6 +44,8 @@ export type {
 /** Everything the UI needs to render the live surfaces. Structured-clone safe. */
 export interface AppState {
   sessions: SessionView[];
+  /** What the tray surfaces show — in flight, unacknowledged, or recent (§6.5). */
+  traySessions: SessionView[];
   groups: ProjectGroup[];
   trayState: TrayState;
   attention: number;

@@ -226,7 +226,7 @@ function symbol(status: string): string {
       return '●';
     case 'working':
       return '◐';
-    case 'idle':
+    case 'stale':
       return '○';
     case 'queued':
       return '◇';

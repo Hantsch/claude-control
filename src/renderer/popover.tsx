@@ -2,12 +2,16 @@
  * The tray popover (§8) — the fast path, no window management:
  *
  *   Claude Control · 4 sessions                                    📌  ✕
- *   ● Icons nacharbeiten     claude-control · main      done      3m ago   ▓▓▓▓░
- *   ◐ G0 freigegeben        Hantsch-MMO · feature/x    working   now      ▓▓░░░
- *   ◑ AI scrum sprint 02    ai-diary · main            waiting?  1m ago   ▓░░░░
- *   ○ claude-a0             claude · main              idle      42m ago  ▓▓▓░░
+ *   ● Icons nacharbeiten     claude-control · main      done       3m ago   ▓▓▓▓░
+ *   ◐ G0 freigegeben        Hantsch-MMO · feature/x    working    now      ▓▓░░░
+ *   ◑ AI scrum sprint 02    ai-diary · main            needs you? 1m ago   ▓░░░░
+ *   ○ Repo-Audit            claude · main              stale      42m ago  ▓▓▓░░
  *   ─────────────────────────────────────────────────────────────────
  *   Open Claude Control                    Settings      Quit
+ *
+ * Rows come from `traySessions`, not `sessions`: this is the glance surface, so it shows what
+ * is in flight, what you have not acknowledged, and what you touched recently — not every
+ * live session (§6.5). The main window is the complete list.
  *
  * One click on a row focuses that session's window (F6). The title bar is a drag region, so
  * the window can be moved; pinned it survives losing focus and keeps that position.
@@ -71,12 +75,23 @@ function Popover(): React.JSX.Element {
     void api.setPopoverPinned(!pinned).then(setPinned);
   };
 
+  const shown = state.traySessions;
+  const hidden = state.sessions.length - shown.length;
+
   return (
     <div className="popover">
       <div className="popover-head" ref={head}>
         <span className="title">Claude Control</span>
-        <span className="count">
-          {state.sessions.length === 1 ? '1 session' : `${state.sessions.length} sessions`}
+        <span
+          className="count"
+          title={
+            hidden > 0
+              ? `${hidden} more live session${hidden === 1 ? '' : 's'} — settled and already seen. Open Claude Control to see all of them.`
+              : undefined
+          }
+        >
+          {shown.length === 1 ? '1 session' : `${shown.length} sessions`}
+          {hidden > 0 ? ` · ${hidden} settled` : ''}
         </span>
         <span className="spacer" />
         <button
@@ -100,8 +115,12 @@ function Popover(): React.JSX.Element {
 
       <div className="popover-list">
         <div className="popover-rows" ref={rows}>
-          {state.sessions.length === 0 && <div className="empty">No live sessions</div>}
-          {state.sessions.map((session) => (
+          {shown.length === 0 && (
+            <div className="empty">
+              {state.sessions.length === 0 ? 'No live sessions' : 'Nothing needs you right now'}
+            </div>
+          )}
+          {shown.map((session) => (
             <button
               key={session.sessionId}
               type="button"
@@ -121,7 +140,7 @@ function Popover(): React.JSX.Element {
                 className="status"
                 title={`${STATUS_LABEL[session.status]} — ${STATUS_HINT[session.status]}`}
               >
-                {session.status === 'waiting' ? 'waiting?' : STATUS_LABEL[session.status]}
+                {STATUS_LABEL[session.status]}
               </span>
               <span className="age">
                 {formatAge(session.lastActivityAt ? Date.now() - session.lastActivityAt : null)}

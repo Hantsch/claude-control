@@ -33,13 +33,12 @@ export class WindowManager {
   private main: BrowserWindow | null = null;
   private popover: BrowserWindow | null = null;
   /**
-   * The popover's size is tracked here rather than read back from the window.
+   * The popover's intended size — tracked here rather than read back from the window.
    *
-   * It used to be derived from `getSize()` — and DIP↔physical conversion is lossy, so every
-   * open fed a slightly smaller number back into `setSize()` and the window shrank a little
-   * each time (worse across displays with different scaling, where Windows rescales the
-   * window behind our back). Width is now a constant and height comes from the content, so
-   * neither can accumulate an error.
+   * Reading it back used to make the popover shrink: DIP↔physical conversion is lossy, so
+   * every open fed a slightly smaller number into `setSize()`. Width is a constant now and
+   * height comes from the content, so neither can accumulate an error — and because this is
+   * the intent rather than an observation, it can be re-asserted on the window at any time.
    */
   private popoverHeight = 260;
   /** Position the user dragged the popover to; honoured only while it is pinned. */
@@ -113,7 +112,9 @@ export class WindowManager {
 
     this.lastTrayBounds = trayBounds;
     const window = this.ensurePopover();
-    this.placePopover(window);
+    // Size *and* position are re-asserted on every open, never just on a content change —
+    // see `applyPopoverBounds` for why the window cannot be trusted to keep its size.
+    this.applyPopoverBounds(window);
     window.show();
     window.focus();
   }
@@ -144,7 +145,7 @@ export class WindowManager {
       // A pinned popover has to survive a click into another app, so it must not be hidden
       // by whatever else claims to be always-on-top.
       window.setAlwaysOnTop(true, pinned ? 'floating' : 'normal');
-      if (!pinned && window.isVisible()) this.placePopover(window);
+      if (!pinned && window.isVisible()) this.applyPopoverBounds(window);
     }
     return this.popoverPinned;
   }
@@ -164,8 +165,7 @@ export class WindowManager {
     if (clamped === this.popoverHeight) return;
 
     this.popoverHeight = clamped;
-    window.setSize(POPOVER_WIDTH, clamped);
-    this.placePopover(window);
+    this.applyPopoverBounds(window);
   }
 
   private ensurePopover(): BrowserWindow {
@@ -212,8 +212,18 @@ export class WindowManager {
     return window;
   }
 
-  /** Dragged-to position while pinned, otherwise anchored to the tray icon. */
-  private placePopover(window: BrowserWindow): void {
+  /**
+   * Force the popover to the geometry we intend: the tracked size, at the dragged-to position
+   * while pinned and anchored to the tray icon otherwise.
+   *
+   * Both halves have to be applied together, and on every open. Windows keeps a
+   * non-resizable window's min/max constraints pinned to its current size and re-applies the
+   * frame insets on top of them each time it is shown, so the popover lost 12 × 6 px per
+   * click on the tray icon — it only *looked* like a resize bug because nothing ever put the
+   * size back. Lifting `resizable` for the duration of the call keeps those constraints out
+   * of it; the window ends up within a pixel of the request and, crucially, stays there.
+   */
+  private applyPopoverBounds(window: BrowserWindow): void {
     const work = this.workArea();
     const target =
       this.popoverPinned && this.popoverPosition
@@ -221,9 +231,18 @@ export class WindowManager {
         : this.lastTrayBounds
           ? anchorToTray(this.lastTrayBounds, POPOVER_WIDTH, this.popoverHeight, work)
           : null;
-    if (!target) return;
-    this.appliedPosition = target;
-    window.setPosition(target.x, target.y, false);
+
+    const resizable = window.isResizable();
+    if (!resizable) window.setResizable(true);
+    if (target) {
+      this.appliedPosition = target;
+      window.setBounds({ ...target, width: POPOVER_WIDTH, height: this.popoverHeight }, false);
+    } else {
+      // No anchor yet (the popover was opened before the tray reported bounds): at least
+      // keep the size honest.
+      window.setSize(POPOVER_WIDTH, this.popoverHeight, false);
+    }
+    if (!resizable) window.setResizable(false);
   }
 
   private workArea(): Electron.Rectangle {

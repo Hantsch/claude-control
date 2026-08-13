@@ -14,22 +14,26 @@ export { STATUS_LABEL } from '../core/model/status.ts';
 export const STATUS_COLOR_VAR: Record<SessionStatus, string> = {
   waiting: '--status-waiting',
   done: '--status-done',
+  stale: '--status-stale',
   working: '--status-working',
-  idle: '--status-idle',
   queued: '--status-queued',
   starting: '--status-starting',
   ended: '--status-ended',
   unknown: '--status-unknown',
 };
 
-/** One-line explanation shown in tooltips — `waiting` carries the honest caveat (§6.3). */
+/** One-line explanation shown in tooltips — both overdue states carry the caveat (§6.3). */
 export const STATUS_HINT: Record<SessionStatus, string> = {
-  working: 'The model is producing output or a tool is executing.',
+  working: 'The model is producing output, or a tool or subagent is executing.',
   waiting:
-    'A tool call was issued and no result has arrived for longer than that tool normally ' +
-    'takes. Transcript watching cannot see a permission prompt, so this is a heuristic.',
+    'A tool that normally finishes in seconds has produced no result for much longer than ' +
+    'that — usually a permission prompt or a question waiting for you. Transcript watching ' +
+    'cannot see the prompt itself, so this is a heuristic.',
+  stale:
+    'A tool that is slow by nature (Bash, a subagent, a workflow) is running well past its ' +
+    'usual budget. Most likely it is simply still working — this is a hint that it may be ' +
+    'worth a look, not a claim that anything failed.',
   done: 'The turn finished and control is back with you.',
-  idle: 'Alive but nothing has happened for a long time — possibly forgotten.',
   queued: 'A prompt is enqueued and has not started yet.',
   starting:
     'The session is open but has not exchanged a single message yet — a freshly opened ' +
@@ -48,9 +52,9 @@ export const STATUS_HINT: Record<SessionStatus, string> = {
 export const HISTORY_FINAL_LABEL: Record<SessionStatus, string> = {
   done: 'done',
   working: 'ended mid-turn',
-  waiting: 'was waiting',
+  waiting: 'ended on a prompt',
+  stale: 'ended mid-tool',
   queued: 'prompt still queued',
-  idle: 'idle',
   // `deriveHistoricalStatus` only reaches `unknown` when the transcript held no
   // user/assistant record at all, so that is what the history table should say.
   starting: 'never used',

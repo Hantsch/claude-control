@@ -450,13 +450,14 @@ describe('engine', () => {
     await engine.refreshNow();
     expect(engine.getSnapshot().sessions[0]!.status).toBe('waiting');
 
+    // …and then it stays there. Elapsed time alone produces exactly one transition: a status
+    // describes what is going on, so nothing decays into a second state just by ageing.
     clock = T0 + 20 * 60_000;
     await engine.refreshNow();
-    expect(engine.getSnapshot().sessions[0]!.status).toBe('idle');
+    expect(engine.getSnapshot().sessions[0]!.status).toBe('waiting');
 
     expect(transitions.filter((transition) => !transition.seeded).map((transition) => transition.to)).toEqual([
       'waiting',
-      'idle',
     ]);
     await engine.stop();
   });

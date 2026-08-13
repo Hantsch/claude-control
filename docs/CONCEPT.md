@@ -153,7 +153,7 @@ All read-only. Full detail and verification in [RESEARCH.md](RESEARCH.md).
 
 Using the session registry for liveness is the main departure from Irrlicht, which infers
 liveness from transcript activity alone. The registry lets us say "this session is alive
-but has produced nothing for 20 minutes" — which is exactly the *idle* case worth
+but has produced nothing for 20 minutes" — which is exactly the *stale* case worth
 surfacing — and distinguish it from "this session was killed".
 
 **Privacy constraint:** `ide/*.lock` contains an `authToken`. The parser must extract only
@@ -200,7 +200,7 @@ active turn causes one re-read, not fifty. Target latency (N4) is debounce + tai
 comfortably under 2 s.
 
 A **5 s low-frequency timer** handles what file events cannot express: PID liveness
-re-checks, and elapsed-time-based transitions (`working` → `waiting`, `working` → `idle`).
+re-checks, and elapsed-time-based transitions (`working` → `waiting`, `working` → `stale`).
 Those transitions happen *because nothing happened*, so no event can carry them.
 
 ### 5.4 No persistent store — and what that costs
@@ -226,14 +226,28 @@ That is a deliberate seam, not speculative generality — see §12.
 
 | State | Meaning | Notification |
 |---|---|---|
-| `working` | Model is producing output or a tool is executing | no |
-| `waiting` | Very likely blocked on a permission prompt or other human input | **yes** |
+| `working` | Model is producing output, or a tool or subagent is executing | no |
+| `waiting` | A tool that is normally fast is overdue — very likely a permission prompt or a question | **yes** |
+| `stale` | A tool that is slow by nature is running well past its budget — probably still fine, maybe worth a look | no |
 | `done` | Turn finished, control handed back to the human | **yes** |
-| `idle` | Alive but nothing has happened for a long time; possibly forgotten | no (badge only) |
 | `queued` | Prompt enqueued but not yet started | no |
 | `starting` | Session is open but has not exchanged a single message yet | no |
 | `ended` | Process no longer alive; moves to history | no |
 | `unknown` | Could not derive a state (parse failure, truncated file) | no |
+
+**A status says *what*, never *how long ago*.** The original model had an `idle` state that
+overrode everything past `T_idle`, so after 15 minutes of silence *every* session — including
+one that had cleanly finished its turn — read as `idle`. That conflated two unrelated things:
+a finished session and a forgotten one. It also made the tray a wall of grey dots, and the
+information it added was already in the age column next to every row. `idle` is gone; how long
+ago something happened is a *list* question, answered in §6.5.
+
+**`waiting` and `stale` split what used to be one state.** Both mean "a tool call is overdue",
+but the two cases deserve very different reactions. An overdue `Read` (normally under a second)
+is almost certainly a permission prompt or a question — that is worth a toast. An overdue
+`Agent` or `Bash` is usually a subagent or a build doing its job for longer than usual — that
+is worth a visible marker and nothing more. Calling both "probably waiting" trained the user
+to ignore the one that mattered.
 
 `starting` was added after M2: a freshly opened Claude Code window is registered before it
 writes a transcript, so without it every new window showed up as `unknown` — which reads
@@ -255,17 +269,29 @@ Given the last *semantic* record `R` of a live session and `now`:
 R.type == "assistant" && stop_reason == "end_turn"        → done
 R.type == "assistant" && stop_reason == "tool_use"
         && no paired tool result yet
-        && age(R) <  T_work                               → working
-        && age(R) >= T_work                               → waiting
+        && age(R) <  T_work(tool)                         → working
+        && age(R) >= T_work(tool) && tool is fast         → waiting
+        && age(R) >= T_work(tool) && tool is slow         → stale
 R.type == "user"  (a real prompt, or a tool result)       → working
-any of the above && age(R) >= T_idle                      → idle
 enqueue seen with no matching dequeue                     → queued
 ```
 
 Tool-result pairing uses `sourceToolAssistantUUID` on the `user` record, which points at
 the issuing `assistant` record — no content-array id matching needed.
 
-Defaults, configurable: `T_work = 25 s`, `T_idle = 15 min`.
+With several tool calls open at once, the most permissive budget wins, and *that* tool also
+decides the speed class: the session is blocked on the slowest call, so a `Read` running next
+to a `Bash` cannot make the pair read as a permission prompt.
+
+A tool's **speed class is the budget itself**: anything budgeted above the default `T_work` is
+"slow by nature". No second list to keep in sync, and raising a tool's budget in Settings also
+stops it from claiming to be a permission prompt. A tool with no entry (an MCP server,
+anything new) lands on the default and therefore in the `waiting` class — the louder of the
+two, which is the right default when a tool's normal duration is unknown.
+
+Default `T_work = 25 s`, configurable, with per-tool overrides. `Agent` gets 20 min and
+`Workflow` 45 min: a fan-out that runs for a quarter of an hour is a subagent doing its job,
+and the session it belongs to should read `working` the whole time.
 
 ### 6.3 The honest limitation
 
@@ -274,13 +300,16 @@ terminal; nothing is written to the transcript while it waits. So `waiting` is a
 *a tool call was issued and no result has arrived for longer than any tool normally takes.*
 
 It will produce false positives on genuinely slow tools — a long `npm install` under
-`Bash`, a large `Grep`, a subagent that runs for minutes. Two mitigations:
+`Bash`, a large `Grep`, a subagent that runs for minutes. Three mitigations:
 
-1. **Per-tool thresholds.** `Bash`, `PowerShell` and `Agent` get a much longer `T_work`
-   (60–180 s) than `Read`, `Edit` or `Grep` (10 s), since the measured tool mix is
+1. **Per-tool thresholds.** `Bash` and `PowerShell` get 120 s, `Agent` 20 min and `Workflow`
+   45 min, against 10 s for `Read`, `Edit` or `Grep`, since the measured tool mix is
    dominated by `Bash`/`Read`/`Edit`.
-2. **Distinct presentation.** `waiting` is shown as *"probably waiting"* — the UI does not
-   overclaim what the data supports.
+2. **A separate state for the slow ones.** The remaining false positives all live in one
+   place — slow tools running longer than usual — and that case gets `stale`: shown, but no
+   toast and no badge. The alarm channel stays for the case the data actually supports.
+3. **Distinct presentation.** `waiting` is shown as *"needs you?"* and `stale` as *"stale"* —
+   both hedged, neither overclaiming what transcript watching can know.
 
 If false positives remain annoying in practice, the fix is Claude Code hooks
 (`Notification`, `PreToolUse`, `Stop`) posting to a local IPC endpoint, which turns the
@@ -308,8 +337,27 @@ rather than pinned at a nonsensical 400 %. The gauge is labelled an estimate.
 ### 6.5 Tray aggregation
 
 Icon colour = most urgent state present, in the order
-`waiting` > `done` > `working` > `idle` > none.
+`waiting` > `done` > `stale` > `working` > none.
 Badge count = number of sessions in `waiting` or `done`. Empty badge when zero.
+`stale` sits below `done` because a finished turn is a certainty and `stale` is a suspicion,
+and it is drawn as a hollow ring rather than a disc — present, not asserting itself.
+
+**Which sessions reach the tray.** The popover and the tray menu are the *glance* surface:
+they answer "what needs me right now". Everything live is not that answer — a session whose
+turn ended two hours ago and which has already been acknowledged says nothing, and a list of
+eight of them buries the two rows that matter. Three ways in, `isTrayWorthy`:
+
+1. **Something is in flight** — `working`, `waiting`, `stale`, `queued`. Age is irrelevant
+   here: a subagent that has been running for two hours is the most interesting row there is.
+2. **It wants attention and has not been acknowledged** — an unseen `done` is news however
+   long it has been sitting there, and dropping it would silently lose the result.
+3. **It did something recently** — default 30 min, configurable. The session you were just in
+   stays reachable for a while even after you have clicked it away.
+
+Everything else is *settled*: still live, still in the main window and in the CLI, just not
+worth a glance. The popover shows a "· N settled" hint so the count is never a lie. The icon
+and the badge are computed from the same filtered list, so what the tray claims is always
+something the popover can show.
 
 **Acknowledgement.** A badge you cannot answer is a badge you learn to ignore, so `waiting`
 and `done` stop counting once the user has *seen* them: clicking the row, jumping to the
@@ -373,14 +421,17 @@ Two surfaces, both English.
 A compact popover — the fast path, no window management:
 
 ```
-Claude Control · 4 sessions                              📌  ✕
-● Icons nacharbeiten     claude-control · main      done      3m ago
-◐ G0 freigegeben        Hantsch-MMO · feature/x    working   now
-◑ AI scrum sprint 02    ai-diary · main            waiting?  1m ago
-○ claude-a0             claude · main              idle      42m ago
+Claude Control · 4 sessions · 3 settled                  📌  ✕
+● Icons nacharbeiten     claude-control · main      done        3m ago
+◐ G0 freigegeben        Hantsch-MMO · feature/x    working     now
+◑ AI scrum sprint 02    ai-diary · main            needs you?  1m ago
+○ Repo-Audit            claude · main              stale       42m ago
 ─────────────────────────────────────────────────────────
 Open Claude Control                    Settings      Quit
 ```
+
+The rows are the tray-worthy sessions of §6.5, not every live one; the "· 3 settled" hint
+names what was left out and the main window shows them.
 
 It is sized to its content and wide enough that every column fits on one line — a
 horizontal scrollbar in a menu-sized surface is unusable. The title bar is a drag region, so
@@ -406,8 +457,9 @@ dimmed identifier; it becomes the label just for sessions that have no title yet
 - **History** — past sessions with a project filter, a date range, and free-text search
   over titles. Uses `aiTitle` from the transcript as the session label when present, which
   saves inventing our own summarizer.
-- **Settings** — thresholds (`T_work`, `T_idle`, per-tool overrides), notification
-  toggles, and the Claude data directory path.
+- **Settings** — thresholds (`T_work` and the per-tool overrides that double as the speed
+  classes), how long settled sessions stay in the tray, notification toggles, and the Claude
+  data directory path.
 
 ### Run duration
 
@@ -512,7 +564,7 @@ UI exists.
 | Item | Position |
 |---|---|
 | **Single-instance lock** | Not selected in scoping. Two instances would both be read-only and harmless but would double every toast. **Recommendation: add it in M2** — Electron provides it in a few lines. Awaiting your call. |
-| **`waiting` false positives** | Accepted for v1, mitigated by per-tool thresholds (§6.3). Hooks are the real fix and are the designated next step if it proves noisy. |
+| **`waiting` false positives** | Accepted for v1, mitigated by per-tool thresholds and by routing the slow-tool case to `stale`, which neither toasts nor badges (§6.3). Hooks are the real fix and are the designated next step if it proves noisy. |
 | **History durability** | Per §5.4, history lives and dies with `~/.claude/projects/`. The repository seam is in place; if you later lose history you care about, adding SQLite is a contained change. |
 | **Context-window detection** | Unresolved upstream (§6.4). Mitigated by lookup table + auto-widening, and labelled an estimate. |
 | **Subagent internals** | Unverified where subagent transcripts live (§8). v1 shows nodes without inner timelines. |

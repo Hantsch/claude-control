@@ -14,7 +14,7 @@
   --status-waiting: #ff9f0a;
   --status-done: #30d158;
   --status-working: #0a84ff;
-  --status-idle: #8e8e93;
+  --status-stale: #ac8e68;
   --status-queued: #bf5af2;
   --status-starting: #64d2ff;
   --status-ended: #5a5a60;

@@ -191,6 +191,7 @@ export function surfaceToShow(
 function emptyState(): AppState {
   return {
     sessions: [],
+    traySessions: [],
     groups: [],
     trayState: 'none',
     attention: 0,

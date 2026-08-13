@@ -67,18 +67,25 @@ including the `enqueue, enqueue, remove` shape that a counting-only rule gets wr
 - **Parallel tool calls in one assistant record.** §6.2 assumes one pending call. When a
   record issues several (`Read` + `Bash` together), the machine uses the *most permissive*
   per-tool threshold of the unpaired set, so a fast tool running next to a slow one cannot
-  produce a false `waiting`.
+  produce a false overdue verdict — and the tool that set that threshold also decides the
+  speed class, since it is the call the session is really blocked on.
 - **A partially answered turn.** If the newest semantic record is a tool result but an
   earlier call of the same record is still unanswered, the session stays `working` — that is
   the literal §6.2 rule (`R.type == user → working`). Those calls are kept as
-  `stalledTools` and drive the "current tool" display, but never escalate to `waiting`. This
-  is why a long-running subagent shows as `working`, not `waiting`.
+  `stalledTools` and drive the "current tool" display, but never escalate to an overdue
+  state.
 - **`queued` priority.** §6.2 lists `queued` without an ordering. It is applied after the
-  base state and only when the session is not `working`/`waiting`, so an enqueued prompt
-  never masks a turn that is actually running.
-- **`idle` overrides everything time-based.** "any of the above && age(R) >= T_idle → idle"
-  is implemented literally, including for `done`: a turn that finished an hour ago is a
-  forgotten session, not a fresh notification. It therefore also drops out of the badge count.
+  base state and only when the session is not `working`/`waiting`/`stale`, so an enqueued
+  prompt never masks a turn that is actually running — and an overdue turn is still a
+  running one.
+- **Nothing decays with age.** The `T_idle` rule that turned every state into `idle` is gone
+  (§6.1): elapsed time produces at most one transition, `working` → `waiting` or
+  `working` → `stale`, and the session stays there. Whether an old session is still worth
+  showing is decided by `isTrayWorthy`, not by the state machine.
+- **Speed class = budget.** `isSlowTool` is `workThresholdFor(tool) > tWorkMs` rather than a
+  second hard-coded list, so the two can never disagree and the Settings sliders are the
+  single knob. `Agent` (20 min) and `Workflow` (45 min) are the reason a long-running
+  subagent reads `working`, and `stale` rather than `waiting` when it does go over.
 - **`stop_sequence`** (36 records in the sample) is treated as output, not as a handover —
   only `end_turn` means `done`.
 
@@ -88,8 +95,8 @@ The five state icons and eleven badge variants are drawn in code
 (`src/main/tray-icons.ts`: a small PNG encoder plus a 3×5 pixel font) rather than shipped as
 art, because that keeps the icon and the badge in one place and needs no image library.
 `npm run icons` writes the same drawings to `assets/icons/` for packaging (`app.ico`).
-Beyond colour, `waiting` carries a notch and `working` a ring, so the states are
-distinguishable without relying on colour alone.
+Beyond colour, `waiting` carries a notch, `working` a ring, and `stale` is drawn hollow, so
+the states are distinguishable without relying on colour alone.
 
 ### Window focus: one VS Code process, many windows
 
@@ -139,8 +146,8 @@ Two changed signatures:
 
 On every 5 s tick the engine `stat`s each live transcript and re-reads it only when size or
 mtime changed; otherwise it re-derives the status from the cached facts. Elapsed-time
-transitions (`working` → `waiting` → `idle`) therefore cost no file reads, which is what
-keeps an all-day tray app close to idle.
+transitions (`working` → `waiting`, `working` → `stale`) therefore cost no file reads, which
+is what keeps an all-day tray app close to idle.
 
 ### Debounce ceiling
 
@@ -156,8 +163,8 @@ first. Covered by the burst test in `test/unit/pipeline.test.ts`.
 
 | # | Where |
 |---|---|
-| F1 live list | `ControlEngine.getSnapshot`, Sessions view, popover |
-| F2 working / waiting / done | `core/state/machine.ts`; `waiting` is labelled "probably waiting" (§6.3) |
+| F1 live list | `ControlEngine.getSnapshot` (Sessions view) and `traySessions` (popover, tray menu) |
+| F2 working / waiting / done | `core/state/machine.ts`; the two overdue cases split into `waiting` ("needs you?") and `stale` (§6.3) |
 | F3 tray icon = most urgent | `trayStateFor`, `TrayPresenter.update` |
 | F4 overlay badge | `renderTrayIcon(state, badgeCount)`; empty at zero |
 | F5 toast on done/waiting | `Notifier` + `NotificationGate` |
@@ -179,7 +186,9 @@ first. Covered by the burst test in `test/unit/pipeline.test.ts`.
 
 ## 4. Known limitations carried forward
 
-- `waiting` remains a heuristic (§6.3). Hooks are still the designated upgrade path.
+- `waiting` remains a heuristic (§6.3), now narrowed to overdue *fast* tools so the slow-tool
+  false positives land in the silent `stale` state instead. Hooks are still the designated
+  upgrade path to an exact signal.
 - Subagent *inner* timelines are still unavailable (`isSidechain` false everywhere), so
   `SubagentNode.children` exists but stays empty.
 - The context window is still an estimate; auto-widening only ever widens.

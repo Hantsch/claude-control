@@ -20,8 +20,8 @@ export interface Rgb {
 export const STATE_COLORS: Record<TrayState, Rgb> = {
   waiting: { r: 255, g: 159, b: 10 }, // amber — probably blocked on you
   done: { r: 48, g: 209, b: 88 }, // green — turn finished
+  stale: { r: 172, g: 142, b: 104 }, // muted amber — running long, probably fine
   working: { r: 10, g: 132, b: 255 }, // blue — busy
-  idle: { r: 142, g: 142, b: 147 }, // grey — alive but quiet
   none: { r: 99, g: 99, b: 104 }, // dim outline — nothing running
 };
 
@@ -156,13 +156,15 @@ export function renderTrayIcon(state: TrayState, badgeCount = 0, size = 32): Buf
   const cy = size / 2;
   const radius = size * 0.34;
 
-  if (state === 'none') {
-    // Nothing running: an outline, so the tray is visibly present but quiet.
+  if (state === 'none' || state === 'stale') {
+    // An outline rather than a disc: present, but not asserting itself. For `none` that
+    // means "quiet"; for `stale` it means "running long, probably fine" — the muted colour
+    // carries the difference, the hollow shape keeps it from reading as an alarm.
     canvas.ring(cx, cy, radius, Math.max(1.5, size * 0.09), color);
   } else {
     canvas.circle(cx, cy, radius, color);
     if (state === 'waiting') {
-      // A notch distinguishes "probably waiting" from "done" without relying on colour.
+      // A notch distinguishes "needs you?" from "done" without relying on colour.
       canvas.circle(cx + radius * 0.15, cy, radius * 0.42, { r: 28, g: 28, b: 30 });
     }
     if (state === 'working') {

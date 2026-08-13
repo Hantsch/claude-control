@@ -4,6 +4,21 @@
  * These eight states are the whole vocabulary of the app. Everything the tray, the
  * notifier and the UI show is a projection of them.
  *
+ * A status answers **what is going on**, never **how long ago it was**: the age column
+ * already says the latter, and a status that decays over time made every finished session
+ * read as `idle` after 15 minutes — which is why the old `idle` state is gone. A turn that
+ * ended stays `done`; whether that `done` is still worth showing is a *list* question,
+ * answered by `isTrayWorthy` in `state/aggregate.ts`, not a state-machine question.
+ *
+ * `waiting` and `stale` split what used to be one over-claiming `waiting`. Both mean "a tool
+ * call is overdue", but the two cases are worth very different reactions (§6.3):
+ *
+ *   - a *fast* tool (Read, Edit, Grep — normally seconds) that is overdue is almost always a
+ *     permission prompt or a question waiting for you → `waiting`, notifies;
+ *   - a *slow* tool (Bash, Agent, Workflow) that is overdue is usually still running fine,
+ *     just longer than usual → `stale`, visible but silent. It does not claim anything is
+ *     broken; it claims something might be worth a look.
+ *
  * `starting` is the one addition to the concept's original seven: a session that the
  * registry knows about but whose transcript holds no user/assistant record *at all* is not
  * an unreadable session, it is one that has not been used yet — every freshly opened Claude
@@ -14,8 +29,8 @@
 export const SESSION_STATUSES = [
   'working',
   'waiting',
+  'stale',
   'done',
-  'idle',
   'queued',
   'starting',
   'ended',
@@ -24,7 +39,12 @@ export const SESSION_STATUSES = [
 
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
-/** States a toast may fire for (§6.1 "Notification" column, §6.6). */
+/**
+ * States a toast may fire for (§6.1 "Notification" column, §6.6).
+ *
+ * `stale` deliberately stays out: it says "this might be odd", and interrupting for a maybe
+ * is exactly how a notification channel gets muted.
+ */
 export const NOTIFYING_STATUSES: readonly SessionStatus[] = ['waiting', 'done'];
 
 /** States that count towards the tray overlay badge (§6.5). */
@@ -32,12 +52,14 @@ export const ATTENTION_STATUSES: readonly SessionStatus[] = ['waiting', 'done'];
 
 /**
  * Tray icon colour = most urgent state present, in the order
- * `waiting` > `done` > `working` > `idle` > none (§6.5).
+ * `waiting` > `done` > `stale` > `working` > none (§6.5).
  *
- * `queued`, `starting`, `unknown` and `ended` deliberately do not influence the icon: the
- * concept names exactly these four tiers, and none of the four is a claim about urgency.
+ * `stale` outranks `working` because it is the one of the two that might want a look, and
+ * ranks below `done` because a finished turn is a certainty while `stale` is a suspicion.
+ * `queued`, `starting`, `unknown` and `ended` deliberately do not influence the icon: none
+ * of the four is a claim about urgency.
  */
-export const TRAY_URGENCY_ORDER = ['waiting', 'done', 'working', 'idle'] as const;
+export const TRAY_URGENCY_ORDER = ['waiting', 'done', 'stale', 'working'] as const;
 
 export type TrayState = (typeof TRAY_URGENCY_ORDER)[number] | 'none';
 
@@ -50,14 +72,16 @@ export function needsAttention(status: SessionStatus): boolean {
 }
 
 /**
- * Label used in the UI. `waiting` is intentionally hedged — transcript watching cannot
- * see a permission prompt, so the UI must not overclaim (§6.3).
+ * Label used in the UI. Both overdue states are intentionally hedged — transcript watching
+ * cannot see a permission prompt, so the UI must not overclaim (§6.3). `stale` is the softer
+ * of the two on purpose: it does not say the tool failed, only that it is taking longer than
+ * that tool usually does.
  */
 export const STATUS_LABEL: Record<SessionStatus, string> = {
   working: 'working',
-  waiting: 'probably waiting',
+  waiting: 'needs you?',
+  stale: 'stale',
   done: 'done',
-  idle: 'idle',
   queued: 'queued',
   starting: 'no prompt yet',
   ended: 'ended',

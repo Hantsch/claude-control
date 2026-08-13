@@ -32,6 +32,7 @@ import {
   compareSessions,
   distinctProjects,
   groupSessions,
+  selectTraySessions,
   trayStateFor,
   type ProjectGroup,
 } from './state/aggregate.ts';
@@ -45,6 +46,11 @@ export type RefreshReason = 'start' | 'tick' | 'registry' | 'transcript' | 'ide'
 
 export interface EngineSnapshot {
   sessions: SessionView[];
+  /**
+   * Subset of `sessions` the tray surfaces show — what is in flight, unacknowledged, or
+   * recent (§6.5). The main window uses `sessions`/`groups` and stays complete.
+   */
+  traySessions: SessionView[];
   groups: ProjectGroup[];
   trayState: TrayState;
   attention: number;
@@ -171,13 +177,18 @@ export class ControlEngine {
     const sessions = (
       this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all
     ).sort(compareSessions);
+    const at = this.now();
+    // The tray is the glance surface and gets the narrower list; the icon and the badge
+    // follow it, so what the icon claims is always something the popover can show.
+    const traySessions = selectTraySessions(sessions, at, this.settings.list.trayRecentMs);
     return {
       sessions,
+      traySessions,
       groups: groupSessions(sessions),
-      trayState: trayStateFor(sessions),
-      attention: attentionCount(sessions),
+      trayState: trayStateFor(traySessions),
+      attention: attentionCount(traySessions),
       projects: distinctProjects([...sessions, ...this.store.listHistory()]),
-      at: this.now(),
+      at,
       indexingHistory: this.indexingHistory,
       historyCount: this.store.historyCount(),
     };
@@ -264,7 +275,7 @@ export class ControlEngine {
   private startTick(): void {
     if (this.tick) clearInterval(this.tick);
     // The 5 s timer carries what file events cannot express: PID liveness re-checks and
-    // elapsed-time transitions (working → waiting, working → idle). Those happen *because
+    // elapsed-time transitions (working → waiting, working → stale). Those happen *because
     // nothing happened*, so no event can deliver them (§5.3).
     this.tick = setInterval(() => {
       void this.refresh('tick');
@@ -457,7 +468,7 @@ export class ControlEngine {
 }
 
 /** Statuses in which the current run is still going, so its duration keeps ticking. */
-const ONGOING_STATUSES = new Set<SessionStatus>(['working', 'waiting', 'queued']);
+const ONGOING_STATUSES = new Set<SessionStatus>(['working', 'waiting', 'stale', 'queued']);
 
 /**
  * The run the session is in, or the last one it finished: from the newest prompt to the end

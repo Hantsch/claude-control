@@ -16,8 +16,8 @@ grouping / context gauge / subagent tree, history with filters, and a portable E
 - [docs/RESEARCH.md](docs/RESEARCH.md) — the measured facts about Claude Code's on-disk data
 - [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) — where each concept section lives in the
   code, and the decisions taken where the concept left a choice open
-- [docs/BACKLOG.md](docs/BACKLOG.md) — deliverables for what comes next, derived from a
-  comparison with Irrlicht and ClaudeSessionTray
+- [docs/ROADMAP.md](docs/ROADMAP.md) — where this stands and what comes next; the open stories
+  live in [docs/requirements/](docs/requirements/)
 
 ## What it does
 

@@ -43,4 +43,8 @@ docs/
 
 ## Project-specific
 
-Existing docs kept from before this setup: [CONCEPT.md](CONCEPT.md), [IMPLEMENTATION.md](IMPLEMENTATION.md), [RESEARCH.md](RESEARCH.md), [BACKLOG.md](BACKLOG.md) — these are project-owned and untouched by ai-scrum.
+Existing docs kept from before this setup: [CONCEPT.md](CONCEPT.md), [IMPLEMENTATION.md](IMPLEMENTATION.md), [RESEARCH.md](RESEARCH.md) — these are project-owned and untouched by ai-scrum.
+
+The former `BACKLOG.md` was migrated on 2026-08-13 into stories 001–008 in
+[requirements/](requirements/); its analysis and its two rejected features now live in
+[concepts/reference-tool-comparison.md](concepts/reference-tool-comparison.md).

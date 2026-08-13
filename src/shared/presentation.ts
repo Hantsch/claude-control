@@ -17,6 +17,7 @@ export const STATUS_COLOR_VAR: Record<SessionStatus, string> = {
   working: '--status-working',
   idle: '--status-idle',
   queued: '--status-queued',
+  starting: '--status-starting',
   ended: '--status-ended',
   unknown: '--status-unknown',
 };
@@ -30,8 +31,13 @@ export const STATUS_HINT: Record<SessionStatus, string> = {
   done: 'The turn finished and control is back with you.',
   idle: 'Alive but nothing has happened for a long time — possibly forgotten.',
   queued: 'A prompt is enqueued and has not started yet.',
+  starting:
+    'The session is open but has not exchanged a single message yet — a freshly opened ' +
+    'Claude Code window looks like this until the first prompt.',
   ended: 'The process is no longer alive; the session moved to history.',
-  unknown: 'The state could not be derived from the transcript.',
+  unknown:
+    'The transcript could not be read, or its tail window held no user/assistant record. ' +
+    'This is a reading problem, not a claim about the session.',
 };
 
 /**
@@ -45,8 +51,11 @@ export const HISTORY_FINAL_LABEL: Record<SessionStatus, string> = {
   waiting: 'was waiting',
   queued: 'prompt still queued',
   idle: 'idle',
+  // `deriveHistoricalStatus` only reaches `unknown` when the transcript held no
+  // user/assistant record at all, so that is what the history table should say.
+  starting: 'never used',
   ended: 'ended',
-  unknown: 'unknown',
+  unknown: 'no messages',
 };
 
 /** Context-pressure band → indicator, per the §6.4 thresholds. */
@@ -55,6 +64,14 @@ export const BAND_SYMBOL: Record<ContextBand, string> = {
   yellow: '🟡',
   red: '🔴',
   critical: '⚠️',
+};
+
+/** CSS custom-property name per band, so the gauge and the list rows cannot drift apart. */
+export const BAND_COLOR_VAR: Record<ContextBand, string> = {
+  green: '--band-green',
+  yellow: '--band-yellow',
+  red: '--band-red',
+  critical: '--band-critical',
 };
 
 export const BAND_LABEL: Record<ContextBand, string> = {

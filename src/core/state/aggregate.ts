@@ -6,18 +6,29 @@ import type { SessionStatus, TrayState } from '../model/status.ts';
 import { TRAY_URGENCY_ORDER, needsAttention } from '../model/status.ts';
 import type { ProjectRef, SessionView } from '../model/types.ts';
 
+/**
+ * A session in `waiting` or `done` that the user has already acknowledged. It is still in
+ * that state, but it is no longer *news*, so it must not keep the tray lit — otherwise the
+ * icon claims something is open with no way to dismiss it.
+ */
+function isSeenAttention(session: SessionView): boolean {
+  return needsAttention(session.status) && session.seen;
+}
+
 /** Icon colour = most urgent state present: waiting > done > working > idle > none (§6.5). */
 export function trayStateFor(sessions: readonly SessionView[]): TrayState {
-  const present = new Set<SessionStatus>(sessions.map((s) => s.status));
+  const present = new Set<SessionStatus>(
+    sessions.filter((s) => !isSeenAttention(s)).map((s) => s.status),
+  );
   for (const candidate of TRAY_URGENCY_ORDER) {
     if (present.has(candidate)) return candidate;
   }
   return 'none';
 }
 
-/** Badge count = sessions in `waiting` or `done`; empty badge when zero (§6.5). */
+/** Badge count = unacknowledged sessions in `waiting` or `done`; empty badge at zero (§6.5). */
 export function attentionCount(sessions: readonly SessionView[]): number {
-  return sessions.filter((s) => needsAttention(s.status)).length;
+  return sessions.filter((s) => needsAttention(s.status) && !s.seen).length;
 }
 
 export interface BranchGroup {
@@ -86,8 +97,9 @@ const STATUS_SORT_RANK: Record<SessionStatus, number> = {
   working: 2,
   queued: 3,
   idle: 4,
-  unknown: 5,
-  ended: 6,
+  starting: 5,
+  unknown: 6,
+  ended: 7,
 };
 
 export function compareSessions(a: SessionView, b: SessionView): number {

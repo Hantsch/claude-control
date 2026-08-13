@@ -9,8 +9,15 @@
 import { BrowserWindow, screen, shell } from 'electron';
 import { join } from 'node:path';
 
-const POPOVER_WIDTH = 460;
-const POPOVER_MAX_HEIGHT = 420;
+/**
+ * The popover is deliberately wide: every column (title, project · branch, status, age) has
+ * to fit on one line, because a horizontal scrollbar in a menu-like surface is unusable.
+ */
+const POPOVER_WIDTH = 620;
+const POPOVER_MIN_HEIGHT = 120;
+const POPOVER_MAX_HEIGHT = 560;
+/** Margin kept between the popover and the edges of the work area. */
+const SCREEN_MARGIN = 8;
 
 export type MainTab = 'sessions' | 'history' | 'settings';
 
@@ -25,6 +32,23 @@ export class WindowManager {
   private readonly options: WindowManagerOptions;
   private main: BrowserWindow | null = null;
   private popover: BrowserWindow | null = null;
+  /**
+   * The popover's size is tracked here rather than read back from the window.
+   *
+   * It used to be derived from `getSize()` — and DIP↔physical conversion is lossy, so every
+   * open fed a slightly smaller number back into `setSize()` and the window shrank a little
+   * each time (worse across displays with different scaling, where Windows rescales the
+   * window behind our back). Width is now a constant and height comes from the content, so
+   * neither can accumulate an error.
+   */
+  private popoverHeight = 260;
+  /** Position the user dragged the popover to; honoured only while it is pinned. */
+  private popoverPosition: { x: number; y: number } | null = null;
+  /** Last position *we* set, so the `moved` handler can ignore its own echo. */
+  private appliedPosition: { x: number; y: number } | null = null;
+  private popoverPinned = false;
+  /** Tray bounds of the most recent open, so a resize can re-anchor to the icon. */
+  private lastTrayBounds: Electron.Rectangle | null = null;
 
   constructor(options: WindowManagerOptions) {
     this.options = options;
@@ -77,28 +101,71 @@ export class WindowManager {
     return window;
   }
 
-  /** Compact popover anchored to the tray icon; closes on blur so it behaves like a menu. */
+  /**
+   * Compact popover anchored to the tray icon. Unpinned it behaves like a menu — one blur
+   * and it is gone; pinned it stays open wherever the user dragged it.
+   */
   togglePopover(trayBounds: Electron.Rectangle): void {
     if (this.popover && !this.popover.isDestroyed() && this.popover.isVisible()) {
       this.popover.hide();
       return;
     }
 
+    this.lastTrayBounds = trayBounds;
     const window = this.ensurePopover();
-    positionPopover(window, trayBounds);
+    this.placePopover(window);
     window.show();
     window.focus();
   }
 
-  hidePopover(): void {
+  /**
+   * Hide the popover. A pinned one is left alone unless `force` is set: jumping to a session
+   * or opening the main window must not dismiss a panel the user deliberately parked — but
+   * its own close button still closes it.
+   */
+  hidePopover(force = false): void {
+    if (this.popoverPinned && !force) return;
     if (this.popover && !this.popover.isDestroyed()) this.popover.hide();
   }
 
+  isPopoverPinned(): boolean {
+    return this.popoverPinned;
+  }
+
+  /**
+   * Pinning keeps the popover open on blur and remembers where it was dragged to. Unpinning
+   * drops that position, so the next open snaps back to the tray icon.
+   */
+  setPopoverPinned(pinned: boolean): boolean {
+    this.popoverPinned = pinned;
+    if (!pinned) this.popoverPosition = null;
+    const window = this.popover;
+    if (window && !window.isDestroyed()) {
+      // A pinned popover has to survive a click into another app, so it must not be hidden
+      // by whatever else claims to be always-on-top.
+      window.setAlwaysOnTop(true, pinned ? 'floating' : 'normal');
+      if (!pinned && window.isVisible()) this.placePopover(window);
+    }
+    return this.popoverPinned;
+  }
+
+  /**
+   * Height the popover's content asked for. Clamped to the work area, applied only when it
+   * actually changed, and followed by a re-anchor so a growing list does not run off the
+   * bottom of the screen.
+   */
   resizePopover(height: number): void {
-    if (!this.popover || this.popover.isDestroyed()) return;
-    const clamped = Math.max(120, Math.min(POPOVER_MAX_HEIGHT, Math.round(height)));
-    const [width] = this.popover.getSize();
-    this.popover.setSize(width ?? POPOVER_WIDTH, clamped);
+    const window = this.popover;
+    if (!window || window.isDestroyed()) return;
+
+    const work = this.workArea();
+    const ceiling = Math.min(POPOVER_MAX_HEIGHT, work.height - 2 * SCREEN_MARGIN);
+    const clamped = Math.max(POPOVER_MIN_HEIGHT, Math.min(ceiling, Math.ceil(height)));
+    if (clamped === this.popoverHeight) return;
+
+    this.popoverHeight = clamped;
+    window.setSize(POPOVER_WIDTH, clamped);
+    this.placePopover(window);
   }
 
   private ensurePopover(): BrowserWindow {
@@ -106,11 +173,12 @@ export class WindowManager {
 
     const window = new BrowserWindow({
       width: POPOVER_WIDTH,
-      height: 260,
+      height: this.popoverHeight,
       show: false,
       frame: false,
       resizable: false,
-      movable: false,
+      // Movable so the drag region in the popover's title bar can be used (F: pin & drag).
+      movable: true,
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
@@ -121,7 +189,20 @@ export class WindowManager {
     });
 
     this.harden(window);
-    window.on('blur', () => window.hide());
+    window.on('blur', () => {
+      if (!this.popoverPinned) window.hide();
+    });
+    // `moved` also fires for our own `setPosition`, so a programmatic move must not be
+    // mistaken for a drag — otherwise the very first anchoring would freeze the position.
+    window.on('moved', () => {
+      if (window.isDestroyed()) return;
+      const [x, y] = window.getPosition();
+      const at = { x: x ?? 0, y: y ?? 0 };
+      if (this.appliedPosition && at.x === this.appliedPosition.x && at.y === this.appliedPosition.y) {
+        return;
+      }
+      this.popoverPosition = at;
+    });
     window.on('closed', () => {
       this.popover = null;
     });
@@ -129,6 +210,31 @@ export class WindowManager {
     void this.load(window, 'popover.html', '');
     this.popover = window;
     return window;
+  }
+
+  /** Dragged-to position while pinned, otherwise anchored to the tray icon. */
+  private placePopover(window: BrowserWindow): void {
+    const work = this.workArea();
+    const target =
+      this.popoverPinned && this.popoverPosition
+        ? clampToWorkArea(this.popoverPosition, POPOVER_WIDTH, this.popoverHeight, work)
+        : this.lastTrayBounds
+          ? anchorToTray(this.lastTrayBounds, POPOVER_WIDTH, this.popoverHeight, work)
+          : null;
+    if (!target) return;
+    this.appliedPosition = target;
+    window.setPosition(target.x, target.y, false);
+  }
+
+  private workArea(): Electron.Rectangle {
+    const bounds = this.lastTrayBounds;
+    const display = bounds
+      ? screen.getDisplayNearestPoint({
+          x: bounds.x + Math.round(bounds.width / 2),
+          y: bounds.y + Math.round(bounds.height / 2),
+        })
+      : screen.getPrimaryDisplay();
+    return display.workArea;
   }
 
   private webPreferences(): Electron.WebPreferences {
@@ -165,24 +271,34 @@ export class WindowManager {
   }
 }
 
-function positionPopover(window: BrowserWindow, trayBounds: Electron.Rectangle): void {
-  const [width, height] = window.getSize();
-  const w = width ?? POPOVER_WIDTH;
-  const h = height ?? 260;
-  const display = screen.getDisplayNearestPoint({
-    x: trayBounds.x + Math.round(trayBounds.width / 2),
-    y: trayBounds.y + Math.round(trayBounds.height / 2),
-  });
-  const work = display.workArea;
-
-  let x = Math.round(trayBounds.x + trayBounds.width / 2 - w / 2);
-  x = Math.max(work.x + 8, Math.min(x, work.x + work.width - w - 8));
+/** Centred under/over the tray icon, kept inside the work area. */
+export function anchorToTray(
+  trayBounds: Electron.Rectangle,
+  width: number,
+  height: number,
+  work: Electron.Rectangle,
+): { x: number; y: number } {
+  const x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
 
   // Tray on the bottom (the usual case) → open upwards; otherwise below the icon.
   const trayNearBottom = trayBounds.y > work.y + work.height / 2;
   const y = trayNearBottom
-    ? Math.max(work.y + 8, trayBounds.y - h - 8)
-    : Math.min(work.y + work.height - h - 8, trayBounds.y + trayBounds.height + 8);
+    ? trayBounds.y - height - SCREEN_MARGIN
+    : trayBounds.y + trayBounds.height + SCREEN_MARGIN;
 
-  window.setPosition(x, y, false);
+  return clampToWorkArea({ x, y }, width, height, work);
+}
+
+export function clampToWorkArea(
+  at: { x: number; y: number },
+  width: number,
+  height: number,
+  work: Electron.Rectangle,
+): { x: number; y: number } {
+  const maxX = work.x + work.width - width - SCREEN_MARGIN;
+  const maxY = work.y + work.height - height - SCREEN_MARGIN;
+  return {
+    x: Math.round(Math.max(work.x + SCREEN_MARGIN, Math.min(at.x, Math.max(work.x + SCREEN_MARGIN, maxX)))),
+    y: Math.round(Math.max(work.y + SCREEN_MARGIN, Math.min(at.y, Math.max(work.y + SCREEN_MARGIN, maxY)))),
+  };
 }

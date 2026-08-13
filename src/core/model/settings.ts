@@ -35,12 +35,31 @@ export interface ReadingSettings {
   tickIntervalMs: number;
 }
 
+export interface UiSettings {
+  /** Popover stays open on blur and keeps the position it was dragged to (§8). */
+  popoverPinned: boolean;
+}
+
+export interface ListSettings {
+  /**
+   * Drop registry entries that have never exchanged a message (`starting`) from the live
+   * surfaces. A freshly opened Claude Code window registers itself before anything happens
+   * in it; it is a window, not a session to watch, and listing it makes the app look busier
+   * than the work actually is. History is unaffected — this only hides them while live.
+   */
+  hideUnusedSessions: boolean;
+}
+
 export interface AppSettings {
   /** Override for `~/.claude`. Null = default location. */
   claudeDir: string | null;
   thresholds: Thresholds;
   notifications: NotificationSettings;
   reading: ReadingSettings;
+  /** Which live sessions reach the surfaces at all. Read by `core/`. */
+  list: ListSettings;
+  /** Surface state that has to survive a restart. Nothing in `core/` reads this. */
+  ui: UiSettings;
   /** Start the history index in the background after the live tier is on screen (§5.1). */
   indexHistoryOnStart: boolean;
 }
@@ -89,6 +108,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     debounceMs: 250,
     tickIntervalMs: 5_000,
   },
+  list: {
+    hideUnusedSessions: true,
+  },
+  ui: {
+    popoverPinned: false,
+  },
   indexHistoryOnStart: true,
 };
 
@@ -106,6 +131,8 @@ export function mergeSettings(partial: unknown): AppSettings {
     thresholds: { ...DEFAULT_THRESHOLDS, perToolWorkMs: { ...DEFAULT_THRESHOLDS.perToolWorkMs } },
     notifications: { ...DEFAULT_SETTINGS.notifications },
     reading: { ...DEFAULT_SETTINGS.reading },
+    list: { ...DEFAULT_SETTINGS.list },
+    ui: { ...DEFAULT_SETTINGS.ui },
   };
   if (!partial || typeof partial !== 'object') return base;
   const p = partial as Record<string, unknown>;
@@ -142,6 +169,16 @@ export function mergeSettings(partial: unknown): AppSettings {
     // debounce: a debounce above this would silently put detection outside N4's 2 s budget.
     if (isNonNegative(r.debounceMs)) base.reading.debounceMs = Math.min(r.debounceMs, MAX_DEBOUNCE_MS);
     if (isPositive(r.tickIntervalMs)) base.reading.tickIntervalMs = r.tickIntervalMs;
+  }
+
+  const l = p.list as Record<string, unknown> | undefined;
+  if (l && typeof l === 'object') {
+    if (typeof l.hideUnusedSessions === 'boolean') base.list.hideUnusedSessions = l.hideUnusedSessions;
+  }
+
+  const u = p.ui as Record<string, unknown> | undefined;
+  if (u && typeof u === 'object') {
+    if (typeof u.popoverPinned === 'boolean') base.ui.popoverPinned = u.popoverPinned;
   }
 
   if (base.reading.maxTailWindowBytes < base.reading.tailWindowBytes) {

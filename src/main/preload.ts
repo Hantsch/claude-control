@@ -17,11 +17,15 @@ function subscribe(channel: string, listener: (payload: never) => void): () => v
 const api: RendererApi & {
   onNavigate(listener: (tab: 'sessions' | 'history' | 'settings') => void): () => void;
   setPopoverHeight(height: number): Promise<void>;
+  getPopoverPinned(): Promise<boolean>;
+  setPopoverPinned(pinned: boolean): Promise<boolean>;
 } = {
   getState: () => ipcRenderer.invoke(IPC.getState) as Promise<AppState>,
   getHistory: (query: HistoryQuery) => ipcRenderer.invoke(IPC.getHistory, query),
   getDetail: (id) => ipcRenderer.invoke(IPC.getDetail, id),
   focusSession: (id) => ipcRenderer.invoke(IPC.focusSession, id),
+  acknowledge: (id) => ipcRenderer.invoke(IPC.acknowledge, id) as Promise<void>,
+  acknowledgeAll: () => ipcRenderer.invoke(IPC.acknowledgeAll) as Promise<void>,
   getSettings: () => ipcRenderer.invoke(IPC.getSettings) as Promise<AppSettings>,
   setSettings: (settings) => ipcRenderer.invoke(IPC.setSettings, settings),
   resetSettings: () => ipcRenderer.invoke(IPC.resetSettings),
@@ -38,6 +42,8 @@ const api: RendererApi & {
   onSettingsChanged: (listener) => subscribe(IPC.settingsChanged, listener as (payload: never) => void),
   onNavigate: (listener) => subscribe('cc:navigate', listener as (payload: never) => void),
   setPopoverHeight: (height) => ipcRenderer.invoke('cc:popover-height', height) as Promise<void>,
+  getPopoverPinned: () => ipcRenderer.invoke('cc:popover-pinned') as Promise<boolean>,
+  setPopoverPinned: (pinned) => ipcRenderer.invoke('cc:popover-pin', pinned) as Promise<boolean>,
 };
 
 contextBridge.exposeInMainWorld('claudeControl', api);

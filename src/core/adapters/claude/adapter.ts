@@ -156,7 +156,9 @@ export class ClaudeAdapter implements AgentAdapter {
         ref,
         project,
         alive,
-        facts: emptyFacts('no transcript file found for this session'),
+        // Not an error: Claude Code creates the transcript with the first message, so a
+        // session that was just opened legitimately has no file yet (→ `starting`).
+        facts: emptyFacts('no transcript file yet — this session has not been used', null),
         readAt,
       };
     }
@@ -173,20 +175,23 @@ export class ClaudeAdapter implements AgentAdapter {
           fileSize: tail.fileSize,
           mtimeMs: tail.mtimeMs,
           windowBytes: tail.windowBytes,
+          startOffset: tail.startOffset,
           linesParsed: tail.linesParsed,
           linesSkipped: tail.linesSkipped,
           exhausted: tail.exhausted,
+          error: null,
         },
       });
       facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
+      const message = describe(error);
       return {
         sessionId: ref.sessionId,
         ref: { ...ref, transcriptPath: path },
         project,
         alive,
-        facts: emptyFacts(`transcript could not be read: ${describe(error)}`),
+        facts: emptyFacts(`transcript could not be read: ${message}`, message),
         readAt,
       };
     }
@@ -279,9 +284,11 @@ export class ClaudeAdapter implements AgentAdapter {
         fileSize: tail.fileSize,
         mtimeMs: tail.mtimeMs,
         windowBytes: tail.windowBytes,
+        startOffset: tail.startOffset,
         linesParsed: tail.linesParsed,
         linesSkipped: tail.linesSkipped,
         exhausted: tail.exhausted,
+        error: null,
       },
     });
 
@@ -456,7 +463,12 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 }
 
-function emptyFacts(note: string): TranscriptTailFacts {
+/**
+ * Facts for a session whose transcript yielded nothing. `error` is what separates the two
+ * reasons that can happen for: null means "there was nothing to read", a message means "the
+ * read failed" — and the state machine maps those to `starting` and `unknown` respectively.
+ */
+function emptyFacts(note: string, error: string | null): TranscriptTailFacts {
   return {
     last: null,
     pendingTool: null,
@@ -476,9 +488,11 @@ function emptyFacts(note: string): TranscriptTailFacts {
       fileSize: 0,
       mtimeMs: 0,
       windowBytes: 0,
+      startOffset: 0,
       linesParsed: 0,
       linesSkipped: 0,
       exhausted: true,
+      error,
     },
   };
 }

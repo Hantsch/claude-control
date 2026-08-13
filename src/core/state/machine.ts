@@ -12,6 +12,8 @@
  *   R.type == "user"  (a real prompt, or a tool result)        → working
  *   any of the above && age(R) >= T_idle                       → idle
  *   enqueue seen with no matching dequeue                      → queued
+ *   no R at all, whole transcript seen, read ok                → starting
+ *   no R at all, read failed or window too small               → unknown
  *
  * `R` is the newest *semantic* record: bookkeeping types are filtered out before this runs
  * (237 of 290 files end in a bookkeeping record — RESEARCH.md §2).
@@ -58,11 +60,24 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
         appliedWorkMs: null,
       };
     }
+    // The read succeeded and covered the whole transcript (`startOffset === 0`, which a
+    // missing file also reports): the absence of any user/assistant record is then a fact
+    // about the session, not about the window — it simply has not been used yet.
+    if (facts.read.error === null && facts.read.startOffset === 0) {
+      return {
+        status: 'starting',
+        reason: 'session is open but has not exchanged a message yet',
+        ageMs: null,
+        appliedWorkMs: null,
+      };
+    }
     return {
       status: 'unknown',
-      reason: facts.read.exhausted
-        ? 'no user/assistant record found within the maximum tail window'
-        : 'transcript contains no user/assistant record',
+      reason:
+        facts.read.error ??
+        (facts.read.exhausted
+          ? 'no user/assistant record found within the maximum tail window'
+          : 'transcript contains no user/assistant record'),
       ageMs: null,
       appliedWorkMs: null,
     };

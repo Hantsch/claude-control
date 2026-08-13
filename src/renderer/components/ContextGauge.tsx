@@ -7,15 +7,8 @@
  */
 
 import type { ContextPressure } from '../../shared/ipc.ts';
-import { BAND_LABEL, BAND_SYMBOL } from '../../shared/presentation.ts';
+import { BAND_COLOR_VAR, BAND_LABEL, BAND_SYMBOL } from '../../shared/presentation.ts';
 import { formatTokens } from '../lib/format.ts';
-
-const BAND_COLOR: Record<ContextPressure['band'], string> = {
-  green: 'var(--band-green)',
-  yellow: 'var(--band-yellow)',
-  red: 'var(--band-red)',
-  critical: 'var(--band-critical)',
-};
 
 export function ContextGauge({ context }: { context: ContextPressure | null }): React.JSX.Element {
   if (!context) {
@@ -28,7 +21,10 @@ export function ContextGauge({ context }: { context: ContextPressure | null }): 
       <div className="gauge-bar">
         <div
           className="gauge-fill"
-          style={{ width: `${Math.min(100, percent)}%`, background: BAND_COLOR[context.band] }}
+          style={{
+            width: `${Math.min(100, percent)}%`,
+            background: `var(${BAND_COLOR_VAR[context.band]})`,
+          }}
         />
       </div>
       <div className="gauge-legend">

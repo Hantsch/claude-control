@@ -43,9 +43,11 @@ async function statusOf(path: string, now: number): Promise<{ status: SessionSta
       fileSize: tail.fileSize,
       mtimeMs: tail.mtimeMs,
       windowBytes: tail.windowBytes,
+      startOffset: tail.startOffset,
       linesParsed: tail.linesParsed,
       linesSkipped: tail.linesSkipped,
       exhausted: tail.exhausted,
+      error: null,
     },
   });
   const derived = deriveStatus({ alive: true, facts, now, thresholds: DEFAULT_THRESHOLDS });
@@ -101,9 +103,11 @@ describe('committed sample transcripts', () => {
         fileSize: tail.fileSize,
         mtimeMs: tail.mtimeMs,
         windowBytes: tail.windowBytes,
+        startOffset: tail.startOffset,
         linesParsed: tail.linesParsed,
         linesSkipped: tail.linesSkipped,
         exhausted: tail.exhausted,
+        error: null,
       },
     });
     expect(facts.model).toBeNull();
@@ -124,9 +128,11 @@ describe('committed sample transcripts', () => {
         fileSize: tail.fileSize,
         mtimeMs: tail.mtimeMs,
         windowBytes: tail.windowBytes,
+        startOffset: tail.startOffset,
         linesParsed: tail.linesParsed,
         linesSkipped: tail.linesSkipped,
         exhausted: tail.exhausted,
+        error: null,
       },
     });
 

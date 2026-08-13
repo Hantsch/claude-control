@@ -231,8 +231,21 @@ That is a deliberate seam, not speculative generality — see §12.
 | `done` | Turn finished, control handed back to the human | **yes** |
 | `idle` | Alive but nothing has happened for a long time; possibly forgotten | no (badge only) |
 | `queued` | Prompt enqueued but not yet started | no |
+| `starting` | Session is open but has not exchanged a single message yet | no |
 | `ended` | Process no longer alive; moves to history | no |
 | `unknown` | Could not derive a state (parse failure, truncated file) | no |
+
+`starting` was added after M2: a freshly opened Claude Code window is registered before it
+writes a transcript, so without it every new window showed up as `unknown` — which reads
+like a defect of this app rather than a fact about the session. `unknown` now means only
+what the table says: the transcript could not be read, or its tail window held no answer.
+
+By default a `starting` session reaches **no live surface at all** (list, popover, tray,
+CLI) — the app watches sessions, and a window that has never exchanged a message is not yet
+one. It would otherwise inflate every count with rows that can never need attention. This is
+a presentation filter in `getSnapshot`, not a hole in the state machine: the store keeps the
+session, the first prompt moves it out of `starting`, and `Settings → Hide unused sessions`
+turns the filter off for anyone who wants to see open windows too.
 
 ### 6.2 Derivation
 
@@ -298,6 +311,19 @@ Icon colour = most urgent state present, in the order
 `waiting` > `done` > `working` > `idle` > none.
 Badge count = number of sessions in `waiting` or `done`. Empty badge when zero.
 
+**Acknowledgement.** A badge you cannot answer is a badge you learn to ignore, so `waiting`
+and `done` stop counting once the user has *seen* them: clicking the row, jumping to the
+session, activating its toast, or "Mark all as seen" in the tray menu and the window header.
+An acknowledged session drops out of both the badge and the icon colour while staying in the
+list — the state is still true, it is just no longer news.
+
+What re-arms it is a **news stamp**, `max(statusSince, lastActivityAt)`, recorded at the
+moment of acknowledgement and compared on every derivation. A state change lifts it, and so
+does any new record in the transcript — which matters because a short turn can start and
+finish between two polls and would otherwise read as one uninterrupted `done`. A
+re-derivation of the same state with nothing new behind it does not lift it, which is what
+keeps the 5 s tick from resurrecting a dismissed badge.
+
 ### 6.6 Notification discipline
 
 A toast fires **only on a state transition into** `waiting` or `done`, never on a
@@ -347,6 +373,7 @@ Two surfaces, both English.
 A compact popover — the fast path, no window management:
 
 ```
+Claude Control · 4 sessions                              📌  ✕
 ● Icons nacharbeiten     claude-control · main      done      3m ago
 ◐ G0 freigegeben        Hantsch-MMO · feature/x    working   now
 ◑ AI scrum sprint 02    ai-diary · main            waiting?  1m ago
@@ -354,6 +381,12 @@ A compact popover — the fast path, no window management:
 ─────────────────────────────────────────────────────────
 Open Claude Control                    Settings      Quit
 ```
+
+It is sized to its content and wide enough that every column fits on one line — a
+horizontal scrollbar in a menu-sized surface is unusable. The title bar is a drag region, so
+the window can be moved; **pinned** it stays open when it loses focus and keeps the position
+it was dragged to (persisted in settings, so a parked popover survives a restart). Unpinning
+drops that position and the next open snaps back to the tray icon.
 
 ### Session label
 
@@ -365,9 +398,11 @@ dimmed identifier; it becomes the label just for sessions that have no title yet
 
 ### Main window
 
-- **Sessions** — live list, grouped by project → branch/worktree. Expanding a session
-  shows the context gauge, model, elapsed time, the current run, the current tool, and the
-  subagent tree. Jump to session sits directly under the name, above the facts.
+- **Sessions** — live list, grouped by project → branch/worktree. Every row carries its own
+  context-pressure bar (§6.4): how much room a session has left is what decides which one to
+  go back to first, and that should not need a click. Expanding a session shows the full
+  gauge, model, elapsed time, the current run, the current tool, and the subagent tree. Jump
+  to session sits directly under the name, above the facts.
 - **History** — past sessions with a project filter, a date range, and free-text search
   over titles. Uses `aiTitle` from the transcript as the session label when present, which
   saves inventing our own summarizer.

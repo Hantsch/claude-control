@@ -163,7 +163,14 @@ export class ControlEngine {
     // Urgency first: the popover and the tray menu are the fast path, so the session that
     // needs attention must be the one at the top (§6.5 order). `groups` carries the
     // project/branch structure for the main window (F10).
-    const sessions = this.store.listLive().sort(compareSessions);
+    const all = this.store.listLive();
+    // A registry entry that has never exchanged a message is an open window, not a session
+    // worth watching, so by default it does not reach any surface. The store still knows
+    // about it — this is a presentation filter, not a hole in the state machine, and the
+    // moment its first prompt lands it leaves `starting` and shows up.
+    const sessions = (
+      this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all
+    ).sort(compareSessions);
     return {
       sessions,
       groups: groupSessions(sessions),
@@ -230,6 +237,20 @@ export class ControlEngine {
   /** Force a full re-read. Exposed for the CLI and for the "refresh" affordance in the UI. */
   async refreshNow(): Promise<void> {
     await this.refresh('manual', { force: true });
+  }
+
+  /**
+   * Mark a session as seen in its current status — clicking it, jumping to it or opening
+   * its detail counts. Nothing is re-read; only the badge and the tray colour change, so
+   * this is deliberately synchronous.
+   */
+  acknowledge(id: SessionId): void {
+    if (this.store.acknowledge(id)) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /** "Mark all as seen" — the way out when several sessions piled up while you were away. */
+  acknowledgeAll(): void {
+    if (this.store.acknowledgeAll() > 0) this.emitter.emit('sessions', this.getSnapshot());
   }
 
   restartHistoryIndex(): void {
@@ -367,6 +388,8 @@ export class ControlEngine {
       statusReason: derived.reason,
       // 0 lets the store stamp the moment the status actually changed.
       statusSince: 0,
+      // The store owns acknowledgement — it is the only thing that survives a re-read.
+      seen: false,
       project: snapshot.project,
       branch: facts.branch,
       groupKey: `${snapshot.project.key}::${facts.branch ?? ''}`,

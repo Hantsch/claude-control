@@ -39,9 +39,11 @@ const READ_DIAG = {
   fileSize: 0,
   mtimeMs: 0,
   windowBytes: 0,
+  startOffset: 0,
   linesParsed: 0,
   linesSkipped: 0,
   exhausted: false,
+  error: null,
 };
 
 describe('slug and path handling', () => {

@@ -230,6 +230,8 @@ function symbol(status: string): string {
       return '○';
     case 'queued':
       return '◇';
+    case 'starting':
+      return '◌';
     default:
       return '·';
   }

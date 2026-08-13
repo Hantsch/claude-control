@@ -33,6 +33,7 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     title: null,
     statusReason: 'test',
     statusSince: 0,
+    seen: false,
     project: { path: 'c:\\dev\\proj', name: 'proj', key: 'c:/dev/proj' },
     branch: 'main',
     groupKey: 'c:/dev/proj::main',
@@ -143,6 +144,20 @@ describe('tray aggregation', () => {
         view({ sessionId: 'e', status: 'queued' }),
       ]),
     ).toBe(2);
+  });
+
+  it('drops acknowledged sessions from the badge and the icon colour', () => {
+    const seenDone = view({ sessionId: 'a', status: 'done', seen: true });
+    const unseenDone = view({ sessionId: 'b', status: 'done' });
+
+    expect(attentionCount([seenDone, unseenDone])).toBe(1);
+    expect(attentionCount([seenDone])).toBe(0);
+
+    // Acknowledged attention no longer lights the icon, but a session that is still
+    // working keeps it on — "seen" is about news, not about the session being over.
+    expect(trayStateFor([seenDone])).toBe('none');
+    expect(trayStateFor([seenDone, view({ sessionId: 'c', status: 'working' })])).toBe('working');
+    expect(trayStateFor([seenDone, unseenDone])).toBe('done');
   });
 
   it('groups by project, then by branch/worktree', () => {
@@ -313,6 +328,47 @@ describe('session store', () => {
     const changed = store.putLive([view({ sessionId: 's1', status: 'done' })], T0 + 2_000);
     expect(changed[0]).toMatchObject({ from: 'working', to: 'done', seeded: false });
     expect(store.getLive('s1')!.statusSince).toBe(T0 + 2_000);
+  });
+
+  it('keeps an acknowledgement across re-derivations of the same status', () => {
+    const store = new InMemorySessionStore();
+    store.putLive([view({ sessionId: 's1', status: 'done' })], T0);
+    expect(store.getLive('s1')!.seen).toBe(false);
+
+    expect(store.acknowledge('s1')).toBe(true);
+    expect(store.getLive('s1')!.seen).toBe(true);
+    // Acknowledging twice is a no-op, so the UI can skip a re-render.
+    expect(store.acknowledge('s1')).toBe(false);
+
+    // The 5 s tick re-derives the same status over and over; that must not re-arm the badge.
+    store.putLive([view({ sessionId: 's1', status: 'done' })], T0 + 5_000);
+    expect(store.getLive('s1')!.seen).toBe(true);
+  });
+
+  it('re-arms an acknowledged session when its status actually changes', () => {
+    const store = new InMemorySessionStore();
+    store.putLive([view({ sessionId: 's1', status: 'done' })], T0);
+    store.acknowledge('s1');
+
+    // done → working → done is news again, even though the state reads the same as before.
+    store.putLive([view({ sessionId: 's1', status: 'working' })], T0 + 1_000);
+    store.putLive([view({ sessionId: 's1', status: 'done' })], T0 + 2_000);
+    expect(store.getLive('s1')!.seen).toBe(false);
+  });
+
+  it('acknowledges every live session at once and reports how many changed', () => {
+    const store = new InMemorySessionStore();
+    store.putLive(
+      [
+        view({ sessionId: 's1', status: 'done' }),
+        view({ sessionId: 's2', status: 'waiting' }),
+        view({ sessionId: 's3', status: 'working' }),
+      ],
+      T0,
+    );
+    expect(store.acknowledgeAll()).toBe(3);
+    expect(store.acknowledgeAll()).toBe(0);
+    expect(store.listLive().every((session) => session.seen)).toBe(true);
   });
 
   it('emits an ended transition for a session that left the registry', () => {

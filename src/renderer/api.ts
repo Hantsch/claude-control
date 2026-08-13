@@ -10,6 +10,9 @@ export type MainTab = 'sessions' | 'history' | 'settings';
 export interface FullApi extends RendererApi {
   onNavigate(listener: (tab: MainTab) => void): () => void;
   setPopoverHeight(height: number): Promise<void>;
+  getPopoverPinned(): Promise<boolean>;
+  /** Returns the pin state that was actually applied. */
+  setPopoverPinned(pinned: boolean): Promise<boolean>;
 }
 
 declare global {

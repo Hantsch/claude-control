@@ -22,6 +22,14 @@ export interface SessionRepository {
   listLive(): SessionView[];
   getLive(id: SessionId): SessionView | null;
 
+  /**
+   * Mark one session as seen *in its current status*. Returns true when that changed
+   * anything, so the caller can skip a pointless re-render.
+   */
+  acknowledge(id: SessionId): boolean;
+  /** Mark every live session as seen. Returns how many rows changed. */
+  acknowledgeAll(): number;
+
   putHistory(entries: readonly HistoryEntry[]): void;
   listHistory(query?: HistoryQuery): HistoryEntry[];
   historyCount(query?: HistoryQuery): number;
@@ -35,6 +43,23 @@ interface LiveRecord {
   view: SessionView;
   status: SessionStatus;
   statusSince: number;
+  /**
+   * How new the session was when the user acknowledged it (see `newsStamp`), or null if
+   * they never did. Storing a stamp rather than a flag is what makes the badge re-arm by
+   * itself: anything that happens afterwards produces a higher stamp, while the 5 s tick
+   * re-deriving the same state does not.
+   */
+  seenAt: number | null;
+}
+
+/**
+ * The moment this session last produced *news* — either it changed state, or something new
+ * landed in its transcript. Both matter: `done → working → done` is a new turn even though
+ * the state reads the same, and a turn that finishes between two polls can look like an
+ * uninterrupted `done` while it is plainly something the user has not seen.
+ */
+function newsStamp(view: SessionView, statusSince: number): number {
+  return Math.max(statusSince, view.lastActivityAt ?? 0);
 }
 
 export class InMemorySessionStore implements SessionRepository {
@@ -55,8 +80,10 @@ export class InMemorySessionStore implements SessionRepository {
       const previous = this.live.get(incoming.sessionId);
       const changed = !previous || previous.status !== incoming.status;
       const statusSince = changed ? (incoming.statusSince || at) : previous.statusSince;
-      const view: SessionView = { ...incoming, statusSince };
-      next.set(incoming.sessionId, { view, status: incoming.status, statusSince });
+      const seenAt = previous?.seenAt ?? null;
+      const seen = seenAt !== null && seenAt >= newsStamp(incoming, statusSince);
+      const view: SessionView = { ...incoming, statusSince, seen };
+      next.set(incoming.sessionId, { view, status: incoming.status, statusSince, seenAt });
 
       if (changed) {
         transitions.push({
@@ -96,6 +123,24 @@ export class InMemorySessionStore implements SessionRepository {
 
   getLive(id: SessionId): SessionView | null {
     return this.live.get(id)?.view ?? null;
+  }
+
+  acknowledge(id: SessionId): boolean {
+    const record = this.live.get(id);
+    if (!record) return false;
+    const stamp = newsStamp(record.view, record.statusSince);
+    if (record.seenAt !== null && record.seenAt >= stamp) return false;
+    record.seenAt = stamp;
+    record.view = { ...record.view, seen: true };
+    return true;
+  }
+
+  acknowledgeAll(): number {
+    let changed = 0;
+    for (const id of this.live.keys()) {
+      if (this.acknowledge(id)) changed += 1;
+    }
+    return changed;
   }
 
   putHistory(entries: readonly HistoryEntry[]): void {

@@ -116,6 +116,26 @@ export function SettingsView(): React.JSX.Element {
         permission prompt. Fast tools should stay short so real prompts surface quickly.
       </div>
 
+      <div className="section-title">Session list</div>
+      <div className="field">
+        <span>Hide unused sessions</span>
+        <input
+          type="checkbox"
+          checked={settings.list.hideUnusedSessions}
+          onChange={(event) =>
+            void apply({
+              ...settings,
+              list: { ...settings.list, hideUnusedSessions: event.target.checked },
+            })
+          }
+        />
+        <span className="hint">
+          A Claude Code window registers itself before anything happens in it. With this on,
+          such a session (“no prompt yet”) stays out of the list, the popover and the tray
+          until its first message.
+        </span>
+      </div>
+
       <div className="section-title">Notifications</div>
       <div className="field">
         <span>Enabled</span>

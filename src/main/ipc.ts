@@ -33,6 +33,14 @@ export function registerIpc(deps: IpcDeps): void {
 
   ipcMain.handle(IPC.focusSession, async (_event, id: SessionId) => deps.focusSession(id));
 
+  ipcMain.handle(IPC.acknowledge, (_event, id: SessionId) => {
+    deps.engine.acknowledge(id);
+  });
+
+  ipcMain.handle(IPC.acknowledgeAll, () => {
+    deps.engine.acknowledgeAll();
+  });
+
   ipcMain.handle(IPC.getSettings, () => deps.settings.get());
 
   ipcMain.handle(IPC.setSettings, (_event, partial: unknown) => deps.settings.set(partial));
@@ -66,8 +74,9 @@ export function registerIpc(deps: IpcDeps): void {
     deps.windows.openMain(tab ?? 'sessions');
   });
 
+  // The popover's own close button — explicit, so it closes even a pinned one.
   ipcMain.handle(IPC.closePopover, () => {
-    deps.windows.hidePopover();
+    deps.windows.hidePopover(true);
   });
 
   ipcMain.handle(IPC.diagnostics, (): DiagnosticsInfo => ({
@@ -86,6 +95,18 @@ export function registerIpc(deps: IpcDeps): void {
   // The popover sizes itself to its content, so it can ask for the height it needs (§8).
   ipcMain.handle('cc:popover-height', (_event, height: number) => {
     if (typeof height === 'number' && Number.isFinite(height)) deps.windows.resizePopover(height);
+  });
+
+  ipcMain.handle('cc:popover-pinned', () => deps.windows.isPopoverPinned());
+
+  // Pinning is persisted, so a popover the user parked on their second screen is still
+  // there after a restart — that is the point of pinning it in the first place.
+  ipcMain.handle('cc:popover-pin', (_event, pinned: unknown) => {
+    const next = deps.windows.setPopoverPinned(pinned === true);
+    if (next !== deps.settings.get().ui.popoverPinned) {
+      deps.settings.set({ ui: { ...deps.settings.get().ui, popoverPinned: next } });
+    }
+    return next;
   });
 }
 

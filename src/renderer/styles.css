@@ -16,6 +16,7 @@
   --status-working: #0a84ff;
   --status-idle: #8e8e93;
   --status-queued: #bf5af2;
+  --status-starting: #64d2ff;
   --status-ended: #5a5a60;
   --status-unknown: #7a7a80;
 
@@ -216,7 +217,7 @@ code,
 
 .session-row {
   display: grid;
-  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 48px;
+  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 88px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -256,11 +257,65 @@ code,
   font-size: 12px;
 }
 
-.session-row .age,
-.session-row .ctx {
+/* The running tool belongs under the status, not glued to it — inline it read
+   "workingPowerShell". Same shape as the title/slug pair above it. */
+.session-row .status .title {
+  display: block;
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row .age {
   color: var(--text-dim);
   font-size: 11px;
   text-align: right;
+}
+
+/* A session that is done or waiting and has not been acknowledged yet — the same thing the
+   tray badge counts, marked here so the list explains what the icon is claiming. */
+.session-row.unseen {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ---------------------------------------------------------- context pressure in a row */
+
+.ctx {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.ctx.empty {
+  justify-content: flex-end;
+}
+
+.ctx-bar {
+  flex: 1;
+  min-width: 18px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-active);
+  overflow: hidden;
+}
+
+.ctx-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.ctx-value {
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .dot {
@@ -566,17 +621,78 @@ table.history .title {
   height: 100%;
 }
 
+/* Title bar: the drag handle (F: move the popover) plus pin and close. */
+.popover-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex: none;
+  -webkit-app-region: drag;
+}
+
+.popover-head .title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.popover-head .count {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.popover-head .spacer {
+  flex: 1;
+}
+
+.popover-head .icon-button {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  flex: none;
+}
+
+.popover-head .icon-button:hover {
+  color: var(--text);
+}
+
+.popover-head .icon-button.on {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--bg-active);
+}
+
 .popover-list {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  /* Horizontally there is nothing to scroll to — the columns are sized to fit, and a
+     sideways scrollbar in a menu-sized surface is unusable. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-active) transparent;
+}
+
+.popover-rows {
   padding: 4px;
 }
 
 .popover-row {
   display: grid;
-  grid-template-columns: 14px minmax(84px, 1.8fr) minmax(80px, 1.1fr) 76px 52px;
+  grid-template-columns: 14px minmax(0, 2.2fr) minmax(0, 1.4fr) 92px 62px 62px;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   padding: 5px 6px;
   border: none;
@@ -592,6 +708,7 @@ table.history .title {
 
 .popover-row .name,
 .popover-row .where,
+.popover-row .status,
 .popover-row .age {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -614,8 +731,28 @@ table.history .title {
   padding: 6px 8px;
   border-top: 1px solid var(--border);
   background: var(--bg);
+  flex: none;
+}
+
+.popover-footer button {
+  white-space: nowrap;
 }
 
 .popover-footer .spacer {
   flex: 1;
+}
+
+/* Overlay-style scrollbar: present when the list really is longer than the window, but
+   never taking layout width away from the columns. */
+.popover-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.popover-list::-webkit-scrollbar-thumb {
+  background: var(--bg-active);
+  border-radius: 4px;
+}
+
+.popover-list::-webkit-scrollbar-track {
+  background: transparent;
 }

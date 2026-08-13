@@ -1,8 +1,14 @@
 /**
  * Session status model — CONCEPT.md §6.1.
  *
- * These seven states are the whole vocabulary of the app. Everything the tray, the
+ * These eight states are the whole vocabulary of the app. Everything the tray, the
  * notifier and the UI show is a projection of them.
+ *
+ * `starting` is the one addition to the concept's original seven: a session that the
+ * registry knows about but whose transcript holds no user/assistant record *at all* is not
+ * an unreadable session, it is one that has not been used yet — every freshly opened Claude
+ * Code window looks like this until the first prompt. `unknown` is kept for what it was
+ * meant for: the transcript could not be read, or its tail window held no answer.
  */
 
 export const SESSION_STATUSES = [
@@ -11,6 +17,7 @@ export const SESSION_STATUSES = [
   'done',
   'idle',
   'queued',
+  'starting',
   'ended',
   'unknown',
 ] as const;
@@ -27,8 +34,8 @@ export const ATTENTION_STATUSES: readonly SessionStatus[] = ['waiting', 'done'];
  * Tray icon colour = most urgent state present, in the order
  * `waiting` > `done` > `working` > `idle` > none (§6.5).
  *
- * `queued`, `unknown` and `ended` deliberately do not influence the icon: the concept
- * names exactly these four tiers, and none of the three is a claim about urgency.
+ * `queued`, `starting`, `unknown` and `ended` deliberately do not influence the icon: the
+ * concept names exactly these four tiers, and none of the four is a claim about urgency.
  */
 export const TRAY_URGENCY_ORDER = ['waiting', 'done', 'working', 'idle'] as const;
 
@@ -52,6 +59,7 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   done: 'done',
   idle: 'idle',
   queued: 'queued',
+  starting: 'no prompt yet',
   ended: 'ended',
-  unknown: 'unknown',
+  unknown: 'unreadable',
 };

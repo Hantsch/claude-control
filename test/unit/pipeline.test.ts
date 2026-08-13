@@ -263,6 +263,86 @@ describe('engine', () => {
     await engine.stop();
   });
 
+  it('hides a session that has never exchanged a message, unless asked not to', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-new', name: 'cc-new' }));
+    // A freshly opened window: the registry knows it, the transcript holds bookkeeping only.
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-new',
+      toJsonl([lastPrompt('none')]),
+    );
+
+    const now = () => T0 + 2_000;
+    const makeEngine = (hide: boolean): ControlEngine =>
+      new ControlEngine({
+        adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
+        settings: mergeSettings({
+          ...DEFAULT_SETTINGS,
+          indexHistoryOnStart: false,
+          list: { hideUnusedSessions: hide },
+        }),
+        now,
+        createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+      });
+
+    const hiding = makeEngine(true);
+    await hiding.start();
+    expect(hiding.getSnapshot().sessions).toHaveLength(0);
+    expect(hiding.getSnapshot().groups).toHaveLength(0);
+    expect(hiding.getSnapshot().trayState).toBe('none');
+    await hiding.stop();
+
+    const showing = makeEngine(false);
+    await showing.start();
+    expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['starting']);
+    await showing.stop();
+  });
+
+  it('clears the badge for an acknowledged session and re-arms it on the next change', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-ack', name: 'cc-ack' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    const path = await tree.writeTranscript(
+      slug,
+      'sess-ack',
+      toJsonl([assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn', text: 'Done.' })]),
+    );
+
+    let clock = T0 + 2_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now: () => clock,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+    expect(engine.getSnapshot().attention).toBe(1);
+    expect(engine.getSnapshot().trayState).toBe('done');
+
+    engine.acknowledge('sess-ack');
+    expect(engine.getSnapshot().attention).toBe(0);
+    expect(engine.getSnapshot().trayState).toBe('none');
+    // Re-reading the same transcript must not bring the badge back.
+    await engine.refreshNow();
+    expect(engine.getSnapshot().attention).toBe(0);
+
+    // A new turn is news again, even though it ends in the same status.
+    clock = T0 + 60_000;
+    await appendFile(
+      path,
+      toJsonl([
+        prompt('u2', 30_000, 'one more thing'),
+        assistant({ uuid: 'a2', at: 40_000, stopReason: 'end_turn', text: 'Also done.' }),
+      ]),
+      'utf8',
+    );
+    await engine.refreshNow();
+    expect(engine.getSnapshot().attention).toBe(1);
+
+    await engine.stop();
+  });
+
   it('reports how long the current run has taken, and closes it when the turn ends', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-run', name: 'cc-run' }));

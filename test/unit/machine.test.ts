@@ -27,9 +27,11 @@ function facts(records: Record<string, unknown>[], now = T0, exhausted = false) 
       fileSize: 1024,
       mtimeMs: T0,
       windowBytes: 64 * 1024,
+      startOffset: exhausted ? 4096 : 0,
       linesParsed: records.length,
       linesSkipped: 0,
       exhausted,
+      error: null,
     },
   });
 }
@@ -247,10 +249,11 @@ const rows: Row[] = [
     expected: 'working',
   },
   {
-    name: 'no semantic record → unknown',
+    // Bookkeeping only, whole file seen: the session exists but has never been used.
+    name: 'no semantic record in a fully read transcript → starting',
     records: [lastPrompt('nothing'), fileHistorySnapshot(0)],
     at: 2 * SECOND,
-    expected: 'unknown',
+    expected: 'starting',
   },
   {
     name: 'dead process → ended, regardless of the transcript',
@@ -290,6 +293,29 @@ describe('deriveStatus', () => {
     });
     expect(exhausted.status).toBe('unknown');
     expect(exhausted.reason).toContain('maximum tail window');
+  });
+
+  it('calls a session that was never used `starting`, not `unknown`', () => {
+    // What every freshly opened Claude Code window looks like: registered, no transcript.
+    const untouched = facts([], T0);
+    expect(
+      deriveStatus({ alive: true, facts: untouched, now: T0, thresholds: DEFAULT_THRESHOLDS }).status,
+    ).toBe('starting');
+  });
+
+  it('keeps `unknown` for a transcript that could not be read', () => {
+    const broken = facts([], T0);
+    broken.read = { ...broken.read, error: 'EPERM: operation not permitted' };
+    const result = deriveStatus({ alive: true, facts: broken, now: T0, thresholds: DEFAULT_THRESHOLDS });
+    expect(result.status).toBe('unknown');
+    expect(result.reason).toContain('EPERM');
+  });
+
+  it('a queued prompt still outranks both, since there is pending work', () => {
+    const queued = facts([queueOperation('enqueue', 0)], T0);
+    expect(
+      deriveStatus({ alive: true, facts: queued, now: T0, thresholds: DEFAULT_THRESHOLDS }).status,
+    ).toBe('queued');
   });
 
   it('never throws on garbage records', () => {

@@ -42,6 +42,13 @@ export function App(): React.JSX.Element {
     void api.focusSession(session.sessionId);
   };
 
+  // Selecting a row puts the session in the detail pane, which is exactly the moment the
+  // user has looked at it — so that is what clears it from the tray badge (§6.5).
+  const select = (session: SessionView): void => {
+    setSelectedId(session.sessionId);
+    if (!session.seen) void api.acknowledge(session.sessionId);
+  };
+
   return (
     <div className="app">
       <div className="tabs">
@@ -73,6 +80,15 @@ export function App(): React.JSX.Element {
           {state.attention > 0 ? `${state.attention} need attention · ` : ''}
           {state.indexingHistory ? 'indexing history…' : `${state.historyCount} in history`}
         </span>
+        {state.attention > 0 && (
+          <button
+            type="button"
+            title="Clear the tray badge for every session that is currently done or waiting. A new status change brings it back."
+            onClick={() => void api.acknowledgeAll()}
+          >
+            Mark all as seen
+          </button>
+        )}
         <button type="button" onClick={() => void api.refresh()}>
           Refresh
         </button>
@@ -86,7 +102,7 @@ export function App(): React.JSX.Element {
                 state={state}
                 selectedId={selected?.sessionId ?? null}
                 projectFilter={projectFilter}
-                onSelect={(session) => setSelectedId(session.sessionId)}
+                onSelect={select}
                 onActivate={activate}
               />
             </div>

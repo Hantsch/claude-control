@@ -91,6 +91,8 @@ export const IPC = {
   getHistory: 'cc:get-history',
   getDetail: 'cc:get-detail',
   focusSession: 'cc:focus-session',
+  acknowledge: 'cc:acknowledge',
+  acknowledgeAll: 'cc:acknowledge-all',
   getSettings: 'cc:get-settings',
   setSettings: 'cc:set-settings',
   resetSettings: 'cc:reset-settings',
@@ -115,6 +117,10 @@ export interface RendererApi {
   getHistory(query: HistoryQuery): Promise<HistoryPage>;
   getDetail(id: SessionId): Promise<SessionDetail>;
   focusSession(id: SessionId): Promise<FocusResult>;
+  /** Mark one session as seen in its current status, clearing it from the tray badge. */
+  acknowledge(id: SessionId): Promise<void>;
+  /** Mark every live session as seen. */
+  acknowledgeAll(): Promise<void>;
   getSettings(): Promise<AppSettings>;
   setSettings(settings: AppSettings): Promise<AppSettings>;
   resetSettings(): Promise<AppSettings>;

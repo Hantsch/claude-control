@@ -16,6 +16,7 @@ export interface TrayPresenterDeps {
   onTogglePopover: (bounds: Electron.Rectangle) => void;
   onOpenWindow: (tab: 'sessions' | 'history' | 'settings') => void;
   onFocusSession: (sessionId: string) => void;
+  onAcknowledgeAll: () => void;
   onRefresh: () => void;
   onQuit: () => void;
 }
@@ -82,6 +83,18 @@ export class TrayPresenter {
       if (sessions.length > 12) {
         items.push({ label: `… ${sessions.length - 12} more`, enabled: false });
       }
+    }
+
+    // The badge has to be dismissible, otherwise the icon claims something is open with no
+    // way for the user to answer it. Offered only when there is something to dismiss.
+    if ((this.state?.attention ?? 0) > 0) {
+      items.push(
+        { type: 'separator' },
+        {
+          label: `Mark all as seen (${this.state?.attention ?? 0})`,
+          click: () => this.deps.onAcknowledgeAll(),
+        },
+      );
     }
 
     items.push(

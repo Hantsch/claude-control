@@ -235,10 +235,18 @@ export interface TranscriptTailFacts {
     fileSize: number;
     mtimeMs: number;
     windowBytes: number;
+    /**
+     * Byte offset the window started at. 0 means the window covered the whole file, so
+     * "no semantic record" is a fact about the transcript rather than about the window —
+     * which is what separates a session that has never been used from an unreadable one.
+     */
+    startOffset: number;
     linesParsed: number;
     linesSkipped: number;
     /** No semantic record was found even at the maximum window (§5.2). */
     exhausted: boolean;
+    /** Why the transcript could not be read at all, or null when the read succeeded. */
+    error: string | null;
   };
 }
 
@@ -266,6 +274,13 @@ export interface SessionView {
   statusReason: string;
   /** When the session entered `status`. */
   statusSince: number;
+  /**
+   * True when the user has acknowledged the session *in its current status* — clicked it,
+   * jumped to it, or used "mark all as seen". A seen session no longer counts towards the
+   * tray badge, and the next real status change re-arms it, so the badge only ever comes
+   * back for something that actually happened since.
+   */
+  seen: boolean;
   project: ProjectRef;
   branch: string | null;
   /** Worktree/branch grouping key (§10 of requirements, F10). */

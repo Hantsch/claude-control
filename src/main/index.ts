@@ -46,6 +46,8 @@ async function bootstrap(): Promise<void> {
     preload: join(app.getAppPath(), 'out', 'preload', 'index.cjs'),
   });
 
+  windows.setPopoverPinned(settings.get().ui.popoverPinned);
+
   const focuser = new WindowFocuser({ ideWindows: () => engine.getIdeWindows() });
 
   const notifier = new Notifier({
@@ -61,6 +63,7 @@ async function bootstrap(): Promise<void> {
     onFocusSession: (sessionId) => {
       void focusSession(sessionId);
     },
+    onAcknowledgeAll: () => engine.acknowledgeAll(),
     onRefresh: () => {
       void engine.refreshNow();
     },
@@ -151,6 +154,9 @@ async function bootstrap(): Promise<void> {
         cwd: '',
       };
     }
+    // Jumping to a session is the strongest possible "I have seen this", so it clears the
+    // badge for it whether the focus itself succeeds or not.
+    engine.acknowledge(sessionId);
     windows.hidePopover();
     return focuser.focus(session);
   }

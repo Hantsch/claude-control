@@ -5,6 +5,7 @@
 import type { AppState, ProjectGroup, SessionView } from '../../shared/ipc.ts';
 import { STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
 import { formatAge } from '../lib/format.ts';
+import { ContextBar } from './ContextBar.tsx';
 import { StatusDot } from './StatusDot.tsx';
 
 export interface SessionsViewProps {
@@ -33,7 +34,8 @@ export function SessionsView({
         No live Claude Code sessions.
         <br />
         <span className="estimate">
-          Sessions appear here as soon as `~/.claude/sessions/&lt;pid&gt;.json` exists for them.
+          A session appears here once it has exchanged its first message. Windows that are
+          open but unused are hidden — Settings can show them again.
         </span>
       </div>
     );
@@ -107,12 +109,14 @@ function SessionRow({
   onActivate: (session: SessionView) => void;
 }): React.JSX.Element {
   const age = session.lastActivityAt ? Date.now() - session.lastActivityAt : null;
-  const context = session.context ? `${Math.round(session.context.ratio * 100)}%` : '—';
+  // Unseen only means something for the two states the badge counts; a working session is
+  // not something you can have "missed".
+  const unseen = !session.seen && (session.status === 'done' || session.status === 'waiting');
 
   return (
     <button
       type="button"
-      className={`session-row${selected ? ' selected' : ''}`}
+      className={`session-row${selected ? ' selected' : ''}${unseen ? ' unseen' : ''}`}
       onClick={() => onSelect(session)}
       onDoubleClick={() => onActivate(session)}
       title={session.statusReason}
@@ -132,9 +136,7 @@ function SessionRow({
         )}
       </span>
       <span className="age">{formatAge(age)}</span>
-      <span className="ctx" title="Context pressure (estimate)">
-        {context}
-      </span>
+      <ContextBar context={session.context} />
     </button>
   );
 }

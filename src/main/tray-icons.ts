@@ -1,14 +1,17 @@
 /**
- * Tray icon states and the overlay badge (F3, F4, §6.5).
+ * Overlay badge and the code-drawn fallback tile (F3, F4, §6.5).
  *
- * The icons are drawn in code rather than shipped as art: there are 5 states × 11 badge
- * variants, they must stay pixel-crisp at 16/32 px, and a tiny PNG encoder is less
- * machinery than a build step plus an image library. No native dependency, works headless,
- * and `scripts/generate-icons.ts` reuses exactly this code to emit `assets/icons/`.
+ * The tray tiles themselves are shipped art — `assets/icons/tray/<px>/<state>.png`, assembled
+ * by `scripts/build-icons.py`. This file does the two things an image file cannot: stamp the
+ * live session count onto a tile, and draw something recognisable if the art cannot be read,
+ * so a missing file degrades the tray instead of blanking it.
+ *
+ * Everything works on Electron's own bitmap format — premultiplied BGRA — so a tile loaded
+ * from disk and a tile drawn here are the same kind of thing and go through the same
+ * compositing code.
  */
 
-import { deflateSync } from 'node:zlib';
-import type { TrayState } from '../core/model/status.ts';
+import type { TrayIcon, TrayState } from '../core/model/status.ts';
 
 export interface Rgb {
   r: number;
@@ -16,7 +19,10 @@ export interface Rgb {
   b: number;
 }
 
-/** Icon colour per state. Order of urgency is defined in `core/model/status.ts`. */
+/**
+ * Icon colour per state. Order of urgency is defined in `core/model/status.ts`. The shipped
+ * art is drawn in these colours; the fallback tile uses them directly.
+ */
 export const STATE_COLORS: Record<TrayState, Rgb> = {
   waiting: { r: 255, g: 159, b: 10 }, // amber — probably blocked on you
   done: { r: 48, g: 209, b: 88 }, // green — turn finished
@@ -27,6 +33,17 @@ export const STATE_COLORS: Record<TrayState, Rgb> = {
 
 const BADGE_COLOR: Rgb = { r: 255, g: 59, b: 48 };
 const BADGE_TEXT: Rgb = { r: 255, g: 255, b: 255 };
+/** Near-black rim: the badge sits on top of the state ring and has to separate from it. */
+const BADGE_RIM_COLOR: Rgb = { r: 18, g: 18, b: 20 };
+/** Badge radius and rim width, relative to the tile. */
+const BADGE_RADIUS = 0.24;
+const BADGE_RIM = 0.045;
+/**
+ * Digit height as a fraction of the badge diameter, floored to whole font pixels — a 3×5
+ * font scaled by anything but an integer is mush at tray sizes. Flooring is what keeps the
+ * digit off the rim: rounding lands on 2× at 24 px, where a 10 px digit fills a 11.5 px disc.
+ */
+const BADGE_GLYPH = 0.68;
 
 /** 3×5 pixel font — enough for a badge count and the `+` overflow marker. */
 const GLYPHS: Record<string, string[]> = {
@@ -43,83 +60,93 @@ const GLYPHS: Record<string, string[]> = {
   '+': ['000', '010', '111', '010', '000'],
 };
 
-class Canvas {
+/** A premultiplied BGRA image — what `nativeImage.createFromBitmap` and `toBitmap` speak. */
+export interface Bitmap {
   readonly width: number;
   readonly height: number;
-  readonly data: Uint8Array;
+  readonly data: Buffer;
+}
 
-  constructor(width: number, height: number) {
-    this.width = width;
-    this.height = height;
-    this.data = new Uint8Array(width * height * 4);
-  }
+export function createBitmap(width: number, height: number): Bitmap {
+  return { width, height, data: Buffer.alloc(width * height * 4) };
+}
 
-  /** Alpha-composite a colour onto a pixel. */
-  blend(x: number, y: number, color: Rgb, alpha: number): void {
-    if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
-    const a = Math.max(0, Math.min(1, alpha));
-    if (a === 0) return;
-    const i = (y * this.width + x) * 4;
-    const srcA = this.data[i + 3]! / 255;
-    const outA = a + srcA * (1 - a);
-    if (outA <= 0) return;
-    for (let c = 0; c < 3; c += 1) {
-      const src = this.data[i + c]! / 255;
-      const dst = [color.r, color.g, color.b][c]! / 255;
-      this.data[i + c] = Math.round(((dst * a + src * srcA * (1 - a)) / outA) * 255);
-    }
-    this.data[i + 3] = Math.round(outA * 255);
-  }
+/** Alpha-composite a colour onto one pixel. Premultiplied `over`: out = src·a + dst·(1−a). */
+function blend(bitmap: Bitmap, x: number, y: number, color: Rgb, alpha: number): void {
+  if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) return;
+  const a = Math.max(0, Math.min(1, alpha));
+  if (a === 0) return;
+  const i = (y * bitmap.width + x) * 4;
+  const keep = 1 - a;
+  const { data } = bitmap;
+  data[i] = Math.round(color.b * a + data[i]! * keep);
+  data[i + 1] = Math.round(color.g * a + data[i + 1]! * keep);
+  data[i + 2] = Math.round(color.r * a + data[i + 2]! * keep);
+  data[i + 3] = Math.round(255 * a + data[i + 3]! * keep);
+}
 
-  /** Filled circle with 3×3 supersampled edges. */
-  circle(cx: number, cy: number, radius: number, color: Rgb): void {
-    const min = Math.max(0, Math.floor(cx - radius - 1));
-    const max = Math.min(this.width - 1, Math.ceil(cx + radius + 1));
-    const yMin = Math.max(0, Math.floor(cy - radius - 1));
-    const yMax = Math.min(this.height - 1, Math.ceil(cy + radius + 1));
-    for (let y = yMin; y <= yMax; y += 1) {
-      for (let x = min; x <= max; x += 1) {
-        this.blend(x, y, color, coverage(x, y, cx, cy, radius));
-      }
-    }
-  }
+/** Filled circle with 3×3 supersampled edges. */
+function circle(bitmap: Bitmap, cx: number, cy: number, radius: number, color: Rgb): void {
+  forEachPixelNear(bitmap, cx, cy, radius, (x, y) => {
+    blend(bitmap, x, y, color, coverage(x, y, cx, cy, radius));
+  });
+}
 
-  ring(cx: number, cy: number, radius: number, thickness: number, color: Rgb): void {
-    const inner = Math.max(0, radius - thickness);
-    const min = Math.max(0, Math.floor(cx - radius - 1));
-    const max = Math.min(this.width - 1, Math.ceil(cx + radius + 1));
-    const yMin = Math.max(0, Math.floor(cy - radius - 1));
-    const yMax = Math.min(this.height - 1, Math.ceil(cy + radius + 1));
-    for (let y = yMin; y <= yMax; y += 1) {
-      for (let x = min; x <= max; x += 1) {
-        const outside = coverage(x, y, cx, cy, radius);
-        const hole = coverage(x, y, cx, cy, inner);
-        this.blend(x, y, color, Math.max(0, outside - hole));
-      }
-    }
-  }
+function ring(
+  bitmap: Bitmap,
+  cx: number,
+  cy: number,
+  radius: number,
+  thickness: number,
+  color: Rgb,
+): void {
+  const inner = Math.max(0, radius - thickness);
+  forEachPixelNear(bitmap, cx, cy, radius, (x, y) => {
+    const outside = coverage(x, y, cx, cy, radius);
+    const hole = coverage(x, y, cx, cy, inner);
+    blend(bitmap, x, y, color, Math.max(0, outside - hole));
+  });
+}
 
-  glyph(text: string, x: number, y: number, scale: number, color: Rgb): void {
-    let cursor = x;
-    for (const char of text) {
-      const rows = GLYPHS[char];
-      if (!rows) continue;
-      rows.forEach((row, ry) => {
-        [...row].forEach((cell, rx) => {
-          if (cell !== '1') return;
-          for (let dy = 0; dy < scale; dy += 1) {
-            for (let dx = 0; dx < scale; dx += 1) {
-              this.blend(cursor + rx * scale + dx, y + ry * scale + dy, color, 1);
-            }
+function glyph(
+  bitmap: Bitmap,
+  text: string,
+  x: number,
+  y: number,
+  scale: number,
+  color: Rgb,
+): void {
+  let cursor = x;
+  for (const char of text) {
+    const rows = GLYPHS[char];
+    if (!rows) continue;
+    rows.forEach((row, ry) => {
+      [...row].forEach((cell, rx) => {
+        if (cell !== '1') return;
+        for (let dy = 0; dy < scale; dy += 1) {
+          for (let dx = 0; dx < scale; dx += 1) {
+            blend(bitmap, cursor + rx * scale + dx, y + ry * scale + dy, color, 1);
           }
-        });
+        }
       });
-      cursor += (3 + 1) * scale;
-    }
+    });
+    cursor += (3 + 1) * scale;
   }
+}
 
-  toPng(): Buffer {
-    return encodePng(this.width, this.height, this.data);
+function forEachPixelNear(
+  bitmap: Bitmap,
+  cx: number,
+  cy: number,
+  radius: number,
+  visit: (x: number, y: number) => void,
+): void {
+  const xMin = Math.max(0, Math.floor(cx - radius - 1));
+  const xMax = Math.min(bitmap.width - 1, Math.ceil(cx + radius + 1));
+  const yMin = Math.max(0, Math.floor(cy - radius - 1));
+  const yMax = Math.min(bitmap.height - 1, Math.ceil(cy + radius + 1));
+  for (let y = yMin; y <= yMax; y += 1) {
+    for (let x = xMin; x <= xMax; x += 1) visit(x, y);
   }
 }
 
@@ -146,150 +173,73 @@ export function badgeLabel(count: number): string | null {
 }
 
 /**
- * One tray icon. `size` 32 covers 100–200 % Windows scaling; Electron downsamples for the
- * 16 px slot.
+ * Stamp the badge into the bottom-right corner of a tile (F4).
+ *
+ * At 16 px the digit is barely more than a mark — which is why the exact number is also in
+ * the tooltip and the popover. It still beats no badge: the mark alone says "something is
+ * waiting for you", and that is the part that has to survive at tray size.
  */
-export function renderTrayIcon(state: TrayState, badgeCount = 0, size = 32): Buffer {
-  const canvas = new Canvas(size, size);
-  const color = STATE_COLORS[state];
-  const cx = size / 2;
-  const cy = size / 2;
-  const radius = size * 0.34;
+export function paintBadge(bitmap: Bitmap, label: string): void {
+  const size = Math.min(bitmap.width, bitmap.height);
+  const radius = size * BADGE_RADIUS;
+  const rim = Math.max(1, size * BADGE_RIM);
+  const cx = bitmap.width - radius - rim;
+  const cy = bitmap.height - radius - rim;
 
-  if (state === 'none' || state === 'stale') {
-    // An outline rather than a disc: present, but not asserting itself. For `none` that
-    // means "quiet"; for `stale` it means "running long, probably fine" — the muted colour
-    // carries the difference, the hollow shape keeps it from reading as an alarm.
-    canvas.ring(cx, cy, radius, Math.max(1.5, size * 0.09), color);
-  } else {
-    canvas.circle(cx, cy, radius, color);
-    if (state === 'waiting') {
-      // A notch distinguishes "needs you?" from "done" without relying on colour.
-      canvas.circle(cx + radius * 0.15, cy, radius * 0.42, { r: 28, g: 28, b: 30 });
-    }
-    if (state === 'working') {
-      canvas.ring(cx, cy, radius * 0.55, Math.max(1, size * 0.06), { r: 255, g: 255, b: 255 });
-    }
-  }
+  circle(bitmap, cx, cy, radius + rim, BADGE_RIM_COLOR);
+  circle(bitmap, cx, cy, radius, BADGE_COLOR);
 
-  const label = badgeLabel(badgeCount);
-  if (label) {
-    const br = size * 0.28;
-    const bx = size - br - 1;
-    const by = size - br - 1;
-    canvas.circle(bx, by, br, BADGE_COLOR);
-    const scale = Math.max(1, Math.round(size / 16));
-    const glyphW = 3 * scale;
-    const glyphH = 5 * scale;
-    canvas.glyph(label, Math.round(bx - glyphW / 2), Math.round(by - glyphH / 2), scale, BADGE_TEXT);
-  }
-
-  return canvas.toPng();
-}
-
-/** Application icon: the `done` dot on a rounded dark tile. */
-export function renderAppIcon(size = 256): Buffer {
-  const canvas = new Canvas(size, size);
-  const tile: Rgb = { r: 24, g: 24, b: 27 };
-  const radius = size * 0.22;
-  // Rounded square: a filled rect plus corner circles.
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const inX = x >= radius && x <= size - radius;
-      const inY = y >= radius && y <= size - radius;
-      if (inX || inY) canvas.blend(x, y, tile, 1);
-    }
-  }
-  for (const [cx, cy] of [
-    [radius, radius],
-    [size - radius, radius],
-    [radius, size - radius],
-    [size - radius, size - radius],
-  ] as const) {
-    canvas.circle(cx, cy, radius, tile);
-  }
-  canvas.circle(size / 2, size / 2, size * 0.26, STATE_COLORS.done);
-  canvas.ring(size / 2, size / 2, size * 0.36, size * 0.035, { r: 90, g: 90, b: 96 });
-  return canvas.toPng();
-}
-
-// ---------------------------------------------------------------- PNG / ICO
-
-function encodePng(width: number, height: number, rgba: Uint8Array): Buffer {
-  const raw = Buffer.alloc(height * (width * 4 + 1));
-  for (let y = 0; y < height; y += 1) {
-    const rowStart = y * (width * 4 + 1);
-    raw[rowStart] = 0; // filter type: none
-    Buffer.from(rgba.subarray(y * width * 4, (y + 1) * width * 4)).copy(raw, rowStart + 1);
-  }
-
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // colour type: RGBA
-  ihdr[10] = 0;
-  ihdr[11] = 0;
-  ihdr[12] = 0;
-
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
-
-function chunk(type: string, data: Buffer): Buffer {
-  const length = Buffer.alloc(4);
-  length.writeUInt32BE(data.length, 0);
-  const typed = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(typed), 0);
-  return Buffer.concat([length, typed, crc]);
-}
-
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n += 1) {
-    let c = n;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(buffer: Buffer): number {
-  let crc = 0xffffffff;
-  for (const byte of buffer) crc = CRC_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
+  const scale = Math.max(1, Math.floor((2 * radius * BADGE_GLYPH) / 5));
+  glyph(
+    bitmap,
+    label,
+    Math.round(cx - (3 * scale) / 2),
+    Math.round(cy - (5 * scale) / 2),
+    scale,
+    BADGE_TEXT,
+  );
 }
 
 /**
- * ICO container with PNG payloads — supported since Windows Vista and what
- * electron-builder needs for the portable EXE (N3).
+ * Tile drawn in code, used only when the shipped art cannot be read.
+ *
+ * Deliberately plain — a disc for the states that assert something, a hollow ring for the two
+ * quiet ones, and the working colour around a finished disc for `mixed`. It exists so a
+ * missing asset cannot leave the tray blank, not to imitate the art.
  */
-export function encodeIco(images: { size: number; png: Buffer }[]): Buffer {
-  const count = images.length;
-  const header = Buffer.alloc(6);
-  header.writeUInt16LE(0, 0);
-  header.writeUInt16LE(1, 2); // type: icon
-  header.writeUInt16LE(count, 4);
+export function renderFallbackTile(icon: TrayIcon, size: number): Bitmap {
+  const bitmap = createBitmap(size, size);
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.34;
+  const outline = Math.max(1.5, size * 0.09);
 
-  const directory = Buffer.alloc(16 * count);
-  let offset = 6 + 16 * count;
-  images.forEach((image, index) => {
-    const at = index * 16;
-    directory[at] = image.size >= 256 ? 0 : image.size;
-    directory[at + 1] = image.size >= 256 ? 0 : image.size;
-    directory[at + 2] = 0; // palette
-    directory[at + 3] = 0;
-    directory.writeUInt16LE(1, at + 4); // colour planes
-    directory.writeUInt16LE(32, at + 6); // bits per pixel
-    directory.writeUInt32LE(image.png.length, at + 8);
-    directory.writeUInt32LE(offset, at + 12);
-    offset += image.png.length;
-  });
+  switch (icon) {
+    case 'none':
+    case 'stale':
+      // An outline rather than a disc: present, but not asserting itself. For `none` that
+      // means "quiet"; for `stale` it means "running long, probably fine" — the muted colour
+      // carries the difference, the hollow shape keeps it from reading as an alarm.
+      ring(bitmap, cx, cy, radius, outline, STATE_COLORS[icon]);
+      break;
+    case 'waiting':
+      circle(bitmap, cx, cy, radius, STATE_COLORS.waiting);
+      // A notch distinguishes "needs you?" from "done" without relying on colour.
+      circle(bitmap, cx + radius * 0.15, cy, radius * 0.42, { r: 28, g: 28, b: 30 });
+      break;
+    case 'working':
+      circle(bitmap, cx, cy, radius, STATE_COLORS.working);
+      ring(bitmap, cx, cy, radius * 0.55, Math.max(1, size * 0.06), { r: 255, g: 255, b: 255 });
+      break;
+    case 'done':
+      circle(bitmap, cx, cy, radius, STATE_COLORS.done);
+      break;
+    case 'mixed':
+      // Finished, with something still running around it.
+      circle(bitmap, cx, cy, radius * 0.6, STATE_COLORS.done);
+      ring(bitmap, cx, cy, radius, outline, STATE_COLORS.working);
+      break;
+  }
 
-  return Buffer.concat([header, directory, ...images.map((image) => image.png)]);
+  return bitmap;
 }

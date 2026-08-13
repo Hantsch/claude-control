@@ -1,16 +1,18 @@
 /**
  * `TrayPresenter` (M2, F3, F4, §6.5).
  *
- * Icon colour follows the most urgent status across all sessions; the overlay badge counts
- * sessions in `waiting` or `done` and disappears at zero. Left click opens the compact
- * popover (§8), right click a native menu.
+ * Icon colour follows the most urgent status across the tray sessions — `trayIconFor`, which
+ * also has the one two-state tile — and the overlay badge counts sessions in `waiting` or
+ * `done` and disappears at zero. Left click opens the compact popover (§8), right click a
+ * native menu.
  */
 
-import { Menu, Tray, nativeImage, type NativeImage } from 'electron';
+import { Menu, Tray, screen } from 'electron';
 import { STATUS_LABEL } from '../core/model/status.ts';
+import { trayIconFor } from '../core/state/aggregate.ts';
 import type { AppState } from '../shared/ipc.ts';
 import { clampLabel, sessionLabel } from '../shared/presentation.ts';
-import { renderTrayIcon } from './tray-icons.ts';
+import { trayImage, trayPixelSize } from './icon-assets.ts';
 
 export interface TrayPresenterDeps {
   onTogglePopover: (bounds: Electron.Rectangle) => void;
@@ -26,6 +28,9 @@ export class TrayPresenter {
   private tray: Tray | null = null;
   private state: AppState | null = null;
   private lastKey = '';
+  /** Physical size of the tile Windows will ask for on this display. */
+  private pixelSize = trayPixelSize(1);
+  private readonly onDisplayChange = (): void => this.rescale();
 
   constructor(deps: TrayPresenterDeps) {
     this.deps = deps;
@@ -33,11 +38,16 @@ export class TrayPresenter {
 
   create(): void {
     if (this.tray) return;
-    this.tray = new Tray(iconFor('none', 0));
+    this.pixelSize = trayPixelSize(screen.getPrimaryDisplay().scaleFactor);
+    this.tray = new Tray(trayImage('none', 0, this.pixelSize));
     this.tray.setToolTip('Claude Control — no sessions');
     this.tray.on('click', (_event, bounds) => this.deps.onTogglePopover(bounds));
     this.tray.on('right-click', () => this.tray?.popUpContextMenu(this.buildMenu()));
     this.tray.on('double-click', () => this.deps.onOpenWindow('sessions'));
+    // Display scaling can change under a running app — docking a laptop, moving the taskbar
+    // to another monitor. The tile has to be rebuilt at the new physical size or Windows
+    // resamples the one it has.
+    screen.on('display-metrics-changed', this.onDisplayChange);
   }
 
   update(state: AppState): void {
@@ -45,22 +55,32 @@ export class TrayPresenter {
     if (!this.tray) return;
 
     // Re-rendering the icon on every tick would be wasteful; the visual state is a pure
-    // function of (trayState, badge), so only rebuild when that pair changes.
-    const key = `${state.trayState}:${Math.min(state.attention, 10)}`;
+    // function of (icon, badge, size), so only rebuild when that triple changes.
+    const icon = trayIconFor(state.traySessions);
+    const key = `${icon}:${Math.min(state.attention, 10)}:${this.pixelSize}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
-      this.tray.setImage(iconFor(state.trayState, state.attention));
+      this.tray.setImage(trayImage(icon, state.attention, this.pixelSize));
     }
     this.tray.setToolTip(tooltipFor(state));
   }
 
   destroy(): void {
+    screen.removeListener('display-metrics-changed', this.onDisplayChange);
     this.tray?.destroy();
     this.tray = null;
   }
 
   getBounds(): Electron.Rectangle | null {
     return this.tray?.getBounds() ?? null;
+  }
+
+  private rescale(): void {
+    const size = trayPixelSize(screen.getPrimaryDisplay().scaleFactor);
+    if (size === this.pixelSize) return;
+    this.pixelSize = size;
+    this.lastKey = '';
+    if (this.state) this.update(this.state);
   }
 
   /**
@@ -115,14 +135,6 @@ export class TrayPresenter {
 
     return Menu.buildFromTemplate(items);
   }
-}
-
-function iconFor(state: AppState['trayState'], badge: number): NativeImage {
-  const image = nativeImage.createFromBuffer(renderTrayIcon(state, badge, 32));
-  // Windows picks the 16 px slot from the tray; letting Electron scale a 32 px source keeps
-  // it crisp at 150 % and 200 % display scaling.
-  image.setTemplateImage(false);
-  return image;
 }
 
 function tooltipFor(state: AppState): string {

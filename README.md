@@ -75,7 +75,7 @@ ClaudeControl.exe --show popover    # open the tray popover
 ```powershell
 npm test               # vitest over core/ with fixtures, including the N2/N4/N5 checks
 npm run typecheck      # tsc for the Node side and the renderer
-npm run icons          # regenerate assets/icons from src/main/tray-icons.ts
+npm run icons          # rebuild assets/icons from the art in output/imagegen (Python + Pillow)
 ```
 
 ```

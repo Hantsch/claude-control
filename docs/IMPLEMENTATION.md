@@ -91,12 +91,31 @@ including the `enqueue, enqueue, remove` shape that a counting-only rule gets wr
 
 ### Tray icon rendering
 
-The five state icons and eleven badge variants are drawn in code
-(`src/main/tray-icons.ts`: a small PNG encoder plus a 3×5 pixel font) rather than shipped as
-art, because that keeps the icon and the badge in one place and needs no image library.
-`npm run icons` writes the same drawings to `assets/icons/` for packaging (`app.ico`).
-Beyond colour, `waiting` carries a notch, `working` a ring, and `stale` is drawn hollow, so
-the states are distinguishable without relying on colour alone.
+The tiles are shipped art in `assets/icons/`, assembled by `npm run icons`
+(`scripts/build-icons.py`, needs Python + Pillow) from the generated art in
+`output/imagegen/claude-monitor`. Beyond the ring colour, each state keeps a distinct ring:
+`working` blue, `waiting` amber, `stale` the same ring desaturated and dimmed, `done` green,
+`mixed` split blue/green, `none` no ring at all — so the states are distinguishable without
+relying on colour alone.
+
+Three things about the layout are deliberate:
+
+- **One tile per physical size** (`tray/16|20|24|32|40|48/`). Windows hands the tray a fixed
+  pixel box — 16 px per 100 % of display scaling — and resamples whatever it is given. The
+  ring is a thin stroke and does not survive that, so `trayPixelSize` picks the tile that
+  needs no resampling, and the tray is rebuilt when display scaling changes.
+- **`stale` is derived, not generated.** The art set has five states, the tray has six icons.
+  Deriving `stale` from `waiting` gives the two overdue states the same shape in different
+  intensities, which is the relationship they have everywhere else (§6.3).
+- **The badge is still drawn in code** (`src/main/tray-icons.ts`: a 3×5 pixel font composited
+  onto Electron's premultiplied BGRA bitmap). It is a function of a live count, so shipping it
+  would mean 6 states × 11 counts × 6 sizes of near-identical art. The same file draws a plain
+  fallback tile, used only if an asset cannot be read, so a missing file degrades the tray
+  instead of blanking it.
+
+The art also supplies the window icon (`app.ico`, `app.png`) and one toast logo per notifying
+status (`app-waiting.png`, `app-done.png`), so a toast is readable as "finished" or "needs you"
+from its logo alone.
 
 ### Window focus: one VS Code process, many windows
 
@@ -165,8 +184,8 @@ first. Covered by the burst test in `test/unit/pipeline.test.ts`.
 |---|---|
 | F1 live list | `ControlEngine.getSnapshot` (Sessions view) and `traySessions` (popover, tray menu) |
 | F2 working / waiting / done | `core/state/machine.ts`; the two overdue cases split into `waiting` ("needs you?") and `stale` (§6.3) |
-| F3 tray icon = most urgent | `trayStateFor`, `TrayPresenter.update` |
-| F4 overlay badge | `renderTrayIcon(state, badgeCount)`; empty at zero |
+| F3 tray icon = most urgent | `trayStateFor`; `trayIconFor` adds the `done` + `working` tile; art loaded by `icon-assets.ts` |
+| F4 overlay badge | `paintBadge` onto the tile in `icon-assets.ts`; empty at zero |
 | F5 toast on done/waiting | `Notifier` + `NotificationGate` |
 | F6 click focuses the window | `WindowFocuser`; toast click, popover row click, row double-click, detail button |
 | F7 history | `indexHistory` + `InMemorySessionStore.listHistory` + History view |

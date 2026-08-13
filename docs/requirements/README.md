@@ -24,10 +24,10 @@ draft ──► ready ──► in-progress ──► done
 ## Flow
 
 1. **You** create a new file from `_TEMPLATE.md` and describe the requirement
-   (`status: draft`) — or let `/ai-scrum:roadmap plan` cut sprint + story drafts out of the
+   (`status: draft`) — or let `/roadmap plan` cut sprint + story drafts out of the
    next roadmap milestone with you.
 
-2. **`/ai-scrum:refine <id>`** (runs on Opus) triages:
+2. **`/refine <id>`** (runs on Opus) triages:
    - **Trivial/mechanical** → no ceremony plan, direct handoff in the same session offered
      ("too small to refine, say GO").
    - **Unclear** → `Open Questions` filled and put to you; status stays `draft`.
@@ -36,7 +36,7 @@ draft ──► ready ──► in-progress ──► done
      written into the document and `status: ready` is set.
    - Usable in a **separate session** while another session implements.
 
-3. **`/ai-scrum:build <id>`** (cheap tier) reads the `ready` requirement + plan and implements
+3. **`/build <id>`** (cheap tier) reads the `ready` requirement + plan and implements
    the **deliverables in order**, in one go (scrum-like, no giant diff at the end). Then it
    verifies with the project's build/test commands, has the diff reviewed by a **fresh clean
    agent**, fills **`Done`** (summary + a 1–2 line commit message), moves the file to `done/`
@@ -45,8 +45,8 @@ draft ──► ready ──► in-progress ──► done
 
 ## Model routing
 
-- `/ai-scrum:refine` forces **Opus** (thinking), `/ai-scrum:build` the cheap tier (execution)
-  — via `model:` frontmatter in the plugin's command files.
+- `/refine` forces **Opus** (thinking), `/build` the cheap tier (execution)
+  — via `model:` frontmatter in `.claude/commands/`.
 - Both are **orchestrators**: they delegate research (refine) and per-deliverable
   implementation (build) to fresh `Agent` calls with a self-contained prompt. If a step needs
   more brainpower, the orchestrator uses the `deliverable-hard` / `story-review-hard` agent —
@@ -69,6 +69,6 @@ Open requirements (`draft`/`ready`/`in-progress`) live **directly** in this fold
 one is `done`, the file moves to `done/` via `git mv`. So the flat folder always shows only the
 work that is actually open.
 
-On the move, `/ai-scrum:build` appends a line to `done/INDEX.md`
+On the move, `/build` appends a line to `done/INDEX.md`
 (`- NNN — <title> · <sprint or —> · <one-sentence result>`) — the index is the fast story
 history, without having to read the full texts.

@@ -23,10 +23,10 @@ sprints/
 ## Flow
 
 1. **You** copy `_TEMPLATE/sprint.md` to `SNN/sprint.md` and fill in goal + story IDs
-   (`status: planned`) — or let `/ai-scrum:roadmap plan` cut the sprint plus story drafts out
+   (`status: planned`) — or let `/roadmap plan` cut the sprint plus story drafts out
    of the next roadmap milestone with you. The stories themselves exist as `draft` in the
    requirements folder.
-2. **`/ai-scrum:sprint SNN`** runs autonomously:
+2. **`/sprint SNN`** runs autonomously:
    - **Setup:** sprint branch off the `branch-base` from `.claude/ai-scrum.md`.
    - **Clarification round:** deliberately open decisions (`## Open Questions` of the
      stories) are never decided by an agent — the orchestrator puts them to you bundled via
@@ -47,7 +47,7 @@ sprints/
    `branch-base`**. A protected branch only ever receives a deliberate release merge, never a
    sprint branch directly.
 
-The sprint is **resumable**: if the session dies, `/ai-scrum:sprint SNN` continues at the
+The sprint is **resumable**: if the session dies, `/sprint SNN` continues at the
 first open spot based on `sprint.md` + story status.
 
 ## Numbering

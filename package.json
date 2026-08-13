@@ -16,7 +16,7 @@
     "preview": "electron-vite preview",
     "package": "npm run build && electron-builder --win portable",
     "cli": "tsx src/cli/index.ts",
-    "icons": "tsx scripts/generate-icons.ts",
+    "icons": "python scripts/build-icons.py",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

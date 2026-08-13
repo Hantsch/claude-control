@@ -15,6 +15,7 @@ import { STATUS_LABEL } from '../core/model/status.ts';
 import type { SessionId, StatusTransition } from '../core/model/types.ts';
 import { NotificationGate, firstSentence } from '../core/state/notifications.ts';
 import { clampLabel, sessionLabel } from '../shared/presentation.ts';
+import { toastIcon } from './icon-assets.ts';
 
 export interface NotifierDeps {
   settings: () => NotificationSettings;
@@ -51,6 +52,9 @@ export class Notifier {
     const notification = new Notification({
       title: `${clampLabel(sessionLabel(view), 40)} — ${STATUS_LABEL[transition.to]}`,
       body: `${where}\n${detail}`,
+      // The state's own tile, so a toast is readable as "finished" or "needs you" from the
+      // logo alone — the two toasts are otherwise the same shape at the same corner.
+      icon: toastIcon(transition.to),
       silent: true,
       timeoutType: 'default',
     });

@@ -8,6 +8,7 @@
 
 import { BrowserWindow, screen, shell } from 'electron';
 import { join } from 'node:path';
+import { appIcon } from './icon-assets.ts';
 
 /**
  * The popover is deliberately wide: every column (title, project · branch, status, age) has
@@ -81,6 +82,7 @@ export class WindowManager {
       show: false,
       backgroundColor: '#111113',
       title: 'Claude Control',
+      icon: appIcon(),
       autoHideMenuBar: true,
       webPreferences: this.webPreferences(),
     });
@@ -175,6 +177,7 @@ export class WindowManager {
       width: POPOVER_WIDTH,
       height: this.popoverHeight,
       show: false,
+      icon: appIcon(),
       frame: false,
       resizable: false,
       // Movable so the drag region in the popover's title bar can be used (F: pin & drag).

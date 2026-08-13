@@ -63,6 +63,14 @@ export const TRAY_URGENCY_ORDER = ['waiting', 'done', 'stale', 'working'] as con
 
 export type TrayState = (typeof TRAY_URGENCY_ORDER)[number] | 'none';
 
+/**
+ * Which tile the tray shows. The urgency order collapses everything to one winner, which is
+ * right for a colour but loses one pair worth distinguishing: a turn that finished while
+ * other sessions are still running. `done` alone would claim the whole set is settled, so
+ * that pair gets its own icon (`trayIconFor` in `state/aggregate.ts`).
+ */
+export type TrayIcon = TrayState | 'mixed';
+
 export function isNotifyingStatus(status: SessionStatus): boolean {
   return NOTIFYING_STATUSES.includes(status);
 }

@@ -22,6 +22,7 @@ import {
   attentionCount,
   groupSessions,
   selectTraySessions,
+  trayIconFor,
   trayStateFor,
 } from '../../src/core/state/aggregate.ts';
 import { NotificationGate, decideNotification, firstSentence } from '../../src/core/state/notifications.ts';
@@ -142,6 +143,26 @@ describe('tray aggregation', () => {
     expect(
       trayStateFor([view({ sessionId: 'a', status: 'done' }), view({ sessionId: 'b', status: 'waiting' })]),
     ).toBe('waiting');
+  });
+
+  it('shows the mixed tile only for a finished turn with something still running', () => {
+    const done = view({ sessionId: 'a', status: 'done' });
+
+    expect(trayIconFor([done])).toBe('done');
+    expect(trayIconFor([done, view({ sessionId: 'b', status: 'working' })])).toBe('mixed');
+    // `stale` is a suspicion, not a running turn: it must not claim the working half.
+    expect(trayIconFor([done, view({ sessionId: 'b', status: 'stale' })])).toBe('done');
+    // Anything more urgent than `done` wins outright, as it does for the colour.
+    expect(
+      trayIconFor([done, view({ sessionId: 'b', status: 'working' }), view({ sessionId: 'c', status: 'waiting' })]),
+    ).toBe('waiting');
+    // An acknowledged `done` is no longer news, so there is no "finished" half left to mix.
+    expect(
+      trayIconFor([
+        view({ sessionId: 'a', status: 'done', seen: true }),
+        view({ sessionId: 'b', status: 'working' }),
+      ]),
+    ).toBe('working');
   });
 
   it('counts only waiting and done towards the badge', () => {

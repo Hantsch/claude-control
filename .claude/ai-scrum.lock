@@ -1,0 +1,12 @@
+{
+  "ai-scrum-version": "2.0.0",
+  "files": {
+    ".claude/commands/build.md": "222a34ae1b69e6e409033ff0ac2977aa2c123d97",
+    ".claude/commands/concept.md": "7a63ac9d240e3d02f0dd7eaaa3d7c55babdde003",
+    ".claude/commands/refine.md": "df6023d825be70d73e6b77f56c0e48ae1f62f1f1",
+    ".claude/commands/roadmap.md": "be9f0505c7f0de1d17ed3b0f52e179177ac12e96",
+    ".claude/commands/sprint.md": "653b4e7532d6025eb8c46f491e4de6774c18ed77",
+    ".claude/agents/deliverable-hard.md": "d48c0893ba2e9ec5c556138bdf4c3f92c16d1c1b",
+    ".claude/agents/story-review-hard.md": "63ede9a026f29b56d14c7b3750f1899c3110d11b"
+  }
+}

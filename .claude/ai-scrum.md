@@ -9,7 +9,7 @@
   the commands read both.
 -->
 
-ai-scrum-version: 1.0.1
+ai-scrum-version: 2.0.0
 project: claude-control
 
 ## Verify

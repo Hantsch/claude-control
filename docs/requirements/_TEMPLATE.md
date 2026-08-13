@@ -17,19 +17,19 @@ the "how".>
 
 ## Open Questions
 
-<Leave empty. Filled during refine (`/ai-scrum:refine <id>`) if the requirement is still
+<Leave empty. Filled during refine (`/refine <id>`) if the requirement is still
 unclear. Must be resolved before status goes to `ready`. Inside a sprint these are put to the
 user in the clarification round.>
 
 ## Plan
 
-<Leave empty. Filled by `/ai-scrum:refine <id>`: a short, precise overview — max. ~50 lines.
+<Leave empty. Filled by `/refine <id>`: a short, precise overview — max. ~50 lines.
 Concrete steps, affected files, order. No essay.>
 
 ## Deliverables
 
-<Leave empty. Filled by `/ai-scrum:refine <id>`: small pieces, each with its own acceptance
-(scrum-like) and the files it touches. `/ai-scrum:build` implements them in order, in one go.
+<Leave empty. Filled by `/refine <id>`: small pieces, each with its own acceptance
+(scrum-like) and the files it touches. `/build` implements them in order, in one go.
 Every acceptance criterion above must be covered by at least one deliverable — refine checks
 this before `status: ready`, build refuses to start without it.>
 
@@ -38,9 +38,9 @@ this before `status: ready`, build refuses to start without it.>
 
 ## Model Hints
 
-<Agent tier per deliverable. Default is the cheap tier with `/ai-scrum:build`'s effort — leave
+<Agent tier per deliverable. Default is the cheap tier with `/build`'s effort — leave
 unmarked. If a step needs more brainpower: "D3 (balancing formula) → deliverable-hard" (Opus +
-high effort, agent shipped with the ai-scrum plugin) plus a one-sentence risk justification.
+high effort, agent in `.claude/agents/`) plus a one-sentence risk justification.
 Plus one line for the code review, default: "Review: → default".>
 
 ## Test Plan (manual acceptance)
@@ -51,7 +51,7 @@ user-facing actions must go through the real UI.>
 
 ## Done
 
-<Leave empty. Filled by `/ai-scrum:build <id>` after implementation:
+<Leave empty. Filled by `/build <id>` after implementation:
 - Short summary (2–5 lines): what was done.
 - Commit message (1–2 lines, keywords are enough).
 - Verification: build/test/lint result + review outcome; open points/blockers, if any.>

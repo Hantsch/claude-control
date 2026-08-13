@@ -21,8 +21,8 @@ docs/
 ## Where do I find …?
 
 - **Where we stand, what is next, what is unprioritised** → [ROADMAP.md](ROADMAP.md)
-  (milestone granularity; maintained at the end of `/ai-scrum:sprint`, `/ai-scrum:concept` and
-  in the `/ai-scrum:roadmap` ritual).
+  (milestone granularity; maintained at the end of `/sprint`, `/concept` and
+  in the `/roadmap` ritual).
 - **What happened per story** → [requirements/done/INDEX.md](requirements/done/INDEX.md) (one
   line per story), full text next to it. Workflow:
   [requirements/README.md](requirements/README.md).
@@ -34,11 +34,11 @@ docs/
 
 ## Maintenance
 
-- New concepts come from `/ai-scrum:concept` → `concepts/` + one line in
+- New concepts come from `/concept` → `concepts/` + one line in
   [ROADMAP.md](ROADMAP.md) under "Open / unprioritised".
 - Once a concept is fully implemented (all stories done): `git mv` it to `systems/` and update
-  its status line — checked in the `/ai-scrum:sprint` review (phase 3) and
-  `/ai-scrum:roadmap check`.
+  its status line — checked in the `/sprint` review (phase 3) and
+  `/roadmap check`.
 - Status tables do not belong in this index — only in the roadmap.
 
 ## Project-specific

@@ -2,7 +2,7 @@
  * Tray aggregation (§6.5) and project/branch grouping (F10).
  */
 
-import type { SessionStatus, TrayState } from '../model/status.ts';
+import type { SessionStatus, TrayIcon, TrayState } from '../model/status.ts';
 import { TRAY_URGENCY_ORDER, needsAttention } from '../model/status.ts';
 import type { ProjectRef, SessionView } from '../model/types.ts';
 
@@ -24,6 +24,20 @@ export function trayStateFor(sessions: readonly SessionView[]): TrayState {
     if (present.has(candidate)) return candidate;
   }
   return 'none';
+}
+
+/**
+ * Which tile the tray shows — the urgency colour, plus the one case a single winner cannot
+ * express: a finished turn while something else is still running.
+ *
+ * Only `done` + `working` gets the mixed tile. `stale` deliberately keeps the plain `done`
+ * tile: the mixed art says "still busy" with the working colour, and claiming that for a
+ * session that is merely overdue would overstate what is known about it (§6.3).
+ */
+export function trayIconFor(sessions: readonly SessionView[]): TrayIcon {
+  const state = trayStateFor(sessions);
+  if (state !== 'done') return state;
+  return sessions.some((session) => session.status === 'working') ? 'mixed' : 'done';
 }
 
 /** Badge count = unacknowledged sessions in `waiting` or `done`; empty badge at zero (§6.5). */

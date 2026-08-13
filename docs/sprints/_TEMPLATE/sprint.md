@@ -1,8 +1,8 @@
 ---
 sprint: SNN
 status: planned # planned | in-progress | done
-branch: # set by /ai-scrum:sprint
-milestone: # roadmap milestone, set by /ai-scrum:roadmap plan
+branch: # set by /sprint
+milestone: # roadmap milestone, set by /roadmap plan
 ---
 
 # Sprint SNN — <title>

@@ -1,6 +1,6 @@
 ---
 sprint: S01
-status: in-progress # planned | in-progress | done
+status: done # planned | in-progress | done
 branch: sprint/S01
 milestone: M1 — Popover at a glance
 ---
@@ -22,5 +22,6 @@ for the popover's status read.
 ## Notes
 
 First sprint of Phase 2 — M1 is deliberately engine-free (renderer + shared presentation only)
-so it can be built in one sitting. 002 carries one open decision (waiting count vs. `attention`)
-to resolve during `/sprint`'s clarification round.
+so it can be built in one sitting. 002's open decision (waiting count vs. `attention`) was
+resolved in the clarification round — see review.md. 002 is built but left `in-progress`
+(live acceptance pending); see review.md and testplan.md.

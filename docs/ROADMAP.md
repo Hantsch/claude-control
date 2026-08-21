@@ -75,15 +75,26 @@ Gaps/notes:
 - 004's portable-target protocol-handler path (`app.setAsDefaultProtocolClient`) can go stale
   between runs, same pre-existing property as the login-item path; not fixed, not new to this
   sprint.
-- The four points the review left open are picked up by
+- The four points the review left open were picked up by
   [012](requirements/012-s02-residuals.md) in S03 — the window-probe "unknown" state, the
   portable target's protocol-handler path, the popover focus steal and the duplicate
-  `ShortcutStatus`.
+  `ShortcutStatus` — and all four are now built (acceptance pending). The two residual-risk notes
+  above are therefore closed in code: the probe now emits an explicit negative so an unanswered
+  pid stays unknown and re-probed, and the portable target registers its stable
+  `PORTABLE_EXECUTABLE_FILE` path. What remains of the latter is a smaller limit: moving or
+  deleting the portable EXE breaks toast buttons until the app is started once from the new
+  location, which is documented in the README.
+- **Open, found while building 012:** Settings → Diagnostics *recomputes* the protocol target at
+  IPC-handler time rather than reporting what `setAsDefaultProtocolClient` actually wrote, and
+  that registration's `catch {}` swallows a failed registry write — so the panel can print a path
+  that was never registered, in the very field added so a user could check it. Fix: thread
+  `{ target, registered }` out of `registerToastProtocol()`. The packaged non-portable case also
+  renders the `<installed exe>` placeholder instead of a path.
 - Live acceptance was run by the user on 2026-08-21 from
   [testplan.md](sprints/done/S02/testplan.md) — the build session itself was headless, so both
   stories landed as "built, acceptance pending" and were only confirmed afterwards. M2 accepted.
 
-### M3 — Popover drill-down — planned
+### M3 — Popover drill-down — built, acceptance pending
 
 The glance surface is over-subscribed: story 002's eight-column row ellipsizes every flexible
 cell, and the cell hit hardest is the waiting reason — the one piece of text that explains why
@@ -98,28 +109,56 @@ boundary between the two stories.
 
 Stories: [010](requirements/010-popover-drilldown.md) — renderer/shared only ·
 [011](requirements/011-subagent-detail-from-result.md) — the two facts that need adapter work
-Sprints: [S03](sprints/S03/sprint.md) — planned
+Sprints: [S03](sprints/S03/sprint.md) — see [review.md](sprints/S03/review.md) and
+[testplan.md](sprints/S03/testplan.md)
 Gaps/notes:
+- Both stories are built and reviewed; neither is live-accepted. The build session was headless
+  (no Electron GUI reachable), so the whole end-to-end path ran on unit level only — the user
+  marks this milestone accepted after working through the test plan.
 - 011 is an optional refinement: 010 is designed to be complete and useful without it.
 - 011 reverses a documented decision in `subagentRunResultOf` (the subagent result's text is
   deliberately not read) and touches the CONCEPT §4 privacy statement — a reviewer has to check
   the claim, not just the diff.
 - A *running* subagent's progress stays unobservable regardless: `isSidechain` was true on zero
   of ~55 000 records ([RESEARCH.md §2](RESEARCH.md)), so only the result brings text.
+- 011's inherited-model derivation was **dropped** by user decision: a subagent with no model
+  declared in the `Agent` call shows no model at all rather than a `≈`-marked guess. The `≈`
+  marker in the prototype therefore has no counterpart in the shipped UI.
+- 010's popover height: the scroll was accepted rather than raising `POPOVER_MAX_HEIGHT` or making
+  expansion an accordion, so several sessions can be open at once and the list scrolls. The
+  self-measured height was code-verified but never live-measured — first thing to watch in
+  acceptance.
+- The M1 group-sort ranking (a *seen* waiting group can outrank an unseen done group that is
+  colouring the tray badge) was **not** taken in 010 as the sprint notes allowed: it turned out to
+  be shared with the tray badge rather than local to the group rollup. Still open.
 
-### M4 — Light theme — planned
+### M4 — Light theme — built, acceptance pending
 
 The one visual element that does not belong on a light Windows desktop. The custom properties
 already are the whole theme surface, so the work is not the switch — it is checking that the
 status colours and the four context bands still carry their meaning on a light surface.
 
 Stories: [007](requirements/007-light-theme.md)
-Sprints: [S03](sprints/S03/sprint.md) — planned, built after M3
+Sprints: [S03](sprints/S03/sprint.md) — built after M3; see
+[review.md](sprints/S03/review.md) and [testplan.md](sprints/S03/testplan.md)
 Gaps/notes:
 - Earlier note "deliberately not bundled, so a contrast regression is not hidden inside a larger
   diff" was reversed on 2026-08-21: the contrast pass has to run on the row layout that ships,
   and M3 replaces it. One commit per story keeps the colour diff separately reviewable, which is
   what that note actually wanted.
+- Built as a `prefers-color-scheme` media query only — no in-app theme toggle, and dark stays the
+  `:root` baseline with light as override-only. Contrast is enforced by `test/unit/theme.test.ts`
+  (WCAG ratios plus OKLab pairwise distinguishability, thresholded against the dark scheme's own
+  worst pair) rather than by screenshots.
+- Two pre-existing contrast edges were found and deliberately **not** fixed, to keep the colour
+  diff honest: `--text-faint` on `--bg-active` (2.75:1 light vs 2.81:1 dark — same order in both
+  schemes, so not a light-theme regression) and `.muted` body text at `--muted-opacity: 0.6`
+  (~4.47:1, just under 4.5:1). Both are effect tokens, open for a follow-up.
+- `--band-yellow` deviated from the story's suggested `#b58900` to `#9c7600`: band fills paint
+  against `--bg-active`, where the suggested value only reached 2.44:1 against a stated 3:1
+  target. The target won over the suggested hex — the pattern for any remaining colour work.
+- No new tray art: only the badge rim became theme-aware. A tray tile that reads badly on a light
+  taskbar is a follow-up story, not part of this one.
 
 ---
 

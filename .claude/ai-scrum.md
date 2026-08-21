@@ -34,6 +34,7 @@ story-id-format: NNN <!-- three digits + slug, e.g. 042-npc-haggling.md -->
 sprint-id-format: SNN <!-- e.g. S07 -->
 
 changelog-path: none
+
 <!--
   Optional. Path to a USER-FACING changelog (e.g. version.md, CHANGELOG.md) — not the
   git history. When set, /build and /sprint require an entry for every user-facing
@@ -49,14 +50,15 @@ changelog-path: none
 
 ## Branching
 
-branch-base: main <!-- branch a sprint is cut from -->
+branch-base: dev <!-- branch a sprint is cut from -->
 sprint-branch-pattern: sprint/{id}
 auto-commit-per-story: true <!-- /ai-scrum:sprint commits once per story ON THE SPRINT BRANCH only -->
-protected-branches: main <!-- never commit here, never push, never merge -->
+protected-branches: dev, main <!-- never commit here, never push, never merge -->
 
 ## Acceptance
 
 ui-acceptance-required: true
+
 <!--
   true  = P1 applies: every user-facing capability needs a real path through the
           actual UI. An acceptance or test-plan step for a user action that requires
@@ -65,6 +67,7 @@ ui-acceptance-required: true
 -->
 
 live-smoke-required: true
+
 <!--
   true  = P2 applies: for a story with visible UI, a green build/test run is not
           enough — the real flow must be driven through the running app before the

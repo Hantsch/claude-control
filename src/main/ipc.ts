@@ -11,7 +11,7 @@ import { IPC, type AppState, type DiagnosticsInfo, type FocusResult } from '../s
 import type { WindowFocuser } from './focus/focuser.ts';
 import type { SettingsStore } from './settings.ts';
 import type { ShortcutManager } from './shortcuts.ts';
-import { protocolClientTarget } from './toast-protocol.ts';
+import type { ProtocolRegistration } from './toast-protocol.ts';
 import type { MainTab, WindowManager } from './windows.ts';
 
 export interface IpcDeps {
@@ -25,6 +25,7 @@ export interface IpcDeps {
   state: () => AppState;
   focusSession: (id: SessionId) => Promise<FocusResult>;
   quit: () => void;
+  protocolRegistration: ProtocolRegistration;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -95,7 +96,7 @@ export function registerIpc(deps: IpcDeps): void {
     electronVersion: process.versions.electron ?? 'unknown',
     focusBackend: deps.focuser.backendName(),
     platform: `${process.platform} ${process.arch}`,
-    protocolTarget: describeProtocolTarget(),
+    protocolTarget: deps.protocolRegistration,
   }));
 
   ipcMain.handle(IPC.quit, () => {
@@ -118,18 +119,6 @@ export function registerIpc(deps: IpcDeps): void {
     }
     return next;
   });
-}
-
-/**
- * Mirrors `registerToastProtocol()` in `index.ts` (D4/D5) so Settings → Diagnostics can show
- * exactly what got registered for the toast buttons, without index.ts having to thread the
- * result through `IpcDeps`. On a non-Windows platform, or a packaged install where Windows
- * resolves the currently-installed exe on its own, there is no separate path to show.
- */
-function describeProtocolTarget(): string {
-  if (process.platform !== 'win32') return '<n/a — Windows only>';
-  const target = protocolClientTarget(process.env, process.execPath, app.isPackaged, process.argv[1]);
-  return target.path ?? '<installed exe>';
 }
 
 export function broadcast(channel: string, payload: unknown): void {

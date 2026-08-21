@@ -23,9 +23,11 @@ import { Notifier } from './notifier.ts';
 import { SettingsStore } from './settings.ts';
 import { ShortcutManager } from './shortcuts.ts';
 import {
+  buildProtocolRegistration,
   protocolClientTarget,
   TOAST_PROTOCOL,
   toastActionFromArgv,
+  type ProtocolRegistration,
   type ToastAction,
 } from './toast-protocol.ts';
 import { TrayPresenter } from './tray.ts';
@@ -41,7 +43,7 @@ if (!gotLock) {
 async function bootstrap(): Promise<void> {
   // Required on Windows for toasts to be attributed to this app (F5).
   app.setAppUserModelId('solutions.aidu.claude-control');
-  registerToastProtocol();
+  const protocolRegistration = registerToastProtocol();
   // The app has no network features at all (N1).
   app.commandLine.appendSwitch('disable-http-cache');
 
@@ -137,6 +139,7 @@ async function bootstrap(): Promise<void> {
     state: () => lastState,
     focusSession,
     quit,
+    protocolRegistration,
   });
 
   // Live tier first (N5), tray immediately afterwards.
@@ -251,15 +254,19 @@ async function bootstrap(): Promise<void> {
  * (D4) additionally prefers the portable build's stable exe path over the temp extraction dir
  * `process.execPath` would otherwise record.
  */
-function registerToastProtocol(): void {
-  if (process.platform !== 'win32') return;
+function registerToastProtocol(): ProtocolRegistration {
+  const target = protocolClientTarget(process.env, process.execPath, app.isPackaged, process.argv[1]);
+  let outcome: { ok: true } | { ok: false; error?: unknown };
   try {
-    const target = protocolClientTarget(process.env, process.execPath, app.isPackaged, process.argv[1]);
-    if (target.path) app.setAsDefaultProtocolClient(TOAST_PROTOCOL, target.path, target.args ?? []);
-    else app.setAsDefaultProtocolClient(TOAST_PROTOCOL);
-  } catch {
+    const ok = target.path
+      ? app.setAsDefaultProtocolClient(TOAST_PROTOCOL, target.path, target.args ?? [])
+      : app.setAsDefaultProtocolClient(TOAST_PROTOCOL);
+    outcome = ok ? { ok: true } : { ok: false };
+  } catch (error) {
     // A blocked registry write costs the buttons, not the app — the toast itself still shows.
+    outcome = { ok: false, error };
   }
+  return buildProtocolRegistration(process.platform, target, outcome, process.execPath);
 }
 
 /** Parses the `--show` dev flag. Returns null when the app should start tray-only. */

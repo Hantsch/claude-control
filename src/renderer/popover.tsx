@@ -27,7 +27,7 @@ import {
   useState,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { STATUS_SORT_RANK, groupSessions } from '../core/state/aggregate.ts';
+import { groupSessions, popoverGroupRank } from '../core/state/aggregate.ts';
 import type { NotificationMode } from '../core/model/settings.ts';
 import { applyNotificationMode, notificationMode } from '../core/model/settings.ts';
 import type { AppSettings, AppState, SubagentNode } from '../shared/ipc.ts';
@@ -594,11 +594,11 @@ function Popover(): React.JSX.Element {
   const waitingCount = shown.filter((session) => session.status === 'waiting').length;
 
   // Rows are already sorted by urgency within a group (`compareSessions`); groups themselves
-  // sort by their most urgent session, then by project name.
+  // sort by their most urgent *unacknowledged* session (`popoverGroupRank`), then by project
+  // name — so a project whose only waiting row has already been seen sinks below one with
+  // real news instead of holding the top spot.
   const groups = groupSessions(shown).sort((a, b) => {
-    // `groupSessions` never produces an empty group, so `sessions[0]` — the most urgent row,
-    // per `compareSessions` — always exists.
-    const rank = STATUS_SORT_RANK[a.sessions[0]!.status] - STATUS_SORT_RANK[b.sessions[0]!.status];
+    const rank = popoverGroupRank(a) - popoverGroupRank(b);
     if (rank !== 0) return rank;
     return a.project.name.localeCompare(b.project.name);
   });
@@ -830,16 +830,19 @@ function Popover(): React.JSX.Element {
                     {session.subagents.length === 0 ? (
                       <div className="kv faint">no subagents</div>
                     ) : (
-                      <div className="popover-subagents" role="list">
-                        {session.subagents.map((node) => (
-                          <SubagentRow key={node.id} node={node} />
-                        ))}
+                      <>
+                        <div className="popover-subagents" role="list">
+                          {session.subagents.map((node) => (
+                            <SubagentRow key={node.id} node={node} />
+                          ))}
+                        </div>
                         {/* The flat-list disclaimer belongs to the whole list, not any one
                             row (story 010 D6) — `buildSubagentTree` sets `children: []`
                             unconditionally, so a subagent that spawned its own would not be
-                            recognisable as a parent here. */}
+                            recognisable as a parent here. Sibling of `.popover-subagents`
+                            (story 013 D6) so role="list" only ever contains SubagentRows. */}
                         <div className="flat-note">{SUBAGENT_FLAT_LIST_NOTE}</div>
-                      </div>
+                      </>
                     )}
                   </div>
                 )}

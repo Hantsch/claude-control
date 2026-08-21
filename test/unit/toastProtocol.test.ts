@@ -9,6 +9,7 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  buildProtocolRegistration,
   buildToastXml,
   parseToastAction,
   protocolClientTarget,
@@ -125,5 +126,58 @@ describe('protocolClientTarget', () => {
       path: 'C:/electron/electron.exe',
       args: [resolve('out/main/index.js')],
     });
+  });
+});
+
+describe('buildProtocolRegistration', () => {
+  it('is unsupported off Windows, regardless of the target or outcome', () => {
+    expect(buildProtocolRegistration('darwin', {}, { ok: true }, 'C:/app/ClaudeControl.exe')).toEqual({
+      state: 'unsupported',
+    });
+    expect(buildProtocolRegistration('linux', {}, { ok: false }, '/usr/bin/claude-control')).toEqual({
+      state: 'unsupported',
+    });
+  });
+
+  it('registers with the explicit path and args in dev', () => {
+    const target = { path: 'C:/electron/electron.exe', args: [resolve('out/main/index.js')] };
+    expect(buildProtocolRegistration('win32', target, { ok: true }, 'C:/electron/electron.exe')).toEqual({
+      state: 'registered',
+      path: 'C:/electron/electron.exe',
+      args: [resolve('out/main/index.js')],
+    });
+  });
+
+  it('registers with process.execPath when packaged and non-portable (no explicit target path)', () => {
+    const target = protocolClientTarget({}, 'C:/app/ClaudeControl.exe', true, undefined);
+    const registration = buildProtocolRegistration('win32', target, { ok: true }, 'C:/app/ClaudeControl.exe');
+    expect(registration).toEqual({
+      state: 'registered',
+      path: 'C:/app/ClaudeControl.exe',
+      args: [],
+    });
+    expect(JSON.stringify(registration)).not.toContain('<installed exe>');
+  });
+
+  it('is failed with a reason when setAsDefaultProtocolClient throws', () => {
+    const registration = buildProtocolRegistration(
+      'win32',
+      {},
+      { ok: false, error: new Error('registry access denied') },
+      'C:/app/ClaudeControl.exe',
+    );
+    expect(registration.state).toBe('failed');
+    expect(registration).toMatchObject({ path: 'C:/app/ClaudeControl.exe' });
+    if (registration.state === 'failed') {
+      expect(registration.reason).toContain('registry access denied');
+    }
+  });
+
+  it('is failed with a reason when setAsDefaultProtocolClient just returns false', () => {
+    const registration = buildProtocolRegistration('win32', {}, { ok: false }, 'C:/app/ClaudeControl.exe');
+    expect(registration.state).toBe('failed');
+    if (registration.state === 'failed') {
+      expect(registration.reason.length).toBeGreaterThan(0);
+    }
   });
 });

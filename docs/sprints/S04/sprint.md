@@ -17,7 +17,7 @@ per-group totals. Alongside it, the four points S01–S03 left open are closed.
 ## Stories (in build order)
 
 - [x] 006 — Activity matrix and history attribution (built, live acceptance pending — P2)
-- [ ] 013 — S03 residuals — report what was registered, rank what is unseen
+- [x] 013 — S03 residuals — report what was registered, rank what is unseen (built, live acceptance pending — P2)
 
 ## Notes
 

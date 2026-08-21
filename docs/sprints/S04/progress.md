@@ -15,3 +15,16 @@
 - 2026-08-21 19:48 · 006 · D8 N5 measurement · started
 - 2026-08-21 19:48 · 006 · D8 N5 measurement · done
 - 2026-08-21 20:05 · 006 · Story review + fixes + Done section · done (in-progress: live smoke pending)
+- 2026-08-21 20:08 · 013 · D1 protocol registration record (pure) · started
+- 2026-08-21 20:10 · 013 · D1 protocol registration record (pure) · done
+- 2026-08-21 20:10 · 013 · D2 report it instead of recomputing it · started
+- 2026-08-21 20:11 · 013 · D2 report it instead of recomputing it · done
+- 2026-08-21 20:11 · 013 · D3 Diagnostics renders the truth · started
+- 2026-08-21 20:15 · 013 · D3 Diagnostics renders the truth · done
+- 2026-08-21 20:15 · 013 · D5 contrast to target in both schemes · started
+- 2026-08-21 20:17 · 013 · D5 contrast to target in both schemes · done
+- 2026-08-21 20:17 · 013 · D6 subagent list announces what it renders · started
+- 2026-08-21 20:20 · 013 · D6 subagent list announces what it renders · done
+- 2026-08-21 20:20 · 013 · D4 seen-aware popover group order · started
+- 2026-08-21 20:24 · 013 · D4 seen-aware popover group order · done
+- 2026-08-21 20:33 · 013 · Story review + fixes + Done section · done (in-progress: live smoke pending)

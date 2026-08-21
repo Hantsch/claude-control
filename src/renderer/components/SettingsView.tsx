@@ -383,7 +383,13 @@ export function SettingsView(): React.JSX.Element {
             <dt>Focus backend</dt>
             <dd>{diagnostics.focusBackend}</dd>
             <dt>Toast button target</dt>
-            <dd className="mono">{diagnostics.protocolTarget}</dd>
+            {diagnostics.protocolTarget.state === 'registered' && (
+              <dd className="mono">{diagnostics.protocolTarget.path}</dd>
+            )}
+            {diagnostics.protocolTarget.state === 'failed' && (
+              <dd className="warning">not registered — toast buttons will not work</dd>
+            )}
+            {diagnostics.protocolTarget.state === 'unsupported' && <dd>n/a — Windows only</dd>}
             <dt>Version</dt>
             <dd>
               {diagnostics.appVersion} · Electron {diagnostics.electronVersion} · {diagnostics.platform}

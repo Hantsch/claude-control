@@ -19,12 +19,15 @@ import {
   windowForModel,
 } from '../../src/core/state/contextPressure.ts';
 import {
+  STATUS_SORT_RANK,
   attentionCount,
   groupSessions,
+  popoverGroupRank,
   selectTraySessions,
   trayIconFor,
   trayStateFor,
 } from '../../src/core/state/aggregate.ts';
+import type { ProjectGroup } from '../../src/core/state/aggregate.ts';
 import { NotificationGate, decideNotification, firstSentence } from '../../src/core/state/notifications.ts';
 import { cleanPromptText } from '../../src/core/adapters/claude/summarize.ts';
 import { InMemorySessionStore } from '../../src/core/store/sessionStore.ts';
@@ -286,6 +289,90 @@ describe('tray aggregation', () => {
       view({ sessionId: 'b', status: 'done' }),
     ]);
     expect(groups[0]!.statusCounts).toEqual([{ status: 'done', count: 2 }]);
+  });
+});
+
+describe('popover group order', () => {
+  const project = (name: string): SessionView['project'] => ({
+    path: `c:\\dev\\${name}`,
+    name,
+    key: `c:/dev/${name}`,
+  });
+
+  /** Exactly the sort `popover.tsx` runs over `groupSessions`. */
+  const popoverOrder = (groups: ProjectGroup[]): string[] =>
+    [...groups]
+      .sort((a, b) => {
+        const rank = popoverGroupRank(a) - popoverGroupRank(b);
+        if (rank !== 0) return rank;
+        return a.project.name.localeCompare(b.project.name);
+      })
+      .map((group) => group.project.name);
+
+  /** The pre-013 order: rank of the group's first row only, then project name. */
+  const legacyOrder = (groups: ProjectGroup[]): string[] =>
+    [...groups]
+      .sort((a, b) => {
+        const rank = STATUS_SORT_RANK[a.sessions[0]!.status] - STATUS_SORT_RANK[b.sessions[0]!.status];
+        if (rank !== 0) return rank;
+        return a.project.name.localeCompare(b.project.name);
+      })
+      .map((group) => group.project.name);
+
+  it('sinks a project whose waiting session was already seen below one with unseen news', () => {
+    const groups = groupSessions([
+      view({ sessionId: 'a', status: 'waiting', seen: true, project: project('alpha') }),
+      view({ sessionId: 'b', status: 'waiting', project: project('beta') }),
+    ]);
+    const alpha = groups.find((group) => group.project.name === 'alpha')!;
+    const beta = groups.find((group) => group.project.name === 'beta')!;
+
+    // Demoted below `ended`, keeping waiting-before-done inside the demoted band.
+    expect(popoverGroupRank(alpha)).toBe(STATUS_SORT_RANK.ended + 1 + STATUS_SORT_RANK.waiting);
+    expect(popoverGroupRank(beta)).toBe(STATUS_SORT_RANK.waiting);
+    expect(popoverGroupRank(beta)).toBeLessThan(popoverGroupRank(alpha));
+    expect(popoverOrder(groups)).toEqual(['beta', 'alpha']);
+    // Both first rows are `waiting`, so the old sort tied and fell back to the name.
+    expect(legacyOrder(groups)).toEqual(['alpha', 'beta']);
+  });
+
+  it('leaves the order exactly as it was when nothing has been seen', () => {
+    const groups = groupSessions([
+      view({ sessionId: 'a', status: 'working', project: project('alpha') }),
+      view({ sessionId: 'b', status: 'done', project: project('alpha') }),
+      view({ sessionId: 'c', status: 'waiting', project: project('beta') }),
+      view({ sessionId: 'd', status: 'working', project: project('gamma') }),
+    ]);
+
+    expect(popoverOrder(groups)).toEqual(['beta', 'alpha', 'gamma']);
+    expect(popoverOrder(groups)).toEqual(legacyOrder(groups));
+  });
+
+  it('demotes the group but not the rows inside it', () => {
+    const groups = groupSessions([
+      view({ sessionId: 'seen-waiting', status: 'waiting', seen: true, project: project('alpha') }),
+      view({ sessionId: 'unseen-done', status: 'done', project: project('alpha') }),
+      view({ sessionId: 'unseen-waiting', status: 'waiting', project: project('beta') }),
+    ]);
+    const alpha = groups.find((group) => group.project.name === 'alpha')!;
+
+    // The group is ranked by its unseen `done` — scanning all sessions, not just the first row.
+    expect(popoverGroupRank(alpha)).toBe(STATUS_SORT_RANK.done);
+    expect(popoverOrder(groups)).toEqual(['beta', 'alpha']);
+    // `compareSessions` is untouched: the seen `waiting` is still alpha's first displayed row.
+    expect(alpha.sessions.map((session) => session.sessionId)).toEqual([
+      'seen-waiting',
+      'unseen-done',
+    ]);
+  });
+
+  it('keeps a seen done below a seen waiting, both below ended', () => {
+    const groups = groupSessions([
+      view({ sessionId: 'a', status: 'done', seen: true, project: project('alpha') }),
+      view({ sessionId: 'b', status: 'waiting', seen: true, project: project('beta') }),
+      view({ sessionId: 'c', status: 'ended', project: project('gamma') }),
+    ]);
+    expect(popoverOrder(groups)).toEqual(['gamma', 'beta', 'alpha']);
   });
 });
 

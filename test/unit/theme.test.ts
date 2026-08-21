@@ -15,11 +15,11 @@
  *    Both sides of that comparison are recomputed from this file on every run — reverting a
  *    light value to its dark twin therefore cannot slip through as a trivially true `>=`.
  *
- * Deliberately *not* asserted, so the reasons are recorded rather than silently dropped:
- * `--text-faint` on `--bg-active` (2.75:1 light, 2.81:1 dark) and the 1.3:1 hairline
- * separators — both are pre-existing properties of the neutral surface tokens (007 D1) and
- * neither scheme meets 3:1 there, so those two get a parity check against dark instead of a
- * target they would both fail.
+ * Deliberately *not* asserted, so the reason is recorded rather than silently dropped: the
+ * 1.3:1 hairline separators (`--border`, the scrollbar-thumb pairing of `--bg-active` on
+ * `--bg-raised`) are a pre-existing property of the neutral surface tokens (007 D1) and
+ * neither scheme meets 3:1 there, so that one gets a parity check against dark instead of a
+ * target it would fail.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -318,6 +318,36 @@ describe('light scheme contrast', () => {
       expect(trough(light, surface), `pulse trough on --${surface}`).toBeGreaterThanOrEqual(
         trough(dark, surface),
       );
+    }
+  });
+});
+
+describe('both schemes contrast to target', () => {
+  it('holds --text-faint at 3:1 or better on --bg-active, in both schemes', () => {
+    for (const [name, scheme] of [
+      ['dark', dark],
+      ['light', light],
+    ] as const) {
+      const ratio = contrast(token(scheme, 'text-faint'), token(scheme, 'bg-active'));
+      expect(ratio, `${name} --text-faint on --bg-active`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('keeps the faded .muted body text at 4.5:1 or better on every surface, in both schemes', () => {
+    // A muted row can also be selected (`--bg-active`), so all four surfaces are in play, not
+    // just the two page backgrounds — that selected+muted combination is exactly where the
+    // pre-fix 0.6 opacity fell short (4.09:1) even though the page-surface cases alone looked
+    // fine.
+    for (const [name, scheme] of [
+      ['dark', dark],
+      ['light', light],
+    ] as const) {
+      const alpha = Number.parseFloat(token(scheme, 'muted-opacity'));
+      for (const surface of SURFACES) {
+        const backdrop = token(scheme, surface);
+        const ratio = contrast(faded(token(scheme, 'text'), backdrop, alpha), backdrop);
+        expect(ratio, `${name} .muted text on --${surface}`).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 });

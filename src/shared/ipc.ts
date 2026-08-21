@@ -84,6 +84,18 @@ export interface ShortcutStatus {
   error: string | null;
 }
 
+/**
+ * Outcome of registering `claude-control://` with `app.setAsDefaultProtocolClient` (D4/D1 of
+ * story 013) — a discriminated union rather than a formatted string, so a failure can be told
+ * apart from a path by callers (e.g. Settings → Diagnostics). Defined here, not in
+ * `main/toast-protocol.ts`, because this file is also part of the renderer's TS project
+ * (`tsconfig.web.json`), which cannot reference anything under `main/`.
+ */
+export type ProtocolRegistration =
+  | { state: 'registered'; path: string; args: string[] }
+  | { state: 'failed'; path: string; reason: string }
+  | { state: 'unsupported' };
+
 export interface DiagnosticsInfo {
   claudeDir: string;
   adapterId: string;
@@ -97,7 +109,7 @@ export interface DiagnosticsInfo {
    * this session on Windows. Lets a user tell whether it still points at a portable EXE that
    * has since moved or been deleted.
    */
-  protocolTarget: string;
+  protocolTarget: ProtocolRegistration;
 }
 
 export const IPC = {

@@ -13,6 +13,7 @@
  */
 
 import { resolve } from 'node:path';
+import type { ProtocolRegistration } from '../shared/ipc.ts';
 
 /** Registered with `app.setAsDefaultProtocolClient` (Windows only — see index.ts). */
 export const TOAST_PROTOCOL = 'claude-control';
@@ -138,6 +139,45 @@ export function protocolClientTarget(
   if (portableExe) return { path: portableExe };
   if (isPackaged || !script) return {};
   return { path: execPath, args: [resolve(script)] };
+}
+
+/**
+ * {@link ProtocolRegistration} — re-exported here for callers that already import from this
+ * module. Defined in `shared/ipc.ts` (not here) because that file is also part of the
+ * renderer's TS project and cannot reference anything under `main/`.
+ */
+export type { ProtocolRegistration };
+
+/**
+ * What actually happened when the Electron call in D4 ran — a plain-data stand-in for the real
+ * `app.setAsDefaultProtocolClient` result so this stays testable without Electron. `ok: false`
+ * covers both a thrown error and a plain `false` return (no `error`).
+ */
+export type ProtocolRegistrationOutcome = { ok: true } | { ok: false; error?: unknown };
+
+/**
+ * Pure builder: platform + {@link protocolClientTarget}'s result + the registration outcome →
+ * {@link ProtocolRegistration}. `execPath` is only used as the reported path when `target.path`
+ * is absent — the packaged, non-portable case, where `setAsDefaultProtocolClient(scheme)` is
+ * called with no explicit path and Windows registers `process.execPath` for it.
+ */
+export function buildProtocolRegistration(
+  platform: NodeJS.Platform,
+  target: ProtocolClientTarget,
+  outcome: ProtocolRegistrationOutcome,
+  execPath: string,
+): ProtocolRegistration {
+  if (platform !== 'win32') return { state: 'unsupported' };
+
+  const path = target.path ?? execPath;
+  if (!outcome.ok) {
+    const reason =
+      outcome.error === undefined
+        ? 'setAsDefaultProtocolClient returned false'
+        : String(outcome.error instanceof Error ? outcome.error.message : outcome.error);
+    return { state: 'failed', path, reason };
+  }
+  return { state: 'registered', path, args: target.args ?? [] };
 }
 
 function escapeXml(text: string): string {

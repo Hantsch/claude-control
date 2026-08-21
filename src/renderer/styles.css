@@ -8,7 +8,7 @@
   --border: #2a2a30;
   --text: #e8e8ea;
   --text-dim: #9a9aa2;
-  --text-faint: #6a6a72;
+  --text-faint: #7d7d85;
   --accent: #7c8cff;
 
   --status-waiting: #ff9f0a;
@@ -48,7 +48,7 @@
     --border: #d8d8dd;
     --text: #1c1c1f;
     --text-dim: #55555c;
-    --text-faint: #86868d;
+    --text-faint: #74747b;
     --accent: #4f5bd5;
 
     /* Semantic hues retuned for a light surface (007 D3). Every one of them is painted as a
@@ -80,7 +80,7 @@
     --error-border: #e0a8a8;
     --row-divider: #e4e4e9;
 
-    --muted-opacity: 0.6;
+    --muted-opacity: 0.65;
     --pulse-min: 0.55;
     --halo-strength: 25%;
 
@@ -784,6 +784,10 @@ table.history .title {
   color: var(--status-waiting);
 }
 
+.kv dd.warning {
+  color: var(--status-waiting);
+}
+
 .tool-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -1405,8 +1409,9 @@ table.history .title {
 }
 
 /* Flat-hierarchy disclaimer (story 010 D6) — once below the whole subagent list, mirroring
-   the prototype's `.flatnote` idiom under this project's `.popover-*` prefix. */
-.popover-subagents .flat-note {
+   the prototype's `.flatnote` idiom under this project's `.popover-*` prefix. Sibling of
+   `.popover-subagents`, not a child (story 013 D6 — role="list" must contain only rows). */
+.popover-subagents + .flat-note {
   font-size: 10px;
   color: var(--text-faint);
   font-style: italic;

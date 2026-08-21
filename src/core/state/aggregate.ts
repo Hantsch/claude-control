@@ -185,6 +185,31 @@ export function compareSessions(a: SessionView, b: SessionView): number {
   return (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt);
 }
 
+/**
+ * Rank of a project group for the *popover's* group order — lower sorts first.
+ *
+ * It is the lowest effective rank over **all** sessions of the group, not the rank of the
+ * first row: an unseen `done` further down a group still makes that project more interesting
+ * than one whose only news has already been acknowledged.
+ *
+ * A session that wants attention but has been seen is demoted below every ordinary status —
+ * it is still `waiting`, but it is no longer *news*, so it must not pin its project to the
+ * top of the popover forever with no way to dismiss it. The demoted band sits below `ended`
+ * and keeps the normal waiting-before-done order inside itself.
+ *
+ * Deliberately popover-only: `compareSessions` (and with it the row order inside a group and
+ * the main window's list) is untouched.
+ */
+export function popoverGroupRank(group: ProjectGroup): number {
+  let rank = Number.POSITIVE_INFINITY;
+  for (const session of group.sessions) {
+    const base = STATUS_SORT_RANK[session.status];
+    const effective = isSeenAttention(session) ? STATUS_SORT_RANK.ended + 1 + base : base;
+    if (effective < rank) rank = effective;
+  }
+  return rank;
+}
+
 /** Distinct projects across a session list, for the project filter (F8). */
 export function distinctProjects(sessions: readonly { project: ProjectRef }[]): ProjectRef[] {
   const byKey = new Map<string, ProjectRef>();

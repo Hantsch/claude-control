@@ -571,3 +571,4 @@ UI exists.
 | **Registry staleness on crash** | Unverified whether `sessions/<pid>.json` is always cleaned up. Mitigated by PID + `procStart` cross-check on every 5 s tick. |
 | **Transcript schema drift** | The JSONL format is internal to Claude Code and can change without notice (observed version: `2.1.222`). The parser must degrade to `unknown` rather than crash, and the version is recorded per record so drift is detectable. |
 | **Electron footprint** | ~150 MB RSS, knowingly accepted for a tool that runs all day. Revisit only if it becomes a problem in practice. |
+| **Reported status field** | Not found (see RESEARCH.md §1): `status`, `waitingFor`, and `updatedAt` are all absent from the registry across 10 sampled `claude-vscode` sessions (2026-08-13, Claude Code `2.1.228`/`2.1.229`). If Claude Code later exposes an authoritative upstream status field, it would supersede the §6.2 derivation for the states it covers. |

@@ -65,6 +65,15 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
 
       <div className="estimate" title={STATUS_HINT[session.status]}>
         {STATUS_LABEL[session.status]} — {session.statusReason}
+        {session.statusSource === 'reported' && (
+          <span
+            className="status-source-badge"
+            title="Claude Code's own registry reported this status, rather than it being inferred from the transcript."
+          >
+            {' '}
+            reported by Claude Code
+          </span>
+        )}
       </div>
 
       <dl className="kv">

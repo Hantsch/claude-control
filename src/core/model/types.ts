@@ -36,6 +36,13 @@ export interface LiveSessionRef {
   transcriptPath: string | null;
   /** File the ref was read from, for diagnostics. */
   source: string;
+  /**
+   * Optional, agent-reported facts from the registry. Absent on all Claude Code versions
+   * observed so far (RESEARCH.md §1) — kept for forward compatibility only.
+   */
+  reportedStatus: string | null;
+  waitingFor: string | null;
+  reportedAt: number | null;
 }
 
 export interface UsageTotals {
@@ -272,6 +279,8 @@ export interface SessionView {
   status: SessionStatus;
   /** Why the machine chose this status — shown in the detail pane, useful when debugging. */
   statusReason: string;
+  /** Where `status` came from: the agent's own registry report, or our own inference (§1). */
+  statusSource: 'reported' | 'inferred';
   /** When the session entered `status`. */
   statusSince: number;
   /**

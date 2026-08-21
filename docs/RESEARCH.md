@@ -44,6 +44,19 @@ registry entry is stale.
 **Unverified:** whether the file is removed reliably on crash or hard kill. The design
 therefore treats the registry as a *candidate list* and always cross-checks the PID.
 
+**No `status`, `waitingFor`, or `updatedAt` field exists in the registry file.** These
+three fields were specifically looked for as a possible authoritative source for session
+state (see §6.2 of [CONCEPT.md](CONCEPT.md)), and their absence was confirmed.
+
+Verification: all 10 live session files present on the machine on 2026-08-13 (Claude Code
+`2.1.228` and `2.1.229`) were inspected; none contained `status`, `waitingFor`, or
+`updatedAt`, or any field resembling them.
+
+**Unverified:** all 10 sampled files had `entrypoint: "claude-vscode"`. Whether a
+`status`/`waitingFor`/`updatedAt` field exists for other entrypoints (e.g. plain CLI,
+non-VS Code) was not checked, so this negative finding is scoped to `claude-vscode`
+sessions.
+
 ---
 
 ## 2. Transcripts — `~/.claude/projects/<slug>/<sessionId>.jsonl`

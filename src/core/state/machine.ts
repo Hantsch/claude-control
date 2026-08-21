@@ -38,6 +38,15 @@ export interface DeriveInput {
   facts: TranscriptTailFacts;
   now: number;
   thresholds: Thresholds;
+  /**
+   * Registry-reported status, when the agent published one (§1, D3). Absent on every
+   * Claude Code version observed so far, so every rule below still has to stand on its own.
+   */
+  reported?: {
+    status: string | null;
+    waitingFor: string | null;
+    at: number | null;
+  } | null;
 }
 
 export interface DeriveResult {
@@ -48,13 +57,35 @@ export interface DeriveResult {
   ageMs: number | null;
   /** Threshold that was applied to an unpaired tool call, when one was. */
   appliedWorkMs: number | null;
+  /** Whether the agent told us this status or we inferred it from the transcript. */
+  statusSource: 'reported' | 'inferred';
 }
 
 export function deriveStatus(input: DeriveInput): DeriveResult {
   const { alive, facts, now, thresholds } = input;
 
   if (!alive) {
-    return { status: 'ended', reason: 'process is no longer alive', ageMs: null, appliedWorkMs: null };
+    return {
+      status: 'ended',
+      reason: 'process is no longer alive',
+      ageMs: null,
+      appliedWorkMs: null,
+      statusSource: 'inferred',
+    };
+  }
+
+  // The agent's own word outranks everything we could infer from the transcript — but only
+  // for `waiting`, the one state the tail cannot see reliably (a permission prompt leaves no
+  // record). No staleness check: a reported `waiting` stands until the agent says otherwise,
+  // however old `reported.at` is. Anything else reported is carried, never acted on.
+  if (input.reported?.status === 'waiting') {
+    return {
+      status: 'waiting',
+      reason: `Claude Code reported waiting for ${input.reported.waitingFor ?? 'a permission prompt or a question'}`,
+      ageMs: facts.last ? Math.max(0, now - facts.last.at) : null,
+      appliedWorkMs: null,
+      statusSource: 'reported',
+    };
   }
 
   const last = facts.last;
@@ -66,6 +97,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
         reason: 'no semantic record in the tail window, but a prompt is enqueued',
         ageMs: null,
         appliedWorkMs: null,
+        statusSource: 'inferred',
       };
     }
     // The read succeeded and covered the whole transcript (`startOffset === 0`, which a
@@ -77,6 +109,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
         reason: 'session is open but has not exchanged a message yet',
         ageMs: null,
         appliedWorkMs: null,
+        statusSource: 'inferred',
       };
     }
     return {
@@ -88,6 +121,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
           : 'transcript contains no user/assistant record'),
       ageMs: null,
       appliedWorkMs: null,
+      statusSource: 'inferred',
     };
   }
 
@@ -149,7 +183,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
     reason = 'a prompt is enqueued and has not started yet';
   }
 
-  return { status, reason, ageMs, appliedWorkMs };
+  return { status, reason, ageMs, appliedWorkMs, statusSource: 'inferred' };
 }
 
 /**

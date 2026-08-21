@@ -138,6 +138,9 @@ export class ClaudeAdapter implements AgentAdapter {
         procStart: entry.procStart,
         transcriptPath: await this.resolveTranscriptPath(entry),
         source: entry.file,
+        reportedStatus: entry.reportedStatus,
+        waitingFor: entry.waitingFor,
+        reportedAt: entry.reportedAt,
       });
     }
     return refs;

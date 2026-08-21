@@ -389,6 +389,11 @@ export class ControlEngine {
       facts,
       now: at,
       thresholds: this.settings.thresholds,
+      reported: {
+        status: ref.reportedStatus,
+        waitingFor: ref.waitingFor,
+        at: ref.reportedAt,
+      },
     });
 
     return {
@@ -397,6 +402,7 @@ export class ControlEngine {
       title: facts.aiTitle ?? facts.lastPromptText ?? null,
       status: derived.status,
       statusReason: derived.reason,
+      statusSource: derived.statusSource,
       // 0 lets the store stamp the moment the status actually changed.
       statusSince: 0,
       // The store owns acknowledgement — it is the only thing that survives a re-read.

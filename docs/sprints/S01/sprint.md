@@ -1,7 +1,7 @@
 ---
 sprint: S01
-status: planned # planned | in-progress | done
-branch: # set by /sprint
+status: in-progress # planned | in-progress | done
+branch: sprint/S01
 milestone: M1 — Popover at a glance
 ---
 
@@ -16,7 +16,7 @@ for the popover's status read.
 
 ## Stories (in build order)
 
-- [ ] 001 — Registry status field — record its absence, use it if it returns
+- [x] 001 — Registry status field — record its absence, use it if it returns
 - [ ] 002 — Popover at a glance
 
 ## Notes

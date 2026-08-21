@@ -43,6 +43,7 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     name: overrides.sessionId,
     title: null,
     statusReason: 'test',
+    statusSource: 'inferred',
     statusSince: 0,
     seen: false,
     project: { path: 'c:\\dev\\proj', name: 'proj', key: 'c:/dev/proj' },

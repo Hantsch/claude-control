@@ -5,3 +5,7 @@ Format: `- NNN — <title> · <sprint or —> · <one-sentence result>`.
 
 The full texts live next to this file. This index is the fast overview — do not turn it into a
 second roadmap.
+
+- 001 — Registry status field — record its absence, use it if it returns · S01 · Documented the
+  field's absence on all sampled Claude Code versions and wired a highest-priority, non-decaying
+  `waiting` override plus reported/inferred provenance through the state machine, engine and UI.

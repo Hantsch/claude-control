@@ -99,6 +99,69 @@ describe('discovery and status through the adapter', () => {
     expect(snapshot.project.name).toBe('claude-control');
   });
 
+  it('parses the optional agent-reported registry fields when present', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(
+      LIVE_PID,
+      registryEntry({
+        pid: LIVE_PID,
+        sessionId: 'sess-reported',
+        status: 'Working',
+        waitingFor: 'user-input',
+        updatedAt: T0,
+      }),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
+    const refs = await adapter.discoverLiveSessions();
+    expect(refs).toHaveLength(1);
+    expect(refs[0]!.reportedStatus).toBe('working');
+    expect(refs[0]!.waitingFor).toBe('user-input');
+    expect(refs[0]!.reportedAt).toBe(T0);
+  });
+
+  it('parses an ISO-8601 `updatedAt` into epoch ms', async () => {
+    const tree = await makeFixtureTree();
+    const iso = new Date(T0).toISOString();
+    await tree.writeRegistry(
+      LIVE_PID,
+      registryEntry({ pid: LIVE_PID, sessionId: 'sess-iso', updatedAt: iso }),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
+    const refs = await adapter.discoverLiveSessions();
+    expect(refs[0]!.reportedAt).toBe(T0);
+  });
+
+  it('leaves the optional agent-reported fields null when absent, same as today', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-plain' }));
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
+    const refs = await adapter.discoverLiveSessions();
+    expect(refs[0]!.reportedStatus).toBeNull();
+    expect(refs[0]!.waitingFor).toBeNull();
+    expect(refs[0]!.reportedAt).toBeNull();
+  });
+
+  it('turns junk values for the optional fields into null instead of throwing', async () => {
+    const tree = await makeFixtureTree();
+    const entry = {
+      ...registryEntry({ pid: LIVE_PID, sessionId: 'sess-junk' }),
+      status: 123,
+      waitingFor: { nope: true },
+      updatedAt: 'not a date',
+    };
+    await tree.writeRegistry(LIVE_PID, entry);
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
+    const refs = await adapter.discoverLiveSessions();
+    expect(refs).toHaveLength(1);
+    expect(refs[0]!.reportedStatus).toBeNull();
+    expect(refs[0]!.waitingFor).toBeNull();
+    expect(refs[0]!.reportedAt).toBeNull();
+  });
+
   it('drops a stale registry entry whose PID belongs to an unrelated process', async () => {
     const tree = await makeFixtureTree();
     // The PID is alive, but it was created 10 minutes after the session was registered.

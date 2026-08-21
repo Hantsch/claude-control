@@ -328,8 +328,11 @@ export function registryEntry(options: {
   name?: string;
   startedAt?: number;
   procStartMs?: number;
+  status?: string;
+  waitingFor?: string;
+  updatedAt?: number | string;
 }): Record<string, unknown> {
-  return {
+  const entry: Record<string, unknown> = {
     pid: options.pid,
     sessionId: options.sessionId,
     cwd: options.cwd ?? 'c:\\development\\Hantsch\\claude-control',
@@ -342,6 +345,10 @@ export function registryEntry(options: {
     name: options.name ?? `claude-control-${options.pid}`,
     nameSource: 'derived',
   };
+  if (options.status !== undefined) entry.status = options.status;
+  if (options.waitingFor !== undefined) entry.waitingFor = options.waitingFor;
+  if (options.updatedAt !== undefined) entry.updatedAt = options.updatedAt;
+  return entry;
 }
 
 /** IDE lock in the shape of RESEARCH.md §3, including the `authToken` that must not leak. */

@@ -168,7 +168,9 @@ function printSession(session: SessionView, options: CliOptions): void {
       `${pad(age, 8)} ctx=${pad(context, 6)} ${session.model ?? '—'}${tool}${subagents}\n`,
   );
   if (options.verbose) {
-    process.stdout.write(`        why: ${session.statusReason}\n`);
+    const source =
+      session.statusSource === 'reported' ? 'reported by Claude Code' : 'inferred from transcript';
+    process.stdout.write(`        why: ${session.statusReason} (${source})\n`);
     process.stdout.write(`        pid=${session.pid} entrypoint=${session.entrypoint} v${session.agentVersion ?? '?'}\n`);
     const run = session.run
       ? `${formatAge(

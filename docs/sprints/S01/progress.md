@@ -1,0 +1,9 @@
+- 2026-08-21 08:42 · 001 · D1 Negative finding in the record · started
+- 2026-08-21 08:42 · 001 · D1 Negative finding in the record · done
+- 2026-08-21 08:42 · 001 · D2 Registry parses the optional fields · started
+- 2026-08-21 08:45 · 001 · D2 Registry parses the optional fields · done
+- 2026-08-21 08:45 · 001 · D3 Highest-priority reported rule + provenance · started
+- 2026-08-21 08:48 · 001 · D3 Highest-priority reported rule + provenance · done
+- 2026-08-21 08:48 · 001 · D4 Provenance visible · started
+- 2026-08-21 08:50 · 001 · D4 Provenance visible · done
+- 2026-08-21 09:02 · 001 · story complete, live smoke passed via CLI, status done, moved to done/ · done

@@ -26,6 +26,13 @@ export interface RegistryEntry {
   /** File the entry was read from. */
   file: string;
   mtimeMs: number;
+  /**
+   * Optional, agent-reported facts. Absent on all Claude Code versions observed so far
+   * (RESEARCH.md §1) — kept for forward compatibility only.
+   */
+  reportedStatus: string | null;
+  waitingFor: string | null;
+  reportedAt: number | null;
 }
 
 export interface RegistryReadResult {
@@ -100,6 +107,11 @@ export function parseRegistryEntry(
     procStart: str(raw.procStart),
     file,
     mtimeMs,
+    // Raw key is `status`, not `reportedStatus` — that is our internal field name, chosen to
+    // avoid colliding with the derived `SessionStatus` elsewhere in the model.
+    reportedStatus: str(raw.status)?.trim().toLowerCase() ?? null,
+    waitingFor: str(raw.waitingFor),
+    reportedAt: dateMs(raw.updatedAt),
   };
 }
 
@@ -109,6 +121,16 @@ function str(value: unknown): string | null {
 
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Accepts an epoch-ms number or an ISO-8601 string; `null` for anything else, never throws. */
+function dateMs(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function describe(error: unknown): string {

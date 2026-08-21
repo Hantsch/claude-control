@@ -312,6 +312,8 @@ describe('deriveStatus', () => {
     it(row.name, () => {
       const result = derive(row.records, row.at, row.alive ?? true);
       expect(result.status, result.reason).toBe(row.expected);
+      // No row passes a `reported` block, so every verdict in the table stays our own (AC 4).
+      expect(result.statusSource, row.name).toBe('inferred');
     });
   }
 
@@ -353,6 +355,85 @@ describe('deriveStatus', () => {
     expect(
       deriveStatus({ alive: true, facts: queued, now: T0, thresholds: DEFAULT_THRESHOLDS }).status,
     ).toBe('queued');
+  });
+
+  describe('a registry-reported status (§1)', () => {
+    /** A transcript that derives `done` entirely on its own — the rule has to beat it. */
+    const finished = [assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn', text: 'All set.' })];
+    /** …and one that derives `working`, to show it is not just the passive states. */
+    const busy = [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] })];
+
+    function withReported(
+      records: Record<string, unknown>[],
+      reported: { status: string | null; waitingFor: string | null; at: number | null },
+      alive = true,
+    ) {
+      const at = T0 + 2 * SECOND;
+      return deriveStatus({
+        alive,
+        facts: facts(records, at),
+        now: at,
+        thresholds: DEFAULT_THRESHOLDS,
+        reported,
+      });
+    }
+
+    it('overrides a transcript that would otherwise be done', () => {
+      const result = withReported(finished, { status: 'waiting', waitingFor: 'permission prompt', at: T0 });
+      expect(result.status).toBe('waiting');
+      expect(result.statusSource).toBe('reported');
+      expect(result.reason).toContain('Claude Code');
+      expect(result.reason).toContain('permission prompt');
+    });
+
+    it('overrides a transcript that would otherwise be working', () => {
+      const result = withReported(busy, { status: 'waiting', waitingFor: 'permission prompt', at: T0 });
+      expect(result.status).toBe('waiting');
+      expect(result.statusSource).toBe('reported');
+    });
+
+    it('never goes stale — an ancient reportedAt still wins immediately', () => {
+      // No staleness threshold anywhere in this rule: the agent's word stands until it
+      // publishes a different one, so a week-old stamp changes nothing.
+      const ancient = withReported(finished, {
+        status: 'waiting',
+        waitingFor: 'permission prompt',
+        at: T0 - 7 * 24 * 60 * MINUTE,
+      });
+      expect(ancient.status).toBe('waiting');
+      expect(ancient.statusSource).toBe('reported');
+      // …and a missing stamp is just as good.
+      expect(withReported(finished, { status: 'waiting', waitingFor: 'a question', at: null }).status).toBe(
+        'waiting',
+      );
+    });
+
+    it('names a generic blocker when the agent reported no waitingFor', () => {
+      const result = withReported(finished, { status: 'waiting', waitingFor: null, at: T0 });
+      expect(result.status).toBe('waiting');
+      expect(result.reason).toContain('Claude Code');
+    });
+
+    it('a dead process is still ended, reported waiting or not', () => {
+      const result = withReported(finished, { status: 'waiting', waitingFor: 'permission prompt', at: T0 }, false);
+      expect(result.status).toBe('ended');
+      expect(result.statusSource).toBe('inferred');
+    });
+
+    it('carries any other reported status without acting on it', () => {
+      // Only `waiting` overrides. `busy`/`idle`/anything else is registry noise here.
+      for (const status of ['busy', 'idle', 'running', '', null]) {
+        const result = withReported(finished, { status, waitingFor: null, at: T0 });
+        expect(result.status, `reported=${String(status)}`).toBe('done');
+        expect(result.statusSource, `reported=${String(status)}`).toBe('inferred');
+      }
+    });
+
+    it('reports `inferred` when no reported block is passed at all', () => {
+      const result = derive(finished, 2 * SECOND);
+      expect(result.status).toBe('done');
+      expect(result.statusSource).toBe('inferred');
+    });
   });
 
   it('never throws on garbage records', () => {

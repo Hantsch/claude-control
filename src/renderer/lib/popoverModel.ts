@@ -1,0 +1,139 @@
+/**
+ * Pure view-model helpers for the tray popover (story 010).
+ *
+ * The popover's rules live here rather than inside the JSX because vitest runs without jsdom
+ * in this project — there is no render harness, so anything worth a test has to be a pure
+ * function over `SessionView` data (see the story's Sprint decisions). `popover.tsx` renders
+ * what these return and adds no rules of its own.
+ */
+
+import { STATUS_SORT_RANK } from '../../core/state/aggregate.ts';
+import type { SessionView } from '../../core/model/types.ts';
+import type { SessionStatus, SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
+
+export type SubagentStatus = SubagentNode['status'];
+
+/**
+ * The pip a single subagent gets, mirroring the design prototype's `.sub .pip` classes:
+ * `on` = finished, `run` = still going (running or launched), `fail` = died, and the empty
+ * string for `unknown` — a state we cannot colour honestly, so it stays the neutral base pip.
+ */
+export type SubagentPipClass = 'on' | 'run' | 'fail' | '';
+
+export interface SubagentSummary {
+  /** Subagents that reached `completed`. Nothing else counts as done. */
+  done: number;
+  total: number;
+  /** One entry per subagent, in `session.subagents` order. */
+  pipClasses: SubagentPipClass[];
+  /** Tooltip wording — kept here so it is testable without a DOM. */
+  title: string;
+}
+
+function pipClass(status: SubagentNode['status']): SubagentPipClass {
+  switch (status) {
+    case 'completed':
+      return 'on';
+    case 'failed':
+      return 'fail';
+    case 'running':
+    case 'launched':
+      return 'run';
+    case 'unknown':
+      return '';
+  }
+}
+
+/**
+ * "How many subagents are there, and how many are done" — the one subagent fact the glance
+ * surface owes you without a click (story 010 D1). Returns `null` for a session with no
+ * subagents so the caller can render nothing at all instead of a `0/0` that looks like a
+ * failure.
+ */
+export function subagentSummary(subagents: SubagentNode[]): SubagentSummary | null {
+  if (subagents.length === 0) return null;
+
+  const pipClasses = subagents.map((node) => pipClass(node.status));
+  const done = pipClasses.filter((pip) => pip === 'on').length;
+  const failed = pipClasses.filter((pip) => pip === 'fail').length;
+  const total = subagents.length;
+
+  const title =
+    `${done} of ${total} subagent${total === 1 ? '' : 's'} finished` +
+    (failed > 0 ? `, ${failed} failed` : '');
+
+  return { done, total, pipClasses, title };
+}
+
+export interface GroupStatusCount {
+  status: SessionStatus;
+  count: number;
+}
+
+/**
+ * One entry per distinct `SessionStatus` present in `sessions`, zero-count statuses omitted,
+ * for the collapsible group head's rollup (story 010 D3) — mirrors the design prototype's
+ * `rollup()`. Ordered by `STATUS_SORT_RANK` rather than first-seen order, so the rollup reads
+ * left-to-right in the same urgency order the rows themselves are already sorted by.
+ */
+export function groupStatusRollup(sessions: readonly SessionView[]): GroupStatusCount[] {
+  const counts = new Map<SessionStatus, number>();
+  for (const session of sessions) {
+    counts.set(session.status, (counts.get(session.status) ?? 0) + 1);
+  }
+
+  return (Object.keys(STATUS_SORT_RANK) as SessionStatus[])
+    .sort((a, b) => STATUS_SORT_RANK[a] - STATUS_SORT_RANK[b])
+    .filter((status) => (counts.get(status) ?? 0) > 0)
+    .map((status) => ({ status, count: counts.get(status)! }));
+}
+
+/**
+ * The exact wording for "this subagent is running/launched and has not reported anything
+ * yet" (story 010 D6). Never a `0`, never a placeholder bar — a plain statement that no
+ * interim state exists, because `SubagentNode.metrics` really is `null` until the run's
+ * result arrives (see `hasNumbers` in `core/state/subagents.ts`).
+ */
+export const SUBAGENT_NO_INTERIM_STATE = 'no interim state available';
+
+/**
+ * The disclaimer that belongs once below a session's flat subagent list, not on any one row
+ * (story 010 D6): `buildSubagentTree` sets `children: []` unconditionally, so a subagent that
+ * itself spawned subagents is indistinguishable from one that did not. Exported as a constant
+ * so the UI and its unit test assert on the same string instead of two hand-typed copies.
+ */
+export const SUBAGENT_FLAT_LIST_NOTE =
+  'flat list — a subagent that itself spawned subagents would not be recognisable as a parent here.';
+
+export type SubagentMessageKind = 'error' | 'absent' | 'none';
+
+export interface SubagentMessage {
+  kind: SubagentMessageKind;
+  /** The text to render, or `null` when there is nothing to say (`kind === 'none'`). */
+  text: string | null;
+}
+
+/**
+ * What, if anything, a subagent row's message slot should say — the single decision point
+ * behind D6's three absent-data cases, kept pure so the failure case (which cannot be
+ * provoked on demand in the running app) still has standing unit coverage.
+ *
+ * - `failed` with `errorText` set → `'error'`, the error text itself (band-red on the row).
+ * - `running`/`launched` with `metrics === null` → `'absent'`, `SUBAGENT_NO_INTERIM_STATE`.
+ * - anything else (completed, or a status this transcript could not interpret) → `'none'`.
+ *
+ * A `'error'` result also tells the caller to suppress the row's model/context chip: those
+ * numbers, if present at all, are stale leftovers from before the run died and would read as
+ * a contradiction next to the error text.
+ */
+export function subagentMessage(
+  status: SubagentStatus,
+  metrics: SubagentMetrics | null,
+  errorText: string | null,
+): SubagentMessage {
+  if (status === 'failed' && errorText) return { kind: 'error', text: errorText };
+  if ((status === 'running' || status === 'launched') && metrics === null) {
+    return { kind: 'absent', text: SUBAGENT_NO_INTERIM_STATE };
+  }
+  return { kind: 'none', text: null };
+}

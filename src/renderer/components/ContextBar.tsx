@@ -15,10 +15,13 @@ import { formatTokens } from '../lib/format.ts';
 export function ContextBar({
   context,
   showValue = true,
+  valueFormat = 'percent',
 }: {
   context: ContextPressure | null;
   /** The popover is narrow: there the bar alone carries the message. */
   showValue?: boolean;
+  /** 'tokens' shows the absolute used-token count instead of the percentage; the tooltip is unaffected. */
+  valueFormat?: 'percent' | 'tokens';
 }): React.JSX.Element {
   if (!context) {
     return (
@@ -43,7 +46,11 @@ export function ContextBar({
           style={{ width: `${percent}%`, background: `var(${BAND_COLOR_VAR[context.band]})` }}
         />
       </span>
-      {showValue && <span className="ctx-value">{percent}%</span>}
+      {showValue && (
+        <span className="ctx-value">
+          {valueFormat === 'tokens' ? formatTokens(context.used) : `${percent}%`}
+        </span>
+      )}
     </span>
   );
 }

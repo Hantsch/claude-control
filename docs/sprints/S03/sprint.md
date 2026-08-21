@@ -1,7 +1,7 @@
 ---
 sprint: S03
-status: planned # planned | in-progress | done
-branch: # set by /sprint
+status: in-progress # planned | in-progress | done
+branch: sprint/S03
 milestone: M3 — Popover drill-down · M4 — Light theme
 ---
 
@@ -16,7 +16,7 @@ surface is checked in the light Windows scheme, and the four points S02 left ope
 
 ## Stories (in build order)
 
-- [ ] 010 — Popover drill-down — branch, context, model, subagents
+- [x] 010 — Popover drill-down — branch, context, model, subagents (built, live acceptance pending — no live Electron env in this session)
 - [ ] 011 — Subagent detail — final message and declared model
 - [ ] 007 — Light theme
 - [ ] 012 — S02 residuals — never hide a live session, never steal the focus

@@ -1,7 +1,7 @@
 ---
 id: 012
 title: S02 residuals — never hide a live session, never steal the focus
-status: draft # draft -> ready -> in-progress -> done
+status: ready # draft -> ready -> in-progress -> done
 created: 2026-08-21
 ---
 
@@ -47,6 +47,8 @@ in the cases above, where something wrong stops happening.
       "no window" — an unknown answer never removes a session from the list
 - [ ] The unknown outcome is not cached as a decision: the next tick may still find out, rather
       than being told the stale answer for the rest of the TTL
+- [ ] The unknown outcome is visibly marked on the glance surface (a session shown on a guess is
+      told apart from one the probe actually confirmed), per the Sprint decision below
 - [ ] The existing behaviour is unchanged for the two answers the probe does give, and the
       same-folder filter still hides a genuinely windowless session when a windowed mate exists
 - [ ] A full probe failure remains fail-safe (nothing is dropped), as it is today
@@ -64,39 +66,171 @@ in the cases above, where something wrong stops happening.
 
 ## Open Questions
 
-- **Does the unknown probe result need to be visible anywhere?** A session that is only shown
-  *because* the probe could not decide is being shown on a guess. The honest options are: show
-  it exactly like any other session (silent, fail-safe, and what A asks for), or mark it — which
-  would be a new visual state on the glance surface for a case that lasts one tick.
-  Recommendation: silent — the fail-safe direction is "show it", and a marker for a transient
-  probe hiccup is noise of exactly the kind story 004 removed.
-- **How far should B go?** Three answers, and the cheap one may well be right: (1) re-register
-  the protocol handler on every start and accept that a toast pressed after the app exited can
-  still launch a stale path, (2) register a stable path instead of the temp extraction dir — only
-  possible if there is one for the portable target, which needs checking, or (3) document the
-  limit and leave the code alone. Recommendation: check whether (2) is even available for the
-  `portable` target; if it is not, do (3) — it is the only honest option left, and inventing a
-  launcher shim for a portable EXE is a different story than this one.
-- **Is C still a bug after story 010?** 010's D7 rebuilds focus restoration across re-renders. If
-  its implementation already refuses to move focus that sits outside the row list, this story's
-  part C is a test, not a fix. That is a fine outcome — but it must be *checked* in the code, not
-  assumed, and the test has to exist either way.
+- ~~**Does the unknown probe result need to be visible anywhere?**~~ answered → Decisions (Sprint)
+- ~~**How far should B go?**~~ answered → Decisions (Sprint)
+- ~~**Is C still a bug after story 010?**~~ resolved by refine → Decisions (Sprint)
+
+## Decisions (Sprint)
+
+- **(User)** The unknown probe result is marked, not silent — a new visual state on the glance
+  surface for a session shown only because the probe couldn't decide (against the story's own
+  recommendation, which favoured silent).
+- **(User)** For B, check first whether the portable target has a stable path to register
+  instead of the temp extraction dir; use it if available, otherwise fall back to documenting
+  the limit (do not implement the "re-register every start, accept staleness" option).
+- **C is still a bug after 010 — part C is a fix *plus* a regression test.** Checked against
+  010's refined deliverables: D7 covers "→/← expand/collapse plus focus restoration after a
+  re-render so the focused node stays focused", and its acceptance criterion is "focus survives
+  an expand or collapse … never the document body". That is *restoring* focus to a node that
+  already had it — it says nothing about refusing to *take* focus when the user has parked it
+  outside the row list. The offending path is untouched by 010: `popover.tsx:273-280` refocuses
+  the top row whenever `focusedYet.current` is still false, and with zero sessions
+  `focusTopRow()` (238-247) finds no row, so `focusedYet` stays false while the user tabs to
+  Pin/Close — the first arriving session then yanks focus onto its row. 010 will very likely
+  make that effect *stronger* (more focus restoration), not weaker. So: guard added here.
+- **B is implemented, not just documented:** electron-builder's `portable` target exports
+  `PORTABLE_EXECUTABLE_FILE` (the path of the EXE the user actually launched — stable across
+  runs, unlike the temp unpack dir), so a stable path *is* available and gets registered. The
+  residual limit (the user moves or deletes that EXE) is documented rather than chased.
+- **D: `src/shared/ipc.ts` is the single source, `src/main/shortcuts.ts` imports it.** The two
+  declarations are already identical field-for-field, `main → shared` type imports are
+  established (`index.ts`, `ipc.ts`, `preload.ts`, `tray.ts`) and no boundary test constrains
+  that direction, whereas the reverse would drag main-process code into the renderer's contract.
+- **The unknown state travels as an optional field, not a required one:** `SessionView` gains
+  `windowUnknown?: boolean`, decorated in `getSnapshot()` in the same `.map` as `muted`, so no
+  producer of a `SessionView` in `core/` has to change and the flag stays presentation-only.
+- **The marker lands on the popover only** (the glance surface named in the acceptance
+  criterion); `SessionsView` in the main window keeps its current appearance.
+- **The focus decision is extracted as a pure helper** so part C is unit-testable — vitest runs
+  `environment: 'node'` with no jsdom and no testing-library, so a React render test would mean
+  adding a whole test environment for one regression.
 
 ## Plan
 
-<!-- filled by /refine -->
+Four independent residuals, no new capability. Order: A (probe → engine → marker), then B, C, D.
+This story builds **last** in S03 — C touches `popover.tsx` focus code that story 010's D7
+rewrites, so rebase onto 010's result before starting C.
+
+**A — unknown ≠ no window**
+
+1. `src/main/focus/windowProbe.ts:104-108`: `results.get(pid) ?? false` is the whole bug. Write a
+   cache entry only for pids the probe actually answered for; a pid missing from the result map
+   stays uncached, so `get()` returns `undefined` and the next pass re-probes it (no TTL lock-in).
+   `CacheEntry.value` stays `boolean`.
+2. `src/core/engine.ts`: `isOrphan()` (244-249) already treats `undefined` as fail-safe — leave it.
+   Add a sibling `isWindowUnknown(session, all)`: probe injected, `hasTerminalWindow(pid) ===
+   undefined`, and some other live same-`cwd` session answers `true`. That is exactly "shown on a
+   guess". Decorate it onto the snapshot in the existing `.map` at engine.ts:206 as
+   `windowUnknown`, gated on `hideOrphanSessions` (with the filter off nothing was ever at risk).
+3. `src/core/model/types.ts:275` `SessionView`: add optional `windowUnknown?: boolean`.
+4. Popover row (post-010 layout): a static, non-interactive marker glyph + tooltip, mirroring the
+   `mute-toggle` badge block in `SessionsView.tsx:163-172` minus the click handler.
+
+**B — protocol handler path for the portable EXE**
+
+5. `src/main/toast-protocol.ts`: pure `protocolClientTarget(env, execPath, isPackaged, script)`
+   returning `{ path, args }` — prefers `PORTABLE_EXECUTABLE_FILE`, falls back to today's
+   behaviour. `src/main/index.ts:245-254` calls it. Fallback rule if the packaged smoke shows the
+   portable stub does not forward the URL argv: keep the current registration and document only.
+6. Surface the registered target in `DiagnosticsInfo` (Settings → Diagnostics) + one README
+   paragraph naming the limit (move/delete the EXE → toast buttons launch a dead path).
+
+**C — never steal focus**
+
+7. Extract the decision from `popover.tsx:273-280` into a pure helper
+   (`shouldFocusTopRow({ focusedYet, activeElementIsInList, activeElementIsBody })`): the
+   initial-focus retry only fires while focus is on the document body (or already in the list) —
+   never while it sits on Pin, Close or the notify switch. The `window` `'focus'` reopen path
+   (254-263) keeps forcing focus, unchanged.
+
+**D — one `ShortcutStatus`**
+
+8. Delete the declaration at `src/main/shortcuts.ts:11-15`, import the type from
+   `../shared/ipc.ts`, drop the "mirrors" comment at `shared/ipc.ts:80`.
 
 ## Deliverables
 
-<!-- filled by /refine -->
+- [ ] D1 — **The probe stops inventing a `false`.** `src/main/focus/windowProbe.ts`: a pid the
+      probe did not answer for is not cached at all; `get()` returns `undefined` and the next
+      `refresh()` pass re-probes it inside the same TTL window. Accept: extended
+      `test/unit/windowProbe.test.ts` — partial result map leaves the missing pid `undefined`,
+      a following pass probes it again (it is still in the stale set), answered pids keep their
+      cached value and their TTL behaviour. Pattern to mirror: the existing cases in that file.
+- [ ] D2 — **`windowUnknown` on the snapshot.** `src/core/engine.ts` (+ `src/core/model/types.ts`
+      for the optional field): new private `isWindowUnknown()` next to `isOrphan()`, decorated in
+      the `.map` at engine.ts:206, only when `hideOrphanSessions` is on. Accept: extended
+      `test/unit/derivations.test.ts` (orphan-filter block, ~line 558) — (a) unknown + windowed
+      folder mate ⇒ session present **and** `windowUnknown === true`; (b) `false` + windowed mate
+      ⇒ still hidden; (c) all-unknown folder (full probe failure) ⇒ nothing dropped, no marker;
+      (d) no probe injected / filter off ⇒ flag absent or false, nothing changes;
+      `test/unit/boundaries.test.ts` stays green (no Win32 import added to `core/`).
+- [ ] D3 — **The marker on the glance surface.** `src/renderer/popover.tsx` +
+      `src/renderer/styles.css`: on a row with `windowUnknown`, a static badge (no click target,
+      not in the tab order) plus a `title` saying the window state could not be determined and
+      the session is shown to be safe. Mirror the badge markup/styling of the `mute-toggle` block
+      (`src/renderer/components/SessionsView.tsx:163-172`) without its `onClick`. Row layout from
+      story 010 stays intact; `SessionsView` is untouched. Accept: visible in the popover per the
+      test plan; no change on a row without the flag.
+- [ ] D4 — **Register a stable protocol path for the portable EXE.**
+      `src/main/toast-protocol.ts` gets the pure `protocolClientTarget()` (prefers
+      `process.env.PORTABLE_EXECUTABLE_FILE`, else today's packaged/dev behaviour);
+      `src/main/index.ts:245-254` uses it. Accept: extended `test/unit/toastProtocol.test.ts` —
+      env var set ⇒ that path with no extra args; env var absent + packaged ⇒ current no-argument
+      registration; dev ⇒ `execPath` + script arg as today. Nothing about argv *parsing* changes.
+- [ ] D5 — **State the limit where a user meets it.** `DiagnosticsInfo` in `src/shared/ipc.ts`
+      gains the registered protocol target, filled in `src/main/ipc.ts:90` and rendered in the
+      existing Diagnostics block of `src/renderer/components/SettingsView.tsx:375-388`;
+      `README.md` gets one paragraph: toast buttons launch the EXE path recorded at registration
+      time, so moving or deleting the portable EXE breaks them until the app is started once from
+      the new location. Accept: value visible in Settings → Diagnostics, README paragraph
+      present. If the D4 smoke shows the portable stub does not forward the URL argv, this D also
+      records that the buttons only work while the app is running.
+- [ ] D6 — **The popover never takes focus off Pin or Close.** New pure helper (e.g.
+      `src/renderer/popoverFocus.ts`) with the initial-focus decision, used by the effect at
+      `src/renderer/popover.tsx:273-280`; the `'focus'`-event reopen path keeps its current
+      behaviour. Accept: new `test/unit/popoverFocus.test.ts` — never focused yet + focus on the
+      document body ⇒ focus the top row; never focused yet + focus on a control outside the list
+      (Pin/Close) ⇒ do nothing; focused row dropped out of `traySessions` ⇒ focus the top row
+      again (unchanged). Build note: rebase on story 010's D7 result first and keep its focus
+      restoration working.
+- [ ] D7 — **One `ShortcutStatus`.** Delete `src/main/shortcuts.ts:11-15`, import the type from
+      `../shared/ipc.ts` (usages at `:24`, `:61`), remove the now-wrong "mirrors" comment at
+      `src/shared/ipc.ts:80`. Accept: `npm run typecheck` green, one declaration left in `src/`.
 
 ## Model Hints
 
-<!-- filled by /refine -->
+- D2 → `deliverable-hard` — it edits the orphan filter that decides whether a live session is
+  shown at all, and the acceptance is a *non*-change ("existing behaviour unchanged, full probe
+  failure still fail-safe") across the `undefined`/`false`/`true` matrix in `core/engine.ts`.
+- D6 → `deliverable-hard` — it rewrites the focus effect that story 010's D7 (also hard-tier)
+  has just rebuilt in the same file, and "the popover swallowed my focus" regressions are
+  invisible in tests unless the extracted decision is cut exactly right.
+- D1, D3, D4, D5, D7 → default tier.
+- Review: → `story-review-hard` — the guarantee under review ("no live session is ever hidden, no
+  focus is ever stolen") is a property of paths the diff does *not* show, and two Ds land in code
+  story 010 changed in the same sprint.
 
 ## Test Plan (manual acceptance)
 
-<!-- filled by /refine -->
+Run `npm run dev` (unset `ELECTRON_RUN_AS_NODE` when launching from VS Code).
+
+1. **Nothing changed (A):** with two live sessions in the same folder, one windowed and one
+   without a window, the windowless one is still hidden while `hideOrphanSessions` is on and
+   reappears when the setting is turned off. No marker on any normal row.
+2. **The marker (A/D3):** force an unanswered probe — start two sessions in one folder, then
+   make the probe fail for exactly one pid (kill the PowerShell child mid-pass, or run `npm run
+   dev` with a stubbed probe returning a partial map). The session stays in the popover and
+   carries the badge; hovering it explains why. On the next probe pass the badge disappears again
+   (it does not stick for the 30 s TTL).
+3. **Focus (C):** with **zero** sessions live, open the popover via the global shortcut and Tab
+   onto Pin (or Close). Start a Claude session. The focus ring must stay on Pin — the arriving
+   row must not take it. Then close and reopen the popover: it must still focus the top row.
+4. **Portable toast (B):** `npm run package`, run `ClaudeControl-*-portable.exe` from a fixed
+   folder, let a session finish so a toast appears, then **exit the app** and press "Mute this
+   session" in the Action Center. Expected: the app starts and the session is muted. If it does
+   not start, the README/Diagnostics wording from D5 is the deliverable and must say so.
+5. **Diagnostics (B/D5):** Settings → Diagnostics shows the registered protocol target, and it is
+   the portable EXE's own path, not a Temp unpack directory.
 
 ## Done
 

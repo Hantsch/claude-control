@@ -5,7 +5,7 @@
  * Pure data — no Node, no Electron, no DOM.
  */
 
-import type { ContextBand } from '../core/model/types.ts';
+import type { ContextBand, SubagentStatus } from '../core/model/types.ts';
 import type { SessionStatus } from '../core/model/status.ts';
 
 export { STATUS_LABEL } from '../core/model/status.ts';
@@ -20,6 +20,20 @@ export const STATUS_COLOR_VAR: Record<SessionStatus, string> = {
   starting: '--status-starting',
   ended: '--status-ended',
   unknown: '--status-unknown',
+};
+
+/**
+ * CSS custom-property name per `SubagentStatus` (story 010 D5), for the popover's subagent
+ * status dot. There is no `SubagentStatus` equivalent of `STATUS_COLOR_VAR` elsewhere — this
+ * is that table. `launched` and `unknown` share the neutral faint colour: `launched` has no
+ * observable end (§8), and `unknown` is a state we cannot colour honestly either way.
+ */
+export const SUBAGENT_STATUS_COLOR_VAR: Record<SubagentStatus, string> = {
+  running: '--status-working',
+  launched: '--text-faint',
+  completed: '--status-done',
+  failed: '--band-red',
+  unknown: '--text-faint',
 };
 
 /** One-line explanation shown in tooltips — both overdue states carry the caveat (§6.3). */

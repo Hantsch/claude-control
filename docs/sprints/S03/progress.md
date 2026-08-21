@@ -1,0 +1,16 @@
+- 2026-08-21 13:40 · 010 · D1 Two-line session row · started
+- 2026-08-21 13:46 · 010 · D1 Two-line session row · done
+- 2026-08-21 13:46 · 010 · D2 Absolute token count in context cell · started
+- 2026-08-21 13:47 · 010 · D2 Absolute token count in context cell · done
+- 2026-08-21 13:47 · 010 · D3 Collapsible group headers · started
+- 2026-08-21 13:51 · 010 · D3 Collapsible group headers · done
+- 2026-08-21 13:51 · 010 · D4 Expandable session rows · started
+- 2026-08-21 13:54 · 010 · D4 Expandable session rows · done
+- 2026-08-21 13:54 · 010 · D5 Subagent rows · started
+- 2026-08-21 13:59 · 010 · D5 Subagent rows · done
+- 2026-08-21 13:59 · 010 · D6 Three absent-data cases · started
+- 2026-08-21 14:02 · 010 · D6 Three absent-data cases · done
+- 2026-08-21 14:02 · 010 · D7 Keyboard expand/collapse · started
+- 2026-08-21 14:08 · 010 · D7 Keyboard expand/collapse · done
+- 2026-08-21 14:08 · 010 · D8 Height accept the scroll · started
+- 2026-08-21 14:10 · 010 · D8 Height accept the scroll · done

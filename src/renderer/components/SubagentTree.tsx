@@ -11,8 +11,8 @@
 
 import { Fragment } from 'react';
 import type { SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
-import { BAND_LABEL, BAND_SYMBOL } from '../../shared/presentation.ts';
-import { formatDuration, formatTokens } from '../lib/format.ts';
+import { formatDuration } from '../lib/format.ts';
+import { buildMetricParts } from '../lib/subagentParts.ts';
 
 const STATUS_MARK: Record<SubagentNode['status'], string> = {
   running: '◐',
@@ -69,53 +69,10 @@ export function SubagentTree({ nodes }: { nodes: SubagentNode[] }): React.JSX.El
   );
 }
 
-interface MetricPart {
-  key: string;
-  text: string;
-  title: string;
-}
-
 function Metrics({ metrics }: { metrics: SubagentMetrics }): React.JSX.Element {
-  const parts: MetricPart[] = [];
-
-  if (metrics.model) {
-    parts.push({
-      key: 'model',
-      text: metrics.model,
-      title: 'Model the run actually resolved to',
-    });
-  }
-  if (metrics.totalTokens !== null) {
-    parts.push({
-      key: 'tokens',
-      text: `${formatTokens(metrics.totalTokens)} tok`,
-      title: 'Tokens the whole run spent — cumulative, not its context size',
-    });
-  }
-  if (metrics.context) {
-    const { used, window, band, ratio } = metrics.context;
-    parts.push({
-      key: 'ctx',
-      text: `${BAND_SYMBOL[band]} ctx ${Math.round(ratio * 100)}%`,
-      title:
-        `Context when the run finished — estimate: ${formatTokens(used)} of an assumed ` +
-        `${formatTokens(window)} window (${BAND_LABEL[band]})`,
-    });
-  }
-  if (metrics.toolUses !== null) {
-    parts.push({
-      key: 'tools',
-      text: `${metrics.toolUses} tools`,
-      title: 'Tool calls the subagent made',
-    });
-  }
-  if (metrics.linesAdded || metrics.linesRemoved) {
-    parts.push({
-      key: 'lines',
-      text: `+${metrics.linesAdded ?? 0}/−${metrics.linesRemoved ?? 0}`,
-      title: 'Lines the subagent added / removed',
-    });
-  }
+  // Part-building rules live in `subagentParts.ts` (story 010 D5), shared with the tray
+  // popover's subagent rows, so wording and tooltips cannot drift between the two surfaces.
+  const parts = buildMetricParts(metrics);
 
   if (parts.length === 0) return <></>;
   return (

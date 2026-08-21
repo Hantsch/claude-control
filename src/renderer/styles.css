@@ -354,6 +354,13 @@ code,
   flex: none;
 }
 
+/* The popover's second line (story 010 D1): the dot only re-states the status next to its
+   own text there, so it must not compete with the full-size dot on line 1. */
+.dot.sm {
+  width: 7px;
+  height: 7px;
+}
+
 .dot.pulse {
   animation: pulse 1.6s ease-in-out infinite;
 }
@@ -362,6 +369,11 @@ code,
    --status-waiting variable used for its fill, so the two can never drift apart. */
 .dot.halo {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) 35%, transparent);
+}
+
+/* A 3px halo around a 7px dot swallows the dot and reaches into the text beside it. */
+.dot.sm.halo {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-waiting) 35%, transparent);
 }
 
 @keyframes pulse {
@@ -824,10 +836,21 @@ table.history .title {
   padding: 6px 6px 2px;
   color: var(--text-dim);
   font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
 }
 
 .popover-group-head:first-child {
   padding-top: 4px;
+}
+
+.popover-group-head:hover {
+  background: var(--bg-hover);
+}
+
+.popover-group-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .popover-group-head .name {
@@ -838,18 +861,135 @@ table.history .title {
   color: var(--text-faint);
 }
 
-.popover-row {
-  display: grid;
-  grid-template-columns:
-    14px minmax(0, 2.1fr) minmax(0, 1.5fr) minmax(0, 1.2fr) 58px 46px 62px 62px 22px;
+/* Story 010 D3 — collapsible group headers. The chevron mirrors `.popover-row .chev`'s
+   idiom (a static glyph that rotates open); the rollup mirrors the design prototype's
+   `rollup()` (one coloured dot + count per distinct status present, in `STATUS_SORT_RANK`
+   order, zero-count statuses omitted). */
+.popover-group-head .chev {
+  display: inline-block;
+  width: 9px;
+  flex: none;
+  color: var(--text-faint);
+  font-size: 8px;
+  text-align: center;
+  transition: transform 0.12s ease;
+}
+
+.popover-group-head .chev.open {
+  transform: rotate(90deg);
+}
+
+.popover-group-head .attention {
+  font-size: 10.5px;
+  color: var(--status-waiting);
+}
+
+.popover-group-head .spacer {
+  flex: 1;
+}
+
+.popover-group-head .rollup {
+  display: inline-flex;
+  gap: 7px;
   align-items: center;
-  gap: 10px;
+}
+
+.popover-group-head .rollup > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.popover-group-head .rollup .n {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* Two lines per session (story 010 D1), deliberately reversing story 002's single-line
+   8-column grid: that grid was over-subscribed, and the cell it starved was the waiting
+   reason — the one string that says why you would click the row. Line 1 carries identity and
+   numbers, line 2 gets the full popover width for the prose. Mirrors the design prototype's
+   `.srow` / `.l1` / `.l2` rules (docs/requirements/assets/010-popover-drilldown-prototype.html). */
+.popover-row {
+  display: block;
   width: 100%;
-  padding: 5px 6px;
+  padding: 4px 6px 5px;
   border: none;
   border-radius: 6px;
   text-align: left;
   cursor: pointer;
+  font-size: 12px;
+}
+
+/* Last column is 22px rather than the prototype's 14px: it holds story 004's mute toggle
+   (22 × 22) instead of the prototype's agent icon, which has no data source today. */
+.popover-row .l1 {
+  display: grid;
+  grid-template-columns: 9px 13px 11px minmax(0, 1fr) 108px 92px 22px;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Indented so the prose starts under the branch rather than under the chevron; the reason
+   text then runs to the right edge of the popover, ellipsizing only in the extreme. */
+.popover-row .l2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 42px;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.popover-row .l2 .spacer {
+  flex: 1;
+}
+
+/* Inert in D1 — a static glyph that reserved the column; D4 turns it into the expand
+   control (a real `<button>`, reset back down to the plain-glyph look) with a rotated
+   `.open` state. */
+.popover-row .chev {
+  display: inline-block;
+  width: 9px;
+  flex: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.popover-row .chev.open {
+  transform: rotate(90deg);
+}
+
+.popover-row .chev:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+/* The status glyph sits in a fixed 13px column, the dot itself is 10px wide. */
+.popover-row .l1 > .dot {
+  justify-self: center;
+}
+
+/* Position within the group — the number you say out loud ("the second one"). */
+.popover-row .idx {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.popover-row .branch {
+  font-weight: 600;
   font-size: 12px;
 }
 
@@ -890,51 +1030,218 @@ table.history .title {
   background: var(--bg-hover);
 }
 
-.popover-row .name,
-.popover-row .where,
-.popover-row .status,
+.popover-row .branch,
 .popover-row .model,
-.popover-row .uptime,
-.popover-row .age {
+.popover-row .l2 .txt {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.popover-row .where,
-.popover-row .uptime,
-.popover-row .age {
-  color: var(--text-dim);
-}
-
-/* The model badge is a dim pill — present even when empty (D4) so the grid columns
-   after it never shift. */
 .popover-row .model {
   color: var(--text-dim);
-  background: var(--bg-active);
-  border-radius: 999px;
-  padding: 1px 7px;
   font-size: 11px;
-  text-align: center;
-  justify-self: start;
-}
-
-.popover-row .model:empty {
-  background: none;
-  padding: 0;
-}
-
-.popover-row .uptime,
-.popover-row .age {
   text-align: right;
 }
 
-/* The uptime column is only 46px wide — at the row's default font size, "↑3h 12m" is
-   likely to ellipsize. Matches the `.model` pill's 11px, plus a touch of negative tracking
-   so an 8-character stamp still fits. */
-.popover-row .uptime {
+/* Uptime and age share one cell on line 2 ("↑2h 14m · 3m ago"), right-aligned behind the
+   flex spacer. Tabular figures so the column does not jitter as the clock ticks. */
+.popover-row .age {
+  flex: none;
+  color: var(--text-faint);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   letter-spacing: -0.2px;
+}
+
+/* Subagent summary: one pip per subagent plus `done/total`, so "three running, one done"
+   is readable without counting. Colours are the shared status/band variables, so a pip and
+   the subagent row it stands for can never disagree. */
+.popover-row .sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.popover-row .sub .pip {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* No class = `unknown`: a state we cannot colour honestly stays the neutral base pip. */
+  background: var(--bg-active);
+}
+
+.popover-row .sub .pip.on {
+  background: var(--status-done);
+}
+
+.popover-row .sub .pip.run {
+  background: var(--status-working);
+}
+
+.popover-row .sub .pip.fail {
+  background: var(--band-red);
+}
+
+.popover-row .sub .cnt {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Expanded session detail (story 010 D4) — mirrors the design prototype's `.detail` / `.kv`
+   rules: indented to line up under line 2's prose, not line 1's chevron. */
+.popover-detail {
+  padding: 1px 6px 6px 42px;
+}
+
+.popover-detail .kv {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 0 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.popover-detail .kv .title {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.popover-detail .kv .txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-detail .kv.faint {
+  color: var(--text-faint);
+}
+
+/* Subagent rows inside an expanded session (story 010 D5) — mirrors the design prototype's
+   `.arow` idiom, renamed to this project's `.popover-*` prefix. One row per
+   `session.subagents` entry, flat (no recursion — `children` is always `[]`). */
+.popover-subagents {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 1px;
+}
+
+.popover-subagent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.popover-subagent-row:hover {
+  background: var(--bg-hover);
+}
+
+.popover-subagent-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.popover-subagent-row .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.popover-subagent-row .type {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  background: var(--bg-active);
+  border-radius: 999px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.popover-subagent-row .model {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.popover-subagent-row .spacer {
+  flex: 1 1 auto;
+}
+
+.popover-subagent-row .error {
+  color: var(--band-red);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: none;
+  max-width: 220px;
+}
+
+.popover-subagent-row .faint {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-style: italic;
+  white-space: nowrap;
+  flex: none;
+}
+
+.popover-subagent-row .duration {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* Compact context chip for a subagent row — the same visual idiom as the prototype's
+   `.actx`/`.actx-bar`/`.actx-fill`/`.actx-val`, narrower than the session row's `ContextBar`
+   since the subagent row has far less width to spend. */
+.popover-subagent-row .ctx-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.popover-subagent-row .ctx-mini-bar {
+  width: 22px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-active);
+  overflow: hidden;
+}
+
+.popover-subagent-row .ctx-mini-fill {
+  display: block;
+  height: 100%;
+}
+
+.popover-subagent-row .ctx-mini-val {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* Flat-hierarchy disclaimer (story 010 D6) — once below the whole subagent list, mirroring
+   the prototype's `.flatnote` idiom under this project's `.popover-*` prefix. */
+.popover-subagents .flat-note {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  opacity: 0.75;
+  padding: 3px 5px 1px;
 }
 
 .popover-footer {

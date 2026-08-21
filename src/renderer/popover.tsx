@@ -30,10 +30,12 @@ import { createRoot } from 'react-dom/client';
 import { STATUS_SORT_RANK, groupSessions } from '../core/state/aggregate.ts';
 import type { NotificationMode } from '../core/model/settings.ts';
 import { applyNotificationMode, notificationMode } from '../core/model/settings.ts';
-import type { AppSettings, AppState } from '../shared/ipc.ts';
+import type { AppSettings, AppState, SubagentNode } from '../shared/ipc.ts';
 import {
+  BAND_COLOR_VAR,
   STATUS_HINT,
   STATUS_LABEL,
+  SUBAGENT_STATUS_COLOR_VAR,
   modelDisplayName,
   sessionLabel,
 } from '../shared/presentation.ts';
@@ -41,6 +43,13 @@ import { EMPTY_STATE, api } from './api.ts';
 import { ContextBar } from './components/ContextBar.tsx';
 import { StatusDot } from './components/StatusDot.tsx';
 import { formatAge, formatDuration } from './lib/format.ts';
+import {
+  SUBAGENT_FLAT_LIST_NOTE,
+  groupStatusRollup,
+  subagentMessage,
+  subagentSummary,
+} from './lib/popoverModel.ts';
+import { buildMetricParts } from './lib/subagentParts.ts';
 import './styles.css';
 
 /** Uptime cell (D9) only kicks in once a session has been running a while — below that
@@ -172,13 +181,159 @@ function NotifySwitch(): React.JSX.Element {
   );
 }
 
+/**
+ * One subagent row inside an expanded session's detail block (story 010 D5). Mirrors the
+ * prototype's `agentRow()` — status dot, label, `agentType` pill, then the numbers.
+ *
+ * `model` and the context chip sit directly on the row (the popover is narrow, so a tooltip
+ * would hide exactly the two facts a glance needs); `totalTokens`, `toolUses` and
+ * lines-touched move into the duration's tooltip instead, still worded as
+ * `buildMetricParts` produces them, so the pairing the acceptance criteria forbid — a bare
+ * `184.3K tok` sitting next to `ctx 18%` with nothing to say which is which — cannot happen
+ * here: the two live in different places on the row.
+ *
+ * The three absent-data cases (running/launched with no metrics yet, a failed run's error
+ * text, and the flat-hierarchy note) are decided by `subagentMessage()` in `popoverModel.ts`
+ * (story 010 D6) — this component only renders what that pure function returns, so the
+ * wording and the case selection have unit coverage without a DOM.
+ */
+function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
+  const parts = node.metrics ? buildMetricParts(node.metrics) : [];
+  const modelPart = parts.find((part) => part.key === 'model');
+  const ctxPart = parts.find((part) => part.key === 'ctx');
+  const tooltipParts = parts.filter((part) => part.key !== 'model' && part.key !== 'ctx');
+  const durationTitle =
+    tooltipParts.length > 0
+      ? tooltipParts.map((part) => `${part.text} — ${part.title}`).join(' · ')
+      : undefined;
+  const context = node.metrics?.context ?? null;
+  const message = subagentMessage(node.status, node.metrics, node.errorText);
+  // A failed run's error text takes the row over: any model/context numbers left from before
+  // it died would read as a contradiction next to "this run failed", so they stay hidden.
+  const showMetricChips = message.kind !== 'error';
+
+  return (
+    <div
+      className="popover-subagent-row"
+      role="listitem"
+      tabIndex={0}
+      data-nav-key={`a:${node.id}`}
+    >
+      <span
+        className="dot sm"
+        style={{ background: `var(${SUBAGENT_STATUS_COLOR_VAR[node.status]})` }}
+        title={node.status}
+      />
+      <span className="label" title={node.label}>
+        {node.label}
+      </span>
+      {node.agentType && <span className="type">{node.agentType}</span>}
+      {showMetricChips && modelPart && (
+        <span className="model" title={modelPart.title}>
+          {modelPart.text}
+        </span>
+      )}
+      {showMetricChips && context && ctxPart && (
+        <span className="ctx-mini" title={ctxPart.title}>
+          <span className="ctx-mini-bar">
+            <span
+              className="ctx-mini-fill"
+              style={{
+                width: `${Math.min(100, Math.round(context.ratio * 100))}%`,
+                background: `var(${BAND_COLOR_VAR[context.band]})`,
+              }}
+            />
+          </span>
+          <span className="ctx-mini-val">{ctxPart.text}</span>
+        </span>
+      )}
+      <span className="spacer" />
+      {message.kind === 'error' && (
+        <span className="error" title={message.text ?? undefined}>
+          {message.text}
+        </span>
+      )}
+      {message.kind === 'absent' && <span className="faint">{message.text}</span>}
+      <span className="duration" title={durationTitle}>
+        {formatDuration(node.durationMs)}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Every keyboard-reachable node in the list carries a `data-nav-key` (story 010: `g:<projectKey>`
+ * for a group head, `s:<sessionId>` for a session row, `a:<nodeId>` for a subagent row), so one
+ * selector spans all three kinds and navigation is a flat list in DOM order.
+ */
+const NAV_SELECTOR = '[data-nav-key]';
+
+/** The selector for one specific node. Keys carry a project key or a session id, so they are
+ * escaped rather than interpolated into the attribute selector raw. */
+function navSelector(key: string): string {
+  return `[data-nav-key="${CSS.escape(key)}"]`;
+}
+
+/**
+ * Expansion state is two `Set`s of keys, and D7 needs to drive them in three ways: `toggle` (a
+ * click, or Enter on a group head) and the directional `on` / `off` the arrow keys want — → must
+ * expand and ← must collapse, never flip, or holding → would close what it just opened.
+ * Returns the set unchanged when nothing moves, so a → on an already-open node costs no render.
+ */
+type SetChange = 'on' | 'off' | 'toggle';
+
+function changedSet(current: Set<string>, key: string, change: SetChange): Set<string> {
+  const has = current.has(key);
+  const want = change === 'toggle' ? !has : change === 'on';
+  if (has === want) return current;
+  const next = new Set(current);
+  if (want) next.add(key);
+  else next.delete(key);
+  return next;
+}
+
 function Popover(): React.JSX.Element {
   const [state, setState] = useState<AppState>(EMPTY_STATE);
   const [pinned, setPinned] = useState(false);
   const [, setClock] = useState(0);
+  // Which project groups are collapsed, by `project.key` — default is none, i.e. all groups
+  // expanded (story 010 Decisions (Sprint): "default state is groups expanded, sessions
+  // collapsed"). Sessions themselves default-collapse per-row, which is D4's concern. Like
+  // `openNodes` below, this resets to empty whenever the popover window is hidden, so a group
+  // the user collapsed during a session comes back expanded on reopen.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  // Which session (and, later, subagent) detail blocks are open, keyed `s:<sessionId>` /
+  // `a:<nodeId>` (story 010 D4). Default is empty — every session starts collapsed — and the
+  // set resets to empty whenever the popover window is hidden (Decisions (Sprint): "Expansion
+  // state does not survive hide"), not on `blur`, so a pinned-but-unfocused popover keeps what
+  // was expanded. `collapsedGroups` above gets the same reset.
+  const [openNodes, setOpenNodes] = useState<Set<string>>(() => new Set());
   const head = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLDivElement>(null);
+
+  // The two toggles live here rather than in the render closures so the `document`-level keydown
+  // handler below can call the *same* function the click handlers call. Both are stable and use
+  // functional updates, so the handler needs no dependency on the current sets and never acts on
+  // a stale one. Note the asymmetry the keys already carry: `collapsedGroups` holds bare project
+  // keys and means *collapsed*, `openNodes` holds prefixed node keys and means *open*.
+  const changeGroupCollapsed = useCallback((projectKey: string, change: SetChange): void => {
+    setCollapsedGroups((current) => changedSet(current, projectKey, change));
+  }, []);
+  const changeNodeOpen = useCallback((nodeKey: string, change: SetChange): void => {
+    setOpenNodes((current) => changedSet(current, nodeKey, change));
+  }, []);
+
+  useEffect(() => {
+    const onVisibilityChange = (): void => {
+      if (document.hidden) {
+        setOpenNodes(new Set());
+        setCollapsedGroups(new Set());
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
 
   useEffect(() => {
     void api.getState().then(setState);
@@ -217,11 +372,27 @@ function Popover(): React.JSX.Element {
     return () => observer.disconnect();
   }, [report]);
 
-  // Which row (by sessionId) currently holds keyboard focus, if any — tracked explicitly
-  // rather than inferred from `document.activeElement`, since the popover window is reused
-  // (hidden/shown, never recreated) and the previous session's focused element can still be
-  // `document.activeElement` on reopen.
-  const focusedRowId = useRef<string | null>(null);
+  // Which nav node (by `data-nav-key`, so any of the three kinds) currently holds keyboard
+  // focus — tracked explicitly rather than inferred from `document.activeElement`, since the
+  // popover window is reused (hidden/shown, never recreated) and the previous session's focused
+  // element can still be `document.activeElement` on reopen. `null` means focus sits outside the
+  // list entirely (Pin, Close, the notify switch, the footer), which is what keeps the two
+  // effects below from yanking it back in.
+  const focusedNavKey = useRef<string | null>(null);
+
+  // One `focusin` listener instead of an `onFocus` on each of the three node kinds: it bubbles,
+  // so a nested chevron / mute toggle resolves to its owning node via `.closest()`, and focus
+  // moving to a non-node target clears the ref in the same place.
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target as HTMLElement | null;
+      const node = target?.closest<HTMLElement>(NAV_SELECTOR) ?? null;
+      focusedNavKey.current =
+        node && rows.current?.contains(node) ? (node.dataset.navKey ?? null) : null;
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
 
   // Whether a row has been successfully focused since the popover was last "opened" (i.e. since
   // the last real `window` `'focus'` event). Lets the `[state]` effect below keep retrying the
@@ -230,17 +401,21 @@ function Popover(): React.JSX.Element {
   // zero rows because `state` is still `EMPTY_STATE` while `api.getState()` resolves.
   const focusedYet = useRef(false);
 
-  // Focuses the most urgent row (rows are already sorted by urgency, so the first one always
-  // is). Unconditional: the window is reused rather than recreated, so `document.activeElement`
-  // can still point at a row from the previous session — a "focus already inside the list"
-  // guard would then skip refocusing on reopen, breaking the "opening the popover focuses the
-  // most urgent row" acceptance criterion for every open after the first.
+  // Focuses the most urgent row. Sessions are already sorted by urgency within and across
+  // groups, so the first `s:`-prefixed node in DOM order is the most urgent session — but group
+  // heads (`data-nav-key="g:..."`) render before their sessions, so a bare `NAV_SELECTOR` query
+  // would land on the first group head instead whenever ≥2 projects are live. Scoping the query
+  // to session rows keeps this story 003's "opening the popover focuses the most urgent row"
+  // acceptance criterion intact regardless of group-head presence. Unconditional: the window is
+  // reused rather than recreated, so `document.activeElement` can still point at a row from the
+  // previous session — a "focus already inside the list" guard would then skip refocusing on
+  // reopen, breaking that acceptance criterion for every open after the first.
   const focusTopRow = useCallback(() => {
     const container = rows.current;
     if (!container) return;
-    // Rows are `div[role="button"].popover-row` (a nested mute-toggle `<button>` ruled out a
-    // real `<button>` for the row itself), so the selector matches on the shared class alone.
-    const row = container.querySelector<HTMLElement>('.popover-row');
+    // Nodes are `div[role="button"]` with a `data-nav-key` (a nested mute-toggle `<button>`
+    // ruled out a real `<button>` for the row itself); scope to session rows only (see above).
+    const row = container.querySelector<HTMLElement>('[data-nav-key^="s:"]');
     if (!row) return;
     row.focus();
     focusedYet.current = true;
@@ -264,9 +439,11 @@ function Popover(): React.JSX.Element {
 
   // If nothing has been focused yet this session, retry now that `state` may finally hold real
   // rows (covers the first-open race described above). Otherwise, fall back to the previous
-  // behavior: if the session list changes and the row that had keyboard focus dropped out of
-  // `traySessions`, focus the first (most urgent) row again instead of leaving focus stranded on
-  // a detached element. Driven by `focusedRowId` (set by each row's `onFocus`) rather than "is
+  // behavior: if the node that had keyboard focus is gone from the new snapshot, focus the first
+  // (most urgent) node again instead of leaving focus stranded on `document.body`. The check is
+  // now "is the remembered node still in the DOM" rather than "is that sessionId still in
+  // `traySessions`", because since D7 the focused node can also be a group head or a subagent
+  // row — for a session row the two are equivalent. Driven by `focusedNavKey` rather than "is
   // focus anywhere in the container" — otherwise this would yank focus back into the row list on
   // every new engine snapshot even when the user deliberately focused Pin, Close, or the
   // notify-switch button instead.
@@ -275,8 +452,8 @@ function Popover(): React.JSX.Element {
       focusTopRow();
       return;
     }
-    const id = focusedRowId.current;
-    if (id && !state.traySessions.some((session) => session.sessionId === id)) focusTopRow();
+    const key = focusedNavKey.current;
+    if (key && !rows.current?.querySelector(navSelector(key))) focusTopRow();
   }, [state, focusTopRow]);
 
   // Arrow-key row navigation and Escape-to-close, for the life of the component. Registered on
@@ -284,29 +461,82 @@ function Popover(): React.JSX.Element {
   // whenever the popover has focus. Respects `event.defaultPrevented` so `NotifySwitch`'s own
   // Escape handling (which closes its menu, not the popover) is not double-handled here.
   useEffect(() => {
+    // The nav node that owns the focus, if any. `document.activeElement` may be the node itself
+    // or a descendant of it (story 004's `mute-toggle`, D4's chevron), so `.closest()` resolves
+    // either case to the owning node; the containment check keeps anything outside the list
+    // (Pin, Close, the notify switch, the footer) from counting as a node.
+    const focusedNode = (): HTMLElement | null => {
+      const node =
+        (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(NAV_SELECTOR) ?? null;
+      return node && rows.current?.contains(node) ? node : null;
+    };
+
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented) return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
-        const items = rows.current?.querySelectorAll<HTMLElement>('.popover-row');
+        const items = rows.current?.querySelectorAll<HTMLElement>(NAV_SELECTOR);
         if (!items || items.length === 0) return;
         const list = Array.from(items);
-        // `document.activeElement` may be the row itself, or — since D7 added the nested
-        // `mute-toggle` <button> — a descendant of it; `.closest()` resolves either case to the
-        // owning row before falling back to the old `indexOf` (which stays -1, clamping to the
-        // top row) when focus is elsewhere entirely, e.g. on Pin or Close.
-        const activeRow = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.popover-row') ?? null;
-        const currentIndex = activeRow ? list.indexOf(activeRow) : -1;
+        // One flat list in DOM order across all three node kinds (group head, session row,
+        // subagent row). `indexOf` staying -1 clamps to the top node when focus is elsewhere
+        // entirely, exactly as before.
+        const active = focusedNode();
+        const currentIndex = active ? list.indexOf(active) : -1;
         const delta = event.key === 'ArrowDown' ? 1 : -1;
         const nextIndex = Math.min(Math.max(currentIndex + delta, 0), list.length - 1);
         list[nextIndex]?.focus();
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        // → expands the focused node, ← collapses it, dispatched by the key's prefix. Both call
+        // the very functions the click handlers call, so a keyboard toggle cannot drift from a
+        // mouse one. A subagent row falls through untouched — it has nothing to expand, and the
+        // story wants that as a plain no-op, so `preventDefault()` is deliberately not reached.
+        const key = focusedNode()?.dataset.navKey;
+        const expand = event.key === 'ArrowRight';
+        if (key?.startsWith('g:')) {
+          event.preventDefault();
+          // Inverted on purpose: the set holds *collapsed* groups, so expanding removes the key.
+          changeGroupCollapsed(key.slice(2), expand ? 'off' : 'on');
+        } else if (key?.startsWith('s:')) {
+          event.preventDefault();
+          changeNodeOpen(key, expand ? 'on' : 'off');
+        }
       } else if (event.key === 'Escape') {
         void api.closePopover();
       }
+      // Enter needs nothing here: the group head activates its own Enter/Space (D3) and the
+      // session row its own (story 003's jump-to-session), both via `preventDefault()`, which
+      // the guard at the top of this handler then respects — while a subagent row has no key
+      // handler at all, which *is* the required no-op ("a subagent has no window to focus").
+      // Handling Enter again here would be unreachable for two kinds and a duplicate for none.
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [changeGroupCollapsed, changeNodeOpen]);
+
+  // Focus survives an expand or collapse (AC: "the node that was focused is still focused
+  // afterwards, never the document body"). A toggle re-renders the list, and while React
+  // normally reconciles the focused element in place, anything that makes it drop the node
+  // instead — a changed key, a wrapper appearing — drops the focus with it, silently, to
+  // `document.body`. So after every expand/collapse render the remembered node is refocused if
+  // it lost focus, and scrolled into view either way.
+  //
+  // Deliberately scoped to the two expansion states rather than *every* render: the 5 s clock
+  // and each engine snapshot re-render too, and scrolling the focused node back into view every
+  // few seconds would fight a user who has scrolled the list by hand.
+  useLayoutEffect(() => {
+    const key = focusedNavKey.current;
+    if (!key) return;
+    // Only while the popover really holds the OS focus — a pinned-but-unfocused window, or the
+    // hidden one whose `visibilitychange` reset just re-rendered it, must not pull focus.
+    if (!document.hasFocus()) return;
+    const node = rows.current?.querySelector<HTMLElement>(navSelector(key));
+    if (!node) return;
+    // `contains` covers the node itself as well as its chevron / mute toggle: when focus is on
+    // one of those, moving it up to the row would break repeated Enter on the same button.
+    if (!node.contains(document.activeElement)) node.focus();
+    node.scrollIntoView({ block: 'nearest' });
+  }, [collapsedGroups, openNodes]);
 
   const togglePin = (): void => {
     void api.setPopoverPinned(!pinned).then(setPinned);
@@ -372,30 +602,77 @@ function Popover(): React.JSX.Element {
               {state.sessions.length === 0 ? 'No live sessions' : 'Nothing needs you right now'}
             </div>
           )}
-          {groups.map((group) => (
+          {groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.project.key);
+            // Same function the → / ← handler calls (D7), so click and keyboard cannot drift.
+            const toggleGroup = (): void => changeGroupCollapsed(group.project.key, 'toggle');
+            return (
             <Fragment key={group.project.key}>
               {groups.length > 1 && (
-                <div className="popover-group-head">
+                <div
+                  className="popover-group-head"
+                  role="button"
+                  tabIndex={0}
+                  data-nav-key={`g:${group.project.key}`}
+                  onClick={toggleGroup}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      toggleGroup();
+                    }
+                  }}
+                >
+                  <span className={`chev${collapsed ? '' : ' open'}`} aria-hidden="true">
+                    ▶
+                  </span>
                   <span className="name">{group.project.name}</span>
+                  {group.attention > 0 && (
+                    <span className="attention">
+                      {group.attention === 1 ? '1 waiting' : `${group.attention} waiting`}
+                    </span>
+                  )}
+                  <span className="spacer" />
+                  <span className="rollup">
+                    {groupStatusRollup(group.sessions).map((entry) => (
+                      <span key={entry.status} title={`${entry.count}× ${STATUS_LABEL[entry.status]}`}>
+                        <StatusDot status={entry.status} size="sm" />
+                        <span className="n">{entry.count}</span>
+                      </span>
+                    ))}
+                  </span>
                   <span className="count">
                     {group.sessions.length === 1 ? '1 session' : `${group.sessions.length} sessions`}
                   </span>
                 </div>
               )}
-              {group.sessions.map((session) => {
+              {!collapsed && group.sessions.map((session, index) => {
                 const toggleMuted = (event: React.SyntheticEvent): void => {
                   // The mute toggle is nested inside the row's div-as-button — stop the click
                   // here or it would also fire the row's onClick (focus/jump) right after.
                   event.stopPropagation();
                   void api.setSessionMuted(session.sessionId, !session.muted);
                 };
+                const waiting = session.status === 'waiting';
+                const subagents = subagentSummary(session.subagents);
+                const uptime = formatUptime(session.startedAt);
+                const nodeKey = `s:${session.sessionId}`;
+                const isOpen = openNodes.has(nodeKey);
+                const toggleOpen = (event: React.SyntheticEvent): void => {
+                  // Same idiom as the mute toggle above: stop the click here so it does not
+                  // also fire the row's own onClick (focus/jump to the session's window).
+                  event.stopPropagation();
+                  // Same function the → / ← handler calls (D7).
+                  changeNodeOpen(nodeKey, 'toggle');
+                };
                 return (
+                <Fragment key={session.sessionId}>
                 <div
-                  key={session.sessionId}
                   role="button"
                   tabIndex={0}
                   className={`popover-row${session.muted ? ' muted' : ''}`}
                   title={session.statusReason}
+                  data-nav-key={nodeKey}
                   onClick={() => void api.focusSession(session.sessionId)}
                   onKeyDown={(event) => {
                     // Preserve the button-like keyboard behaviour a plain <div role="button">
@@ -408,68 +685,122 @@ function Popover(): React.JSX.Element {
                       void api.focusSession(session.sessionId);
                     }
                   }}
-                  onFocus={() => {
-                    focusedRowId.current = session.sessionId;
-                  }}
                 >
-                  <StatusDot status={session.status} />
-                  <span className="name" title={sessionLabel(session)}>
-                    {sessionLabel(session)}
+                  {/* Line 1 — identity and numbers: chevron, status glyph, index in the
+                      group, branch, context, model, mute toggle. */}
+                  <span className="l1">
+                    {/* D4: clicking the chevron toggles the detail block below, without also
+                        firing the row's own jump-on-click (stopPropagation, same idiom as the
+                        mute toggle). Focus stays on this button across the re-render since
+                        React reconciles it in place rather than remounting it. */}
+                    <button
+                      type="button"
+                      className={`chev${isOpen ? ' open' : ''}`}
+                      aria-expanded={isOpen}
+                      aria-label={isOpen ? 'Collapse' : 'Expand'}
+                      onClick={toggleOpen}
+                    >
+                      ▶
+                    </button>
+                    <StatusDot status={session.status} />
+                    <span className="idx">{index + 1}</span>
+                    <span className="branch" title={session.branch ?? session.project.name}>
+                      {session.branch ? session.branch : session.project.name}
+                    </span>
+                    <ContextBar context={session.context} valueFormat="tokens" />
+                    <span className="model" title={session.model ?? undefined}>
+                      {modelDisplayName(session.model)}
+                    </span>
+                    <button
+                      type="button"
+                      className={`mute-toggle${session.muted ? ' on' : ''}`}
+                      onClick={toggleMuted}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                      title={session.muted ? 'Unmute this session' : 'Mute this session'}
+                      aria-pressed={session.muted}
+                    >
+                      {session.muted ? '🔇' : '🔔'}
+                    </button>
                   </span>
-                  <span
-                    className="where"
-                    title={session.status === 'waiting' ? session.statusReason : undefined}
-                    style={session.status === 'waiting' ? { color: 'var(--status-waiting)' } : undefined}
-                  >
-                    {session.status === 'waiting'
-                      ? session.statusReason
-                      : `${session.project.name}${session.branch ? ` · ${session.branch}` : ''}`}
-                  </span>
-                  <span
-                    className="status"
-                    title={
-                      session.pendingTool?.hint ??
-                      `${STATUS_LABEL[session.status]} — ${STATUS_HINT[session.status]}`
-                    }
-                  >
-                    {STATUS_LABEL[session.status]}
-                    {session.pendingTool && (
-                      <Fragment>
-                        {' · '}
-                        {session.pendingTool.name}
-                        {session.subagents.some((node) => node.status === 'running')
-                          ? ' · subagent'
-                          : ''}
-                      </Fragment>
+                  {/* Line 2 — the prose: status or, for a waiting session, the *whole*
+                      reason. This is what the second line is for: the 8-column grid of story
+                      002 cut that string off after four words. */}
+                  <span className="l2">
+                    <StatusDot status={session.status} size="sm" />
+                    <span
+                      className="txt"
+                      title={
+                        session.pendingTool?.hint ??
+                        `${STATUS_LABEL[session.status]} — ${STATUS_HINT[session.status]}`
+                      }
+                      style={waiting ? { color: 'var(--status-waiting)' } : undefined}
+                    >
+                      {waiting ? (
+                        session.statusReason
+                      ) : (
+                        <Fragment>
+                          {STATUS_LABEL[session.status]}
+                          {session.pendingTool && ` · ${session.pendingTool.name}`}
+                        </Fragment>
+                      )}
+                    </span>
+                    {subagents && (
+                      <span className="sub" title={subagents.title}>
+                        {subagents.pipClasses.map((pip, pipIndex) => (
+                          <span
+                            // Pips are positional and interchangeable — the index *is* the
+                            // identity here, there is nothing else to key on.
+                            key={pipIndex}
+                            className={`pip${pip ? ` ${pip}` : ''}`}
+                          />
+                        ))}
+                        <span className="cnt">
+                          {subagents.done}/{subagents.total}
+                        </span>
+                      </span>
                     )}
+                    <span className="spacer" />
+                    <span className="age" title={uptimeTitle(session.startedAt)}>
+                      {uptime ? `${uptime} · ` : ''}
+                      {formatAge(
+                        session.lastActivityAt ? Date.now() - session.lastActivityAt : null,
+                      )}
+                    </span>
                   </span>
-                  <span className="model" title={session.model ?? undefined}>
-                    {modelDisplayName(session.model)}
-                  </span>
-                  <span className="uptime" title={uptimeTitle(session.startedAt)}>
-                    {formatUptime(session.startedAt)}
-                  </span>
-                  <span className="age">
-                    {formatAge(
-                      session.lastActivityAt ? Date.now() - session.lastActivityAt : null,
-                    )}
-                  </span>
-                  <ContextBar context={session.context} />
-                  <button
-                    type="button"
-                    className={`mute-toggle${session.muted ? ' on' : ''}`}
-                    onClick={toggleMuted}
-                    onDoubleClick={(event) => event.stopPropagation()}
-                    title={session.muted ? 'Unmute this session' : 'Mute this session'}
-                    aria-pressed={session.muted}
-                  >
-                    {session.muted ? '🔇' : '🔔'}
-                  </button>
                 </div>
+                {isOpen && (
+                  // Detail block (D4): title + last-said, then the subagent area. Mirrors the
+                  // prototype's `.detail` / `.kv` structure — see sessionRow() in
+                  // docs/requirements/assets/010-popover-drilldown-prototype.html.
+                  <div className="popover-detail">
+                    <div className="kv">
+                      <span className="title">{sessionLabel(session)}</span>
+                      <span className="txt">
+                        {session.lastAssistantText || 'nothing said yet'}
+                      </span>
+                    </div>
+                    {session.subagents.length === 0 ? (
+                      <div className="kv faint">no subagents</div>
+                    ) : (
+                      <div className="popover-subagents" role="list">
+                        {session.subagents.map((node) => (
+                          <SubagentRow key={node.id} node={node} />
+                        ))}
+                        {/* The flat-list disclaimer belongs to the whole list, not any one
+                            row (story 010 D6) — `buildSubagentTree` sets `children: []`
+                            unconditionally, so a subagent that spawned its own would not be
+                            recognisable as a parent here. */}
+                        <div className="flat-note">{SUBAGENT_FLAT_LIST_NOTE}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                </Fragment>
                 );
               })}
             </Fragment>
-          ))}
+            );
+          })}
         </div>
       </div>
 

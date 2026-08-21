@@ -10,7 +10,7 @@
  * packaged app they live inside `app.asar`, which only the patched `fs` can open.
  */
 
-import { app, nativeImage, type NativeImage } from 'electron';
+import { app, nativeImage, nativeTheme, type NativeImage } from 'electron';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -49,7 +49,10 @@ export function trayPixelSize(scaleFactor: number): number {
 /** Tray tile for a state and badge count, rendered at a physical pixel size. */
 export function trayImage(icon: TrayIcon, badgeCount: number, size: number): NativeImage {
   const label = badgeLabel(badgeCount);
-  const key = `tray:${icon}:${label ?? ''}:${size}`;
+  // Badge rim colour follows the OS theme (§007 D4) — a cached dark-rim tile must not survive
+  // a switch to a light taskbar, so the theme joins the key alongside icon/badge/size.
+  const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  const key = `tray:${icon}:${label ?? ''}:${size}:${theme}`;
   const cached = cache.get(key);
   if (cached) return cached;
 

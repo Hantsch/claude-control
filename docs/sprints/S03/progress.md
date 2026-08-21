@@ -25,3 +25,13 @@
 - 2026-08-21 14:27 · 011 · D4 Popover renders both · done
 - 2026-08-21 14:57 · 011 · review + fix cycle (story-review-hard) · done
 - 2026-08-21 14:57 · 011 · Done section filled, status in-progress (live acceptance pending) · done
+- 2026-08-21 14:59 · 007 · D1 Light branch for surfaces · started
+- 2026-08-21 14:59 · 007 · D1 Light branch for surfaces · done
+- 2026-08-21 14:59 · 007 · D2 Window chrome follows OS scheme · started
+- 2026-08-21 14:59 · 007 · D4 Tray badge follows taskbar · started
+- 2026-08-21 15:07 · 007 · D2 Window chrome follows OS scheme · done
+- 2026-08-21 15:07 · 007 · D4 Tray badge follows taskbar · done
+- 2026-08-21 15:07 · 007 · D3 Contrast pass over semantic colours · started
+- 2026-08-21 15:20 · 007 · D3 Contrast pass over semantic colours · done
+- 2026-08-21 15:30 · 007 · review + fix cycle (POPOVER_BG.light bug found and fixed) · done
+- 2026-08-21 15:30 · 007 · Done section filled, status in-progress (live acceptance pending) · done

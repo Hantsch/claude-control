@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Light theme
-status: ready # draft -> ready -> in-progress -> done
+status: in-progress # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
@@ -20,10 +20,10 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 
 ## Acceptance Criteria
 
-- [ ] Both schemes are legible and follow the OS preference
-- [ ] All statuses remain distinguishable from each other in both schemes
-- [ ] All four context bands remain distinguishable in both schemes
-- [ ] The tray tiles ([assets/icons/tray/](../../assets/icons/tray/), built by
+- [x] Both schemes are legible and follow the OS preference
+- [x] All statuses remain distinguishable from each other in both schemes
+- [x] All four context bands remain distinguishable in both schemes
+- [x] The tray tiles ([assets/icons/tray/](../../assets/icons/tray/), built by
       [build-icons.py](../../scripts/build-icons.py)) are checked against a light taskbar,
       including the badge ([tray-icons.ts](../../src/main/tray-icons.ts))
 
@@ -117,7 +117,7 @@ Order matters: D1 → D3 (the test needs the light branch to exist); D2 and D4 a
 
 ## Deliverables
 
-- [ ] D1 — **Light branch for surfaces, and the theme surface made honest.**
+- [x] D1 — **Light branch for surfaces, and the theme surface made honest.**
       [styles.css](../../src/renderer/styles.css) only: literal sweep across `src/renderer`,
       `@media (prefers-color-scheme: light)` block with the neutral tokens + `color-scheme: light`,
       the two hardcoded literals ([styles.css:565](../../src/renderer/styles.css#L565),
@@ -127,14 +127,14 @@ Order matters: D1 → D3 (the test needs the light branch to exist); D2 and D4 a
       *Accepted when:* the app renders light end to end (main window + popover) on a light OS,
       dark is unchanged apart from the new token declarations, and no colour literal is left
       outside the two `:root` blocks.
-- [ ] D2 — **Window chrome follows the OS scheme.** [windows.ts](../../src/main/windows.ts) (plus a
+- [x] D2 — **Window chrome follows the OS scheme.** [windows.ts](../../src/main/windows.ts) (plus a
       small shared constants spot if one is warranted): initial `backgroundColor` per
       `nativeTheme.shouldUseDarkColors` for the main window (:83) and the popover (:190), and
       `setBackgroundColor` on `nativeTheme.on('updated')` for whichever windows are alive, with the
       listener removed on teardown.
       *Accepted when:* opening the popover on a light desktop shows no dark flash, and flipping the
       Windows scheme under a running app updates both windows without a restart.
-- [ ] D3 — **Contrast pass over the semantic colours, enforced by a test.** Light-branch values for
+- [x] D3 — **Contrast pass over the semantic colours, enforced by a test.** Light-branch values for
       `--status-waiting|done|working|stale|queued|starting|ended|unknown` and
       `--band-green|yellow|red|critical` in [styles.css](../../src/renderer/styles.css), plus a new
       `test/unit/theme.test.ts` (mirror the style of
@@ -143,7 +143,7 @@ Order matters: D1 → D3 (the test needs the light branch to exist); D2 and D4 a
       pairwise OKLab distance among statuses and among bands in light ≥ the dark scheme's worst.
       *Accepted when:* `npm test` is green, the test fails if any light status or band value is
       reverted to its dark counterpart, and the four bands read as four steps on a light surface.
-- [ ] D4 — **Tray badge follows the taskbar, tiles checked and the result recorded.**
+- [x] D4 — **Tray badge follows the taskbar, tiles checked and the result recorded.**
       [tray-icons.ts](../../src/main/tray-icons.ts) (theme-aware rim in `paintBadge`),
       [icon-assets.ts](../../src/main/icon-assets.ts) (theme in the `trayImage` cache key),
       [tray.ts](../../src/main/tray.ts) (`nativeTheme.on('updated')` → invalidate `lastKey`,
@@ -191,4 +191,44 @@ The Windows scheme is switched under Settings → Personalization → Colors →
 
 ## Done
 
-<!-- filled by /build -->
+**Summary.** Added a `@media (prefers-color-scheme: light)` block over `:root` in `styles.css`
+carrying neutral surfaces, the three new effect tokens (`--muted-opacity`, `--pulse-min`,
+`--halo-strength`) and light-branch values for all 12 semantic status/band tokens; the two stray
+literals (`#5a2a2a`, `#1c1c20`) are tokenised. `windows.ts` now sets initial `backgroundColor` from
+`nativeTheme.shouldUseDarkColors` for both windows and follows `nativeTheme.on('updated')` live,
+listener removed on teardown. The tray badge rim (`tray-icons.ts`) is theme-aware, the cache key in
+`icon-assets.ts` includes the theme, and `tray.ts` invalidates `lastKey` on theme change the same
+way `rescale()` does for DPI. `test/unit/theme.test.ts` parses both `:root` blocks and enforces the
+contrast/distinguishability targets from the Decisions section (dark values provably untouched,
+light worst-pair OKLab gap ≥ dark's for both statuses and bands); `test/unit/tray-icons.test.ts`
+asserts the badge rim colour flips with the theme flag.
+
+**Review + fix cycle.** A fresh review agent found one real bug: `POPOVER_BG.light` in
+`windows.ts` was set to `--bg`'s light value (`#f7f7f9`) instead of `--bg-raised`'s (`#ffffff`),
+which the popover body actually paints — a light-mode flash mismatch on open. Fixed
+(`windows.ts:19`, now `'#ffffff'`); typecheck + full test suite re-run green after the fix. No
+other findings — no weakened tests, no scope creep beyond two unrelated pre-existing working-tree
+changes (`.claude/ai-scrum.md`, `docs/sprints/S03/progress.md`) that predate this story and were
+left untouched.
+
+**AC4 tray verdict** (per the Decisions section, discharged by artifact + finding rather than a
+promise): `output/007-tray-badge-check.png` composites all six tile states, with and without
+badge, over a dark (`#202020`) and a light (`#f3f3f3`) taskbar swatch at 32px. All six tiles read
+correctly with the badge visibly separable from both the tile and the taskbar in every
+combination — no tile-art regression found, so no follow-up story is needed.
+
+**Verification:** `npm run build` — green. `npm test` — 277/277 green (includes the two new test
+files, 17 new assertions). `npm run typecheck` — green. Independent OKLab/contrast math was
+reproduced by the reviewer outside the test file and matched: dark worst status pair 0.1098
+(stale/unknown) vs. light 0.1238 (waiting/stale); dark worst band pair 0.0464 (red/critical) vs.
+light 0.1358 — both comfortably ahead of the dark baseline.
+
+**Open point — live acceptance pending.** This project's `live-smoke-how` states there is no
+browser automation for the Electron tray UI (window + native tray); the manual Test Plan below
+(actual OS scheme switch under a running `npm run dev`, live switch without restart, tray badge on
+a real light/dark taskbar at 100%/150%) has not been run by a human yet. Everything checkable
+without a live OS + display — code correctness, contrast/distinguishability math, the tray-badge
+compositing artifact — is done and green. Status is left `in-progress` pending that manual pass;
+flip to `done` once steps 1–6 of the Test Plan are walked and confirmed.
+
+**Commit message:** `007: light theme — OS-following scheme, contrast-tested, theme-aware tray badge`

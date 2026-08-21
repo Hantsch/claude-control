@@ -25,7 +25,67 @@
   --band-red: #ff453a;
   --band-critical: #ff2d55;
 
+  /* Stray literals tokenised (007 D1): a hex chosen against near-black is exactly the leak
+     this story exists to close. Values unchanged from what they replace. */
+  --error-border: #5a2a2a;
+  --row-divider: #1c1c20;
+
+  /* Effect tokens (007 D1): these three assume a dark backdrop, so the light branch below
+     needs its own dimming factors instead of inheriting numbers baked into the rule. */
+  --muted-opacity: 0.7;
+  --pulse-min: 0.4;
+  --halo-strength: 35%;
+
   color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f7f9;
+    --bg-raised: #ffffff;
+    --bg-hover: #ececef;
+    --bg-active: #e0e0e5;
+    --border: #d8d8dd;
+    --text: #1c1c1f;
+    --text-dim: #55555c;
+    --text-faint: #86868d;
+    --accent: #4f5bd5;
+
+    /* Semantic hues retuned for a light surface (007 D3). Every one of them is painted as a
+       fill — status dots, band fills, subagent pips — on surfaces as dark as `--bg-active`
+       (a selected row, the bar track), so `--bg-active` is the backdrop they have to survive,
+       not `--bg`. Two are painted as *text* as well (`--status-waiting` in
+       `.field .hint.warning` / `.popover-group-head .attention`, `--band-red` in
+       `.meta.error`), which puts them on the stricter 4.5:1 target.
+       On a light ground every one of these has to sit below ~30 % relative luminance to clear
+       3:1, so the lightness axis the dark scheme spreads its hues over is largely gone: the
+       separation here is carried by hue and chroma instead, with the two greys and the tan
+       taking the remaining lightness steps. None of it is eyeballed — `test/unit/theme.test.ts`
+       re-derives every ratio and the worst pairwise OKLab distance from this file, using the
+       shipped dark scheme's own worst pair as the distinguishability threshold. */
+    --status-waiting: #a04c00;
+    --status-done: #157f3c;
+    --status-working: #1b5fc9;
+    --status-stale: #8f7c5f;
+    --status-queued: #8f2fae;
+    --status-starting: #0f7f92;
+    --status-ended: #2f2f36;
+    --status-unknown: #4f5460;
+
+    --band-green: #157f3c;
+    --band-yellow: #9c7600;
+    --band-red: #c62828;
+    --band-critical: #8e0b3a;
+
+    --error-border: #e0a8a8;
+    --row-divider: #e4e4e9;
+
+    --muted-opacity: 0.6;
+    --pulse-min: 0.55;
+    --halo-strength: 25%;
+
+    color-scheme: light;
+  }
 }
 
 * {
@@ -283,7 +343,7 @@ code,
 /* Muted sessions still show up, just quieter — the icon is the recognisable-at-a-glance
    marker, the dimming reinforces it without hiding anything. */
 .session-row.muted {
-  opacity: 0.7;
+  opacity: var(--muted-opacity);
 }
 
 .session-row .mute-toggle {
@@ -368,12 +428,12 @@ code,
 /* The waiting dot is the only one that gets a halo — derived from the same
    --status-waiting variable used for its fill, so the two can never drift apart. */
 .dot.halo {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) 35%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) var(--halo-strength), transparent);
 }
 
 /* A 3px halo around a 7px dot swallows the dot and reaches into the text beside it. */
 .dot.sm.halo {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-waiting) 35%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-waiting) var(--halo-strength), transparent);
 }
 
 @keyframes pulse {
@@ -382,7 +442,7 @@ code,
     opacity: 1;
   }
   50% {
-    opacity: 0.4;
+    opacity: var(--pulse-min);
   }
 }
 
@@ -574,7 +634,7 @@ code,
 }
 
 .notice.error {
-  border-color: #5a2a2a;
+  border-color: var(--error-border);
 }
 
 /* ---------------------------------------------------------------- history */
@@ -615,7 +675,7 @@ table.history th {
 
 table.history td {
   padding: 4px 6px;
-  border-bottom: 1px solid #1c1c20;
+  border-bottom: 1px solid var(--row-divider);
   vertical-align: top;
 }
 
@@ -996,7 +1056,7 @@ table.history .title {
 /* Muted sessions still show up in the popover, just quieter — same treatment as the main
    window's `.session-row.muted` so the two surfaces agree on what "muted" looks like. */
 .popover-row.muted {
-  opacity: 0.7;
+  opacity: var(--muted-opacity);
 }
 
 .popover-row .mute-toggle {

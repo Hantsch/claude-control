@@ -11,6 +11,7 @@
  * compositing code.
  */
 
+import { nativeTheme } from 'electron';
 import type { TrayIcon, TrayState } from '../core/model/status.ts';
 
 export interface Rgb {
@@ -33,8 +34,15 @@ export const STATE_COLORS: Record<TrayState, Rgb> = {
 
 const BADGE_COLOR: Rgb = { r: 255, g: 59, b: 48 };
 const BADGE_TEXT: Rgb = { r: 255, g: 255, b: 255 };
-/** Near-black rim: the badge sits on top of the state ring and has to separate from it. */
-const BADGE_RIM_COLOR: Rgb = { r: 18, g: 18, b: 20 };
+/** Near-black rim: on a dark taskbar it separates the badge from the state ring beneath it. */
+const BADGE_RIM_COLOR_DARK: Rgb = { r: 18, g: 18, b: 20 };
+/** Near-white rim: the dark one disappears into a light taskbar, so light theme gets the mirror. */
+const BADGE_RIM_COLOR_LIGHT: Rgb = { r: 240, g: 240, b: 240 };
+
+/** Rim colour for the current OS theme (§007 D4) — dark taskbar keeps the near-black rim. */
+export function badgeRimColor(dark: boolean = nativeTheme.shouldUseDarkColors): Rgb {
+  return dark ? BADGE_RIM_COLOR_DARK : BADGE_RIM_COLOR_LIGHT;
+}
 /** Badge radius and rim width, relative to the tile. */
 const BADGE_RADIUS = 0.24;
 const BADGE_RIM = 0.045;
@@ -179,14 +187,18 @@ export function badgeLabel(count: number): string | null {
  * the tooltip and the popover. It still beats no badge: the mark alone says "something is
  * waiting for you", and that is the part that has to survive at tray size.
  */
-export function paintBadge(bitmap: Bitmap, label: string): void {
+export function paintBadge(
+  bitmap: Bitmap,
+  label: string,
+  dark: boolean = nativeTheme.shouldUseDarkColors,
+): void {
   const size = Math.min(bitmap.width, bitmap.height);
   const radius = size * BADGE_RADIUS;
   const rim = Math.max(1, size * BADGE_RIM);
   const cx = bitmap.width - radius - rim;
   const cy = bitmap.height - radius - rim;
 
-  circle(bitmap, cx, cy, radius + rim, BADGE_RIM_COLOR);
+  circle(bitmap, cx, cy, radius + rim, badgeRimColor(dark));
   circle(bitmap, cx, cy, radius, BADGE_COLOR);
 
   const scale = Math.max(1, Math.floor((2 * radius * BADGE_GLYPH) / 5));

@@ -191,6 +191,7 @@ async function bootstrap(): Promise<void> {
   app.on('before-quit', () => {
     void engine.stop();
     tray.destroy();
+    windows.destroy();
   });
 
   // Belt-and-suspenders: guarantees the registration is gone even if `before-quit` is cancelled.
@@ -231,6 +232,7 @@ async function bootstrap(): Promise<void> {
   function quit(): void {
     void engine.stop().finally(() => {
       tray.destroy();
+      windows.destroy();
       app.quit();
     });
   }

@@ -6,9 +6,17 @@
  * is refused — the app has no network features at all (N1).
  */
 
-import { BrowserWindow, screen, shell } from 'electron';
+import { BrowserWindow, nativeTheme, screen, shell } from 'electron';
 import { join } from 'node:path';
 import { appIcon } from './icon-assets.ts';
+
+/**
+ * Window `backgroundColor` is painted before the renderer runs, so it has to be picked from the
+ * OS scheme directly rather than waiting on CSS. Kept in one place, next to the values
+ * `styles.css`'s light branch uses for `--bg` / `--bg-raised`, so the two cannot drift apart.
+ */
+const MAIN_WINDOW_BG = { dark: '#111113', light: '#f7f7f9' };
+const POPOVER_BG = { dark: '#17171a', light: '#ffffff' };
 
 /**
  * The popover is deliberately wide: every column (title, project · branch, status, age) has
@@ -49,9 +57,27 @@ export class WindowManager {
   private popoverPinned = false;
   /** Tray bounds of the most recent open, so a resize can re-anchor to the icon. */
   private lastTrayBounds: Electron.Rectangle | null = null;
+  private readonly onThemeUpdated = (): void => this.applyThemeToLiveWindows();
 
   constructor(options: WindowManagerOptions) {
     this.options = options;
+    nativeTheme.on('updated', this.onThemeUpdated);
+  }
+
+  /** Undoes the `nativeTheme` subscription taken in the constructor — call on app teardown. */
+  destroy(): void {
+    nativeTheme.removeListener('updated', this.onThemeUpdated);
+  }
+
+  /** Re-paints whichever windows are currently alive to match the OS scheme right now. */
+  private applyThemeToLiveWindows(): void {
+    const dark = nativeTheme.shouldUseDarkColors;
+    if (this.main && !this.main.isDestroyed()) {
+      this.main.setBackgroundColor(dark ? MAIN_WINDOW_BG.dark : MAIN_WINDOW_BG.light);
+    }
+    if (this.popover && !this.popover.isDestroyed()) {
+      this.popover.setBackgroundColor(dark ? POPOVER_BG.dark : POPOVER_BG.light);
+    }
   }
 
   getMain(): BrowserWindow | null {
@@ -80,7 +106,7 @@ export class WindowManager {
       minWidth: 720,
       minHeight: 480,
       show: false,
-      backgroundColor: '#111113',
+      backgroundColor: nativeTheme.shouldUseDarkColors ? MAIN_WINDOW_BG.dark : MAIN_WINDOW_BG.light,
       title: 'Claude Control',
       icon: appIcon(),
       autoHideMenuBar: true,
@@ -187,7 +213,7 @@ export class WindowManager {
       fullscreenable: false,
       skipTaskbar: true,
       alwaysOnTop: true,
-      backgroundColor: '#17171a',
+      backgroundColor: nativeTheme.shouldUseDarkColors ? POPOVER_BG.dark : POPOVER_BG.light,
       webPreferences: this.webPreferences(),
     });
 

@@ -11,7 +11,7 @@
  */
 
 import { app, dialog, globalShortcut } from 'electron';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { createEngine } from '../core/createEngine.ts';
 import type { SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type FocusResult } from '../shared/ipc.ts';
@@ -22,7 +22,12 @@ import { broadcast, registerIpc } from './ipc.ts';
 import { Notifier } from './notifier.ts';
 import { SettingsStore } from './settings.ts';
 import { ShortcutManager } from './shortcuts.ts';
-import { TOAST_PROTOCOL, toastActionFromArgv, type ToastAction } from './toast-protocol.ts';
+import {
+  protocolClientTarget,
+  TOAST_PROTOCOL,
+  toastActionFromArgv,
+  type ToastAction,
+} from './toast-protocol.ts';
 import { TrayPresenter } from './tray.ts';
 import { WindowManager, type MainTab } from './windows.ts';
 
@@ -242,14 +247,16 @@ async function bootstrap(): Promise<void> {
  * Makes `claude-control://` ours, so the shell can hand a toast button's URI back to the app
  * (D6). Windows-only: that is the only platform where the buttons exist, and registering a
  * scheme elsewhere would be a side effect nothing asked for. A dev run has no exe of its own,
- * so the registration has to name Electron plus the script it should run.
+ * so the registration has to name Electron plus the script it should run. `protocolClientTarget`
+ * (D4) additionally prefers the portable build's stable exe path over the temp extraction dir
+ * `process.execPath` would otherwise record.
  */
 function registerToastProtocol(): void {
   if (process.platform !== 'win32') return;
   try {
-    const script = process.argv[1];
-    if (app.isPackaged || !script) app.setAsDefaultProtocolClient(TOAST_PROTOCOL);
-    else app.setAsDefaultProtocolClient(TOAST_PROTOCOL, process.execPath, [resolve(script)]);
+    const target = protocolClientTarget(process.env, process.execPath, app.isPackaged, process.argv[1]);
+    if (target.path) app.setAsDefaultProtocolClient(TOAST_PROTOCOL, target.path, target.args ?? []);
+    else app.setAsDefaultProtocolClient(TOAST_PROTOCOL);
   } catch {
     // A blocked registry write costs the buttons, not the app — the toast itself still shows.
   }

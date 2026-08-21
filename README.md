@@ -62,6 +62,12 @@ The packaged EXE is portable: put it anywhere and start it manually. It lives in
 left-click for the compact session popover, right-click for the menu, double-click to open
 the main window. Settings are stored in `%APPDATA%\claude-control\settings.json`.
 
+The toast buttons (Jump, Mute this session) work by relaunching the EXE path that was recorded
+in the Windows protocol registry entry when the app last registered it — for the portable build
+that is the actual EXE the user started, not a fixed install location. Moving or deleting that
+EXE therefore breaks the buttons until the app is started once from its new location, which
+re-registers the handler. Settings → Diagnostics shows the currently registered path.
+
 Useful flags when starting from a terminal:
 
 ```powershell

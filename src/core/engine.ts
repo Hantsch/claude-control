@@ -196,14 +196,23 @@ export class ControlEngine {
     // session's orphan, not a second thing to watch (§4) — but only once the probe actually
     // tells the two apart. `undefined`, from a missing probe or one that has not answered
     // yet, is "not known" and must never read as "no window": that would hide a real session.
-    const sessions = (
-      this.settings.list.hideOrphanSessions ? unstarting.filter((s) => !this.isOrphan(s, unstarting)) : unstarting
-    )
+    const hideOrphans = this.settings.list.hideOrphanSessions;
+    const sessions = (hideOrphans ? unstarting.filter((s) => !this.isOrphan(s, unstarting)) : unstarting)
       .sort(compareSessions)
       // Mute is presentation only (§6.6 D4): decorated last, after status/sort/grouping have
       // already been decided from the real, unmuted facts, so a mute can never move a
       // session, change its status or hide it from anything but toasts.
-      .map((session) => ({ ...session, muted: this.mutedSessions.has(session.sessionId) }));
+      //
+      // `windowUnknown` rides along the same way (story 012 D2), and only while the filter is
+      // armed: with `hideOrphanSessions` off no session was ever at risk of being hidden, so
+      // there is nothing to warn about and the field stays absent.
+      .map(
+        (session): SessionView => ({
+          ...session,
+          muted: this.mutedSessions.has(session.sessionId),
+          ...(hideOrphans && { windowUnknown: this.isWindowUnknown(session, unstarting) }),
+        }),
+      );
     const at = this.now();
     // The tray is the glance surface and gets the narrower list; the icon and the badge
     // follow it, so what the icon claims is always something the popover can show.
@@ -243,6 +252,22 @@ export class ControlEngine {
   private isOrphan(session: SessionView, all: SessionView[]): boolean {
     if (!this.hasTerminalWindow) return false;
     if (this.hasTerminalWindow(session.pid) !== false) return false;
+    return all.some(
+      (other) => other !== session && other.cwd === session.cwd && this.hasTerminalWindow!(other.pid) === true,
+    );
+  }
+
+  /**
+   * The other half of `isOrphan()`: this session is only still on screen because the probe
+   * could not answer for it (`undefined`) while a folder mate answered `true` — i.e. with a
+   * decisive `false` it *would* have been hidden. That makes it shown on a guess, which the
+   * UI marks (story 012). A `false` or `true` answer is decisive and never unknown, and when
+   * no mate has a window there was no orphan rule to escape in the first place — a folder
+   * where the probe failed for everyone therefore raises no marker at all.
+   */
+  private isWindowUnknown(session: SessionView, all: SessionView[]): boolean {
+    if (!this.hasTerminalWindow) return false;
+    if (this.hasTerminalWindow(session.pid) !== undefined) return false;
     return all.some(
       (other) => other !== session && other.cwd === session.cwd && this.hasTerminalWindow!(other.pid) === true,
     );

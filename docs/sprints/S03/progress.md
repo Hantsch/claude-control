@@ -35,3 +35,19 @@
 - 2026-08-21 15:20 · 007 · D3 Contrast pass over semantic colours · done
 - 2026-08-21 15:30 · 007 · review + fix cycle (POPOVER_BG.light bug found and fixed) · done
 - 2026-08-21 15:30 · 007 · Done section filled, status in-progress (live acceptance pending) · done
+- 2026-08-21 15:32 · 012 · D1 Probe stops inventing a false · started
+- 2026-08-21 15:33 · 012 · D1 Probe stops inventing a false · done
+- 2026-08-21 15:33 · 012 · D2 windowUnknown on the snapshot · started
+- 2026-08-21 15:38 · 012 · D2 windowUnknown on the snapshot · done
+- 2026-08-21 15:38 · 012 · D3 Marker on the glance surface · started
+- 2026-08-21 15:44 · 012 · D3 Marker on the glance surface · done
+- 2026-08-21 15:44 · 012 · D4 Register stable protocol path · started
+- 2026-08-21 15:52 · 012 · D4 Register stable protocol path · done
+- 2026-08-21 15:52 · 012 · D5 State the limit where a user meets it · started
+- 2026-08-21 15:59 · 012 · D5 State the limit where a user meets it · done
+- 2026-08-21 15:59 · 012 · D6 Never steal focus from Pin/Close · started
+- 2026-08-21 16:10 · 012 · D6 Never take focus off Pin/Close · done
+- 2026-08-21 16:10 · 012 · D7 One ShortcutStatus · started
+- 2026-08-21 16:14 · 012 · D7 One ShortcutStatus · done
+- 2026-08-21 17:53 · 012 · review + fix cycle (probe pre-filled false — AC1 blocker — plus grid track and marker gate) · done
+- 2026-08-21 17:53 · 012 · Done section filled, status in-progress (live acceptance pending) · done

@@ -6,10 +6,12 @@
  * the contract between them is testable without Electron.
  */
 
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildToastXml,
   parseToastAction,
+  protocolClientTarget,
   toastActionFromArgv,
   toastActionUri,
 } from '../../src/main/toast-protocol.ts';
@@ -99,5 +101,29 @@ describe('toastActionFromArgv', () => {
     expect(toastActionFromArgv(['C:/app/ClaudeControl.exe'])).toBeNull();
     expect(toastActionFromArgv(['C:/app/ClaudeControl.exe', '--show', 'sessions'])).toBeNull();
     expect(toastActionFromArgv([])).toBeNull();
+  });
+});
+
+describe('protocolClientTarget', () => {
+  it('prefers the portable exe env var, with no extra args, over everything else', () => {
+    const env = { PORTABLE_EXECUTABLE_FILE: 'D:/Downloads/ClaudeControl.exe' };
+    expect(protocolClientTarget(env, 'C:/Temp/7zS1/electron.exe', true, 'C:/app/out/main/index.js')).toEqual({
+      path: 'D:/Downloads/ClaudeControl.exe',
+    });
+    expect(protocolClientTarget(env, 'C:/Temp/7zS1/electron.exe', false, undefined)).toEqual({
+      path: 'D:/Downloads/ClaudeControl.exe',
+    });
+  });
+
+  it('registers with no arguments when packaged and the env var is absent', () => {
+    expect(protocolClientTarget({}, 'C:/app/ClaudeControl.exe', true, undefined)).toEqual({});
+    expect(protocolClientTarget({}, 'C:/app/ClaudeControl.exe', true, 'C:/app/out/main/index.js')).toEqual({});
+  });
+
+  it('registers Electron plus the resolved script path in dev', () => {
+    expect(protocolClientTarget({}, 'C:/electron/electron.exe', false, 'out/main/index.js')).toEqual({
+      path: 'C:/electron/electron.exe',
+      args: [resolve('out/main/index.js')],
+    });
   });
 });

@@ -622,6 +622,56 @@ describe('orphan filter (§4: windowless sessions sharing a live one\'s folder)'
     const engine = engineWith([windowlessA, windowedB], (pid) => pid === 2);
     expect(engine.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
   });
+
+  describe('windowUnknown marker (story 012 D2)', () => {
+    it('marks the session that survived only because the probe could not answer for it', () => {
+      const unknown = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+      const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+      const engine = engineWith([unknown, windowed], (pid) => (pid === 1 ? undefined : true));
+      const sessions = engine.getSnapshot().sessions;
+      // Shown on a guess: still there, but flagged.
+      expect(sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+      expect(sessions.find((s) => s.sessionId === 'w1')!.windowUnknown).toBe(true);
+      // The mate got a decisive answer, so it is not a guess.
+      expect(sessions.find((s) => s.sessionId === 'w2')!.windowUnknown).toBeFalsy();
+    });
+
+    it('still hides — and does not mark — a session the probe decisively calls windowless', () => {
+      const windowless = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+      const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+      const engine = engineWith([windowless, windowed], (pid) => pid === 2);
+      const sessions = engine.getSnapshot().sessions;
+      expect(sessions.map((s) => s.sessionId)).toEqual(['w2']);
+      expect(sessions[0]!.windowUnknown).toBeFalsy();
+    });
+
+    it('raises no marker when the probe failed for the whole folder', () => {
+      const a = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+      const b = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+      const engine = engineWith([a, b], () => undefined);
+      const sessions = engine.getSnapshot().sessions;
+      // Nothing was ever at risk of being hidden, so there is nothing to warn about.
+      expect(sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+      expect(sessions.every((s) => !s.windowUnknown)).toBe(true);
+    });
+
+    it('raises no marker without a probe, or with the orphan filter switched off', () => {
+      const unknown = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+      const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+
+      const noProbe = engineWith([unknown, windowed], undefined).getSnapshot().sessions;
+      expect(noProbe.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+      expect(noProbe.every((s) => !s.windowUnknown)).toBe(true);
+
+      // Same probe answers as the marking case, but with the filter off nothing could be
+      // hidden, so the flag must stay away entirely.
+      const filterOff = engineWith([unknown, windowed], (pid) => (pid === 1 ? undefined : true), false)
+        .getSnapshot()
+        .sessions;
+      expect(filterOff.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+      expect(filterOff.every((s) => s.windowUnknown === undefined)).toBe(true);
+    });
+  });
 });
 
 describe('mute registry (§6.6, story 004 D4)', () => {

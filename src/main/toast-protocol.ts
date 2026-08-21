@@ -12,6 +12,8 @@
  * imports so both are unit-testable in plain Node.
  */
 
+import { resolve } from 'node:path';
+
 /** Registered with `app.setAsDefaultProtocolClient` (Windows only — see index.ts). */
 export const TOAST_PROTOCOL = 'claude-control';
 
@@ -106,6 +108,36 @@ export function parseToastAction(value: string): ToastAction | null {
   const sessionId = url.searchParams.get('session')?.trim();
   if (!sessionId) return null;
   return { action: verb, sessionId };
+}
+
+export interface ProtocolClientTarget {
+  /** Second arg to `app.setAsDefaultProtocolClient` — omitted when the exe is self-sufficient. */
+  path?: string;
+  /** Third arg — extra argv Windows appends when relaunching via the registered path. */
+  args?: string[];
+}
+
+/**
+ * What to register with `app.setAsDefaultProtocolClient` (D4).
+ *
+ * `process.execPath` is normally stable, but electron-builder's `portable` target extracts to a
+ * per-run temp dir and points `execPath` there — a path that stops existing once the app exits,
+ * so a toast button pressed later launches nothing. That target also exports
+ * `PORTABLE_EXECUTABLE_FILE`: the *launched* exe's own stable path. Prefer it when present,
+ * with no extra args since it is a full standalone exe. Otherwise fall back to today's
+ * behaviour: no-argument registration when packaged (the exe finds itself), or Electron plus
+ * the script path in dev (there is no exe of its own to register).
+ */
+export function protocolClientTarget(
+  env: NodeJS.ProcessEnv,
+  execPath: string,
+  isPackaged: boolean,
+  script: string | undefined,
+): ProtocolClientTarget {
+  const portableExe = env.PORTABLE_EXECUTABLE_FILE;
+  if (portableExe) return { path: portableExe };
+  if (isPackaged || !script) return {};
+  return { path: execPath, args: [resolve(script)] };
 }
 
 function escapeXml(text: string): string {

@@ -43,6 +43,7 @@ import { EMPTY_STATE, api } from './api.ts';
 import { ContextBar } from './components/ContextBar.tsx';
 import { StatusDot } from './components/StatusDot.tsx';
 import { formatAge, formatDuration } from './lib/format.ts';
+import { shouldFocusTopRow } from './lib/popoverFocus.ts';
 import {
   SUBAGENT_FLAT_LIST_NOTE,
   groupStatusRollup,
@@ -482,7 +483,20 @@ function Popover(): React.JSX.Element {
   // notify-switch button instead.
   useEffect(() => {
     if (!focusedYet.current) {
-      focusTopRow();
+      // Story 012 D6: the retry is allowed while focus is nowhere meaningful (body) or already
+      // inside the list, but must not steal it off Pin / Close / the notify switch — with zero
+      // sessions open, the first arriving session used to yank focus onto its row. The decision
+      // itself lives in `popoverFocus.ts`, where it is testable without a DOM.
+      const active = document.activeElement;
+      const activeElementIsBody =
+        active == null || active === document.body || active === document.documentElement;
+      const activeElementIsInList = active != null && rows.current?.contains(active) === true;
+      const allowed = shouldFocusTopRow({
+        focusedYet: focusedYet.current,
+        activeElementIsBody,
+        activeElementIsInList,
+      });
+      if (allowed) focusTopRow();
       return;
     }
     const key = focusedNavKey.current;
@@ -754,6 +768,14 @@ function Popover(): React.JSX.Element {
                     >
                       {session.muted ? '🔇' : '🔔'}
                     </button>
+                    {session.windowUnknown && (
+                      <span
+                        className="window-unknown-badge"
+                        title="Window state couldn't be determined, so this session is shown to be safe"
+                      >
+                        ❓
+                      </span>
+                    )}
                   </span>
                   {/* Line 2 — the prose: status or, for a waiting session, the *whole*
                       reason. This is what the second line is for: the 8-column grid of story

@@ -320,6 +320,13 @@ export interface SessionView {
    * sorting, grouping and the tray badge all read this session exactly as if it were unmuted.
    */
   muted: boolean;
+  /**
+   * True when this session is only visible because the window probe could not answer for it
+   * while a folder mate did have a window — a decisive "no window" would have hidden it as an
+   * orphan (§4, story 012). Presentation only, and only ever set while `hideOrphanSessions`
+   * is on: absent means either the filter is off or the probe answer was decisive.
+   */
+  windowUnknown?: boolean;
   project: ProjectRef;
   branch: string | null;
   /** Worktree/branch grouping key (§10 of requirements, F10). */

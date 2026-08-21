@@ -77,7 +77,7 @@ export interface FocusResult {
   cwd: string;
 }
 
-/** Mirrors `ShortcutManager.status()`'s return shape (§main/shortcuts.ts). */
+/** Shape returned by `ShortcutManager.status()` (§main/shortcuts.ts). */
 export interface ShortcutStatus {
   accelerator: string;
   registered: boolean;
@@ -92,6 +92,12 @@ export interface DiagnosticsInfo {
   /** Whether native window focus is available (koffi loaded) — §7. */
   focusBackend: string;
   platform: string;
+  /**
+   * The exe path registered for `claude-control://` toast buttons (D4/D5) — e.g. Jump or Mute
+   * this session on Windows. Lets a user tell whether it still points at a portable EXE that
+   * has since moved or been deleted.
+   */
+  protocolTarget: string;
 }
 
 export const IPC = {

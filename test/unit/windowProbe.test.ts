@@ -79,7 +79,7 @@ describe('WindowProbe.refresh', () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
-  it('treats a missing pid in the probe result as false, never as unknown', async () => {
+  it('leaves a pid the probe did not answer for uncached, never inventing false', async () => {
     const probe = vi.fn().mockResolvedValue(new Map([[1, true]]));
     const windowProbe = new WindowProbe({ probe });
     const sessions: LiveSessionRef[] = [
@@ -87,7 +87,30 @@ describe('WindowProbe.refresh', () => {
       { pid: 2, cwd: 'C:/a' },
     ];
     await windowProbe.refresh(sessions);
-    expect(windowProbe.get(2)).toBe(false);
+    expect(windowProbe.get(1)).toBe(true);
+    expect(windowProbe.get(2)).toBeUndefined();
+  });
+
+  it('re-probes a pid the previous pass did not answer for, within the same TTL window', async () => {
+    let now = 0;
+    const probe = vi
+      .fn()
+      .mockResolvedValueOnce(new Map([[1, true]]))
+      .mockResolvedValueOnce(new Map([[2, true]]));
+    const windowProbe = new WindowProbe({ probe, ttlMs: 1000, now: () => now });
+    const sessions: LiveSessionRef[] = [
+      { pid: 1, cwd: 'C:/a' },
+      { pid: 2, cwd: 'C:/a' },
+    ];
+    await windowProbe.refresh(sessions);
+    expect(windowProbe.get(2)).toBeUndefined();
+
+    now += 100; // still well within the TTL window, so pid 1 is not re-probed
+    await windowProbe.refresh(sessions);
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(probe).toHaveBeenNthCalledWith(2, [2]);
+    expect(windowProbe.get(1)).toBe(true);
+    expect(windowProbe.get(2)).toBe(true);
   });
 
   it('drops a pid from the cache once its session is no longer live', async () => {

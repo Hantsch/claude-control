@@ -1,7 +1,7 @@
 ---
 id: 012
 title: S02 residuals — never hide a live session, never steal the focus
-status: ready # draft -> ready -> in-progress -> done
+status: in-progress # draft -> ready -> in-progress -> done
 created: 2026-08-21
 ---
 
@@ -43,25 +43,25 @@ in the cases above, where something wrong stops happening.
 
 ## Acceptance Criteria
 
-- [ ] A window probe that does not answer for a specific pid is treated as "unknown", never as
+- [x] A window probe that does not answer for a specific pid is treated as "unknown", never as
       "no window" — an unknown answer never removes a session from the list
-- [ ] The unknown outcome is not cached as a decision: the next tick may still find out, rather
+- [x] The unknown outcome is not cached as a decision: the next tick may still find out, rather
       than being told the stale answer for the rest of the TTL
-- [ ] The unknown outcome is visibly marked on the glance surface (a session shown on a guess is
+- [x] The unknown outcome is visibly marked on the glance surface (a session shown on a guess is
       told apart from one the probe actually confirmed), per the Sprint decision below
-- [ ] The existing behaviour is unchanged for the two answers the probe does give, and the
+- [x] The existing behaviour is unchanged for the two answers the probe does give, and the
       same-folder filter still hides a genuinely windowless session when a windowed mate exists
-- [ ] A full probe failure remains fail-safe (nothing is dropped), as it is today
-- [ ] The toast-button path for the portable target behaves per the decision taken in the
+- [x] A full probe failure remains fail-safe (nothing is dropped), as it is today
+- [x] The toast-button path for the portable target behaves per the decision taken in the
       clarification round — either it works after a restart, or the limit is stated where a user
       meets it (README / Settings → Diagnostics) instead of failing silently
-- [ ] The popover never moves the keyboard focus away from a control the user has focused
+- [x] The popover never moves the keyboard focus away from a control the user has focused
       themselves — including the "first session arrives while Pin/Close is focused" case, judged
       against story 010's focus handling, not 003's
-- [ ] `ShortcutStatus` exists once, with the shared type as the single source
-- [ ] `npm run typecheck`, `npm test`, `npm run build` green; `test/unit/boundaries.test.ts`
+- [x] `ShortcutStatus` exists once, with the shared type as the single source
+- [x] `npm run typecheck`, `npm test`, `npm run build` green; `test/unit/boundaries.test.ts`
       (no Win32 import in `core/`) stays green
-- [ ] No behaviour change is claimed that is not covered by a unit test — each of A, C and D is
+- [x] No behaviour change is claimed that is not covered by a unit test — each of A, C and D is
       testable without a live Windows session
 
 ## Open Questions
@@ -150,13 +150,13 @@ rewrites, so rebase onto 010's result before starting C.
 
 ## Deliverables
 
-- [ ] D1 — **The probe stops inventing a `false`.** `src/main/focus/windowProbe.ts`: a pid the
+- [x] D1 — **The probe stops inventing a `false`.** `src/main/focus/windowProbe.ts`: a pid the
       probe did not answer for is not cached at all; `get()` returns `undefined` and the next
       `refresh()` pass re-probes it inside the same TTL window. Accept: extended
       `test/unit/windowProbe.test.ts` — partial result map leaves the missing pid `undefined`,
       a following pass probes it again (it is still in the stale set), answered pids keep their
       cached value and their TTL behaviour. Pattern to mirror: the existing cases in that file.
-- [ ] D2 — **`windowUnknown` on the snapshot.** `src/core/engine.ts` (+ `src/core/model/types.ts`
+- [x] D2 — **`windowUnknown` on the snapshot.** `src/core/engine.ts` (+ `src/core/model/types.ts`
       for the optional field): new private `isWindowUnknown()` next to `isOrphan()`, decorated in
       the `.map` at engine.ts:206, only when `hideOrphanSessions` is on. Accept: extended
       `test/unit/derivations.test.ts` (orphan-filter block, ~line 558) — (a) unknown + windowed
@@ -164,20 +164,20 @@ rewrites, so rebase onto 010's result before starting C.
       ⇒ still hidden; (c) all-unknown folder (full probe failure) ⇒ nothing dropped, no marker;
       (d) no probe injected / filter off ⇒ flag absent or false, nothing changes;
       `test/unit/boundaries.test.ts` stays green (no Win32 import added to `core/`).
-- [ ] D3 — **The marker on the glance surface.** `src/renderer/popover.tsx` +
+- [x] D3 — **The marker on the glance surface.** `src/renderer/popover.tsx` +
       `src/renderer/styles.css`: on a row with `windowUnknown`, a static badge (no click target,
       not in the tab order) plus a `title` saying the window state could not be determined and
       the session is shown to be safe. Mirror the badge markup/styling of the `mute-toggle` block
       (`src/renderer/components/SessionsView.tsx:163-172`) without its `onClick`. Row layout from
       story 010 stays intact; `SessionsView` is untouched. Accept: visible in the popover per the
       test plan; no change on a row without the flag.
-- [ ] D4 — **Register a stable protocol path for the portable EXE.**
+- [x] D4 — **Register a stable protocol path for the portable EXE.**
       `src/main/toast-protocol.ts` gets the pure `protocolClientTarget()` (prefers
       `process.env.PORTABLE_EXECUTABLE_FILE`, else today's packaged/dev behaviour);
       `src/main/index.ts:245-254` uses it. Accept: extended `test/unit/toastProtocol.test.ts` —
       env var set ⇒ that path with no extra args; env var absent + packaged ⇒ current no-argument
       registration; dev ⇒ `execPath` + script arg as today. Nothing about argv *parsing* changes.
-- [ ] D5 — **State the limit where a user meets it.** `DiagnosticsInfo` in `src/shared/ipc.ts`
+- [x] D5 — **State the limit where a user meets it.** `DiagnosticsInfo` in `src/shared/ipc.ts`
       gains the registered protocol target, filled in `src/main/ipc.ts:90` and rendered in the
       existing Diagnostics block of `src/renderer/components/SettingsView.tsx:375-388`;
       `README.md` gets one paragraph: toast buttons launch the EXE path recorded at registration
@@ -185,7 +185,7 @@ rewrites, so rebase onto 010's result before starting C.
       the new location. Accept: value visible in Settings → Diagnostics, README paragraph
       present. If the D4 smoke shows the portable stub does not forward the URL argv, this D also
       records that the buttons only work while the app is running.
-- [ ] D6 — **The popover never takes focus off Pin or Close.** New pure helper (e.g.
+- [x] D6 — **The popover never takes focus off Pin or Close.** New pure helper (e.g.
       `src/renderer/popoverFocus.ts`) with the initial-focus decision, used by the effect at
       `src/renderer/popover.tsx:273-280`; the `'focus'`-event reopen path keeps its current
       behaviour. Accept: new `test/unit/popoverFocus.test.ts` — never focused yet + focus on the
@@ -193,7 +193,7 @@ rewrites, so rebase onto 010's result before starting C.
       (Pin/Close) ⇒ do nothing; focused row dropped out of `traySessions` ⇒ focus the top row
       again (unchanged). Build note: rebase on story 010's D7 result first and keep its focus
       restoration working.
-- [ ] D7 — **One `ShortcutStatus`.** Delete `src/main/shortcuts.ts:11-15`, import the type from
+- [x] D7 — **One `ShortcutStatus`.** Delete `src/main/shortcuts.ts:11-15`, import the type from
       `../shared/ipc.ts` (usages at `:24`, `:61`), remove the now-wrong "mirrors" comment at
       `src/shared/ipc.ts:80`. Accept: `npm run typecheck` green, one declaration left in `src/`.
 
@@ -234,4 +234,76 @@ Run `npm run dev` (unset `ELECTRON_RUN_AS_NODE` when launching from VS Code).
 
 ## Done
 
-<!-- filled by /build -->
+Four independent residuals from S02, closed. No new user-facing capability — the measure of
+success is that nothing changes on screen except in the cases where something wrong stops
+happening. Built last in S03, on top of story 010's rewritten popover and focus handling.
+
+**What was built**
+
+- **A — unknown is no longer remembered as "no window"** (D1, D2, D3). The batched probe script
+  now emits an explicit `<start>|FALSE` line when it walks a chain to its end without finding a
+  window, so the JS side can tell a real negative from a pid the script never reached. The result
+  map is built purely from what PowerShell actually reported and is never pre-filled with
+  `false`; an unanswered pid stays uncached, so `WindowProbe.get()` returns `undefined` and the
+  next pass re-probes it inside the same TTL. `SessionView.windowUnknown` (optional, decorated at
+  snapshot time) carries the state to the renderer, and the popover row shows a static, non-
+  tabbable badge with a `title` explaining the session is shown to be safe.
+- **B — the portable EXE registers a stable protocol path** (D4, D5). `protocolClientTarget()`
+  prefers electron-builder's `PORTABLE_EXECUTABLE_FILE` (the path of the EXE the user actually
+  launched, stable across runs) over the per-run temp extraction dir. The registered target is
+  surfaced in Settings → Diagnostics, and README documents the residual limit: moving or deleting
+  the portable EXE breaks toast buttons until the app is started once from the new location.
+- **C — the popover no longer takes focus off Pin or Close** (D6). The initial-focus decision is
+  extracted into the pure `src/renderer/lib/popoverFocus.ts` and refuses to focus a row while
+  focus sits on a control outside the row list. Confirmed during refine to still be a real bug
+  after story 010: 010's D7 *restores* focus to a node that already had it, but never refused to
+  *take* it.
+- **D — one `ShortcutStatus`** (D7). `src/shared/ipc.ts` is the single declaration; the duplicate
+  in `src/main/shortcuts.ts` and the now-wrong "mirrors" comment are gone.
+
+**Decisions**
+
+- The window-unknown badge column (18px) is declared unconditionally in the `.l1`
+  `grid-template-columns`, not added only when the badge renders. A conditional 8th grid child
+  would have made the branch column re-width every time the transient badge came and went.
+- The marker gate is narrowed to the case the story actually asked for: `undefined` **and** a
+  folder mate that answered `true` — i.e. the session would have been hidden by the orphan rule
+  had the probe been decisive. A folder where the probe failed for everyone raises no marker,
+  because there was no orphan rule to escape in the first place.
+- `windowUnknown` is an optional field decorated in `getSnapshot()`, so no producer of a
+  `SessionView` in `core/` changed and the flag stays presentation-only.
+- Part C's regression test targets the extracted pure helper rather than a React render:
+  vitest runs `environment: 'node'` here, and a render test would mean adding jsdom plus
+  testing-library for one case.
+
+**Verification**
+
+`npm run typecheck`, `npm test` (293/293, 16 files) and `npm run build` all green.
+`test/unit/boundaries.test.ts` (no Win32 import in `core/`) stays green. The unknown-vs-false
+distinction is pinned by `test/unit/processChain.test.ts` (partial result map, timeout mid-pass,
+stray PowerShell noise, and an assertion that the script emits the `|FALSE` marker) and by the
+orphan-filter cases in `test/unit/derivations.test.ts`.
+
+**Review.** `story-review-hard` over the diff. First pass FAIL with one acceptance-blocking
+finding — the probe pre-filled every requested pid with `false`, which made D1's guard
+unreachable and AC 1 a genuine FAIL — plus two lesser findings (the implicit 8th grid track, and
+the transient/inverted meaning of the badge that followed from the AC 1 failure). All three were
+fixed in one cycle: the explicit `|FALSE` negative marker, the declared 18px track, and the
+narrowed marker gate. Re-verified green afterwards.
+
+**Not fixed, carried as a finding.** Settings → Diagnostics *recomputes* the protocol target at
+IPC-handler time rather than reporting what `setAsDefaultProtocolClient` actually wrote, and that
+registration's `catch {}` swallows a failed registry write — so the panel can print a path that
+was never registered, in the very field added so a user could check it. AC 6 is satisfied (the
+row exists, README states the limit), so this was left in scope rather than widened: threading a
+`{ target, registered }` result out of `registerToastProtocol()` is the fix, and it belongs in
+the next sprint. Also noted: the packaged non-portable case renders the `<installed exe>`
+placeholder instead of a path.
+
+**Status: built, live acceptance pending — no live Electron display session was reachable in
+this autonomous run.** Parts A, C and D are covered by unit tests without needing a live Windows
+session, as the acceptance criteria required. What still needs the user: the badge actually
+appearing on a row in the running popover (D3), the Diagnostics value and README paragraph read
+in place (D5), and the portable-target protocol path exercised from a packaged build — a toast
+button pressed after the app has exited, which is the case the whole of part B exists for and
+which no unit test can stand in for.

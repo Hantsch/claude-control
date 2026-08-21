@@ -8,11 +8,7 @@
 
 import { globalShortcut } from 'electron';
 
-export interface ShortcutStatus {
-  accelerator: string;
-  registered: boolean;
-  error: string | null;
-}
+import type { ShortcutStatus } from '../shared/ipc.ts';
 
 export interface ShortcutManagerOptions {
   onToggle: () => void;

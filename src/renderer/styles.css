@@ -981,11 +981,13 @@ table.history .title {
   font-size: 12px;
 }
 
-/* Last column is 22px rather than the prototype's 14px: it holds story 004's mute toggle
-   (22 × 22) instead of the prototype's agent icon, which has no data source today. */
+/* The 22px column holds story 004's mute toggle (22 × 22) rather than the prototype's 14px
+   agent icon, which has no data source today. The trailing 18px column is story 012's
+   window-unknown badge; it is declared unconditionally so the branch column does not re-width
+   as the badge comes and goes. */
 .popover-row .l1 {
   display: grid;
-  grid-template-columns: 9px 13px 11px minmax(0, 1fr) 108px 92px 22px;
+  grid-template-columns: 9px 13px 11px minmax(0, 1fr) 108px 92px 22px 18px;
   align-items: center;
   gap: 8px;
 }
@@ -1079,6 +1081,17 @@ table.history .title {
 
 .popover-row .mute-toggle.on {
   color: var(--accent);
+}
+
+.popover-row .window-unknown-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
 }
 
 .popover-row:hover {

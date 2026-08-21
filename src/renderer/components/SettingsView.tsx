@@ -382,6 +382,8 @@ export function SettingsView(): React.JSX.Element {
             <dd>{diagnostics.adapterId}</dd>
             <dt>Focus backend</dt>
             <dd>{diagnostics.focusBackend}</dd>
+            <dt>Toast button target</dt>
+            <dd className="mono">{diagnostics.protocolTarget}</dd>
             <dt>Version</dt>
             <dd>
               {diagnostics.appVersion} · Electron {diagnostics.electronVersion} · {diagnostics.platform}

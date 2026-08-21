@@ -106,8 +106,8 @@ export class WindowProbe {
     const results = await this.probeFn(stale);
     const probedAt = this.now();
     for (const pid of stale) {
-      const value = results.get(pid) ?? false;
-      this.cache.set(pid, { value, probedAt });
+      if (!results.has(pid)) continue;
+      this.cache.set(pid, { value: results.get(pid)!, probedAt });
     }
   }
 }

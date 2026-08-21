@@ -180,28 +180,38 @@ and Diagnostics, or close the story as rejected and keep labelling the gauge an 
 
 Stories: [005](requirements/005-exact-context-windows.md)
 
-### M6 — Attribution — ▶ in progress (S04 planned)
+### M6 — Attribution — built, acceptance pending (S04 built)
 
 Live status counts per project group, and history grouped by project / branch / model with totals.
 Depends on M1 for the group headers it renders into, and inherits a half-built live side from M3.
 
-Stories: [006](requirements/006-activity-and-history-attribution.md) — the milestone ·
-[013](requirements/013-s03-residuals.md) — the S01–S03 residuals, bundled alongside
-Sprints: [S04](sprints/S04/sprint.md) — planned, not started
+Stories: [006](requirements/006-activity-and-history-attribution.md) — the milestone, `in-progress`
+(built, live acceptance pending) · [013](requirements/013-s03-residuals.md) — the S01–S03
+residuals, bundled alongside, `in-progress` (built, live acceptance pending)
+Sprints: [S04](sprints/S04/sprint.md) — built; branch `sprint/S04`; see
+[review](sprints/S04/review.md) and [testplan](sprints/S04/testplan.md)
 Gaps/notes:
-- 010 already ships the popover's group rollup (coloured dot + count per status, zero counts
-  omitted) but *renderer-locally*, in `popoverModel.ts`. The planning decision (2026-08-21) is to
-  lift it into the shared layer and give the main window the same counts, rather than declaring the
-  live half done — two implementations of the same number is the drift 006 exists to prevent. What
-  the popover shows today must not visibly change; M3 is accepted.
+- 010 already shipped the popover's group rollup (coloured dot + count per status, zero counts
+  omitted) but *renderer-locally*, in `popoverModel.ts`. S04 lifted it into the shared layer
+  (`ProjectGroup.statusCounts` in `aggregate.ts`) and gave the main window the same counts via a
+  shared `StatusRollup` component — two implementations of the same number no longer exist. The
+  popover's rendered output did not visibly change; M3 stays accepted.
 - 006 was deliberately **not** split into a live and a retrospective story: both halves rest on the
-  same "one number, one source" argument. This makes S04 a two-story sprint.
-- The risk in this milestone is N5, not the UI: per-entry usage in the history index reads more per
-  file than today, so the cold-start budget has to be measured rather than argued.
-- 013 bundles the four carried points — the Diagnostics field that recomputes the protocol target
-  instead of reporting the registered one (and swallows a failed registry write), the group-sort
-  ranking that ignores whether a waiting session has already been seen, the two contrast edges 007
-  left as effect-token findings, and 010's ARIA slip. Same pattern as 012 for S02.
+  same "one number, one source" argument. This made S04 a two-story sprint.
+- N5 was the risk flagged in planning, not the UI: per-entry usage in the history index reads more
+  per file than before. Measured at cold start (~250 MB / 300 files, history indexing + usage
+  summation included in the timed window): **441 ms**, against a 2000 ms budget.
+- 013 bundled the four carried points and all four landed: Diagnostics now reports the
+  `ProtocolRegistration` actually written at startup instead of recomputing a string (and a failed
+  registration is visible instead of swallowed); the popover's group order now demotes an
+  already-seen `waiting`/`done` below `ended` via `popoverGroupRank()`, scoped narrowly to the
+  popover as decided, `compareSessions` untouched; `--text-faint` and light `--muted-opacity` clear
+  the theme test's contrast targets in both schemes; the subagent list's flat-hierarchy note is no
+  longer a non-`listitem` member of `role="list"`.
+- **Live UI acceptance pending for both stories (P2):** the build ran in a headless session with no
+  path to drive the Electron tray app or a screen reader, so both stories are left `in-progress`
+  rather than `done` despite green build/test/typecheck and a passed code review. The user does the
+  manual pass in [testplan.md](sprints/S04/testplan.md) before either is marked accepted.
 - Still not scoped anywhere: new tray tile art for a light taskbar (007 left it as a follow-up;
   only the badge rim is theme-aware).
 

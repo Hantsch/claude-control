@@ -24,7 +24,7 @@ two things actually wanted at that moment are "take me there" and "stop telling 
 one" — a session deliberately left running unattended should be silenceable from the
 notification that interrupted you, not from a settings tab.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md).
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md).
 
 ## Acceptance Criteria
 
@@ -79,7 +79,7 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 - **Toast buttons use Windows `toastXml` with `activationType="protocol"` and a
   `claude-control://` URI**, because Electron's `actions` field is macOS-only; activation arrives
   through the single-instance `second-instance` argv handler that already exists
-  ([index.ts:25,131](../../src/main/index.ts)).
+  ([index.ts:25,131](../../../src/main/index.ts)).
 - **Non-Windows or `Notification.isSupported() === false` falls back to today's plain toast**
   (click = jump, no buttons) — the feature degrades, it does not break.
 - **The popover row becomes `div role="button"` + a nested mute button**, because the row is one
@@ -119,53 +119,53 @@ Order: 1→2→3→4 and 5→6→7→8→9 are each sequential; the two chains a
 ## Deliverables
 
 - [x] D1 — **Core: orphan filter + capability seam.** `ListSettings.hideOrphanSessions` (default
-      `true`, merge validation) in [settings.ts](../../src/core/model/settings.ts); optional
+      `true`, merge validation) in [settings.ts](../../../src/core/model/settings.ts); optional
       `hasTerminalWindow?: (pid: number) => boolean | undefined` on `ControlEngineOptions` and the
-      same-folder (`cwd`) filter in `getSnapshot()` in [engine.ts](../../src/core/engine.ts)
+      same-folder (`cwd`) filter in `getSnapshot()` in [engine.ts](../../../src/core/engine.ts)
       — mirror the existing `createWatcher` seam (engine.ts:77,117) and the
       `hideUnusedSessions` filter line (engine.ts:177). Unit tests in `test/unit/derivations.test.ts`.
       *Acceptance:* windowless + windowed in one folder → windowless gone; two windowed → both
       stay; lone windowless stays; probe absent or returning `undefined` → nothing dropped;
       setting off → nothing dropped. `npm test` green, `boundaries.test.ts` still green.
 - [x] D2 — **Main: batched window probe + cache, injected.** `findWindowsUpChain(pids)` in
-      [processChain.ts](../../src/main/focus/processChain.ts) (one PowerShell call for all pids,
+      [processChain.ts](../../../src/main/focus/processChain.ts) (one PowerShell call for all pids,
       same loop as `findWindowUpChain`); new `src/main/focus/windowProbe.ts` with the pid→bool
       cache, TTL re-probe and candidate selection (only folders with ≥2 live sessions); wired
-      through [createEngine.ts](../../src/core/createEngine.ts) and
-      [index.ts](../../src/main/index.ts) so `hasTerminalWindow` reaches the engine.
+      through [createEngine.ts](../../../src/core/createEngine.ts) and
+      [index.ts](../../../src/main/index.ts) so `hasTerminalWindow` reaches the engine.
       *Acceptance:* with two sessions in one folder the cache fills within one probe pass and the
       list settles; a single session in a folder triggers no PowerShell call at all.
 - [x] D3 — **Renderer: the setting.** Toggle for `hideOrphanSessions` in
-      [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx), mirroring the
+      [SettingsView.tsx](../../../src/renderer/components/SettingsView.tsx), mirroring the
       `hideUnusedSessions` checkbox at line 105. *Acceptance:* toggling it changes the popover
       list without a restart.
 - [x] D4 — **Core: mute state + decision.** `muted` argument and `'session-muted'` reason in
       `decideNotification` / `NotificationGate.evaluate`
-      ([notifications.ts](../../src/core/state/notifications.ts)); `SessionView.muted`
-      ([types.ts](../../src/core/model/types.ts):275); in-memory `Set<SessionId>` plus
-      `setMuted()/isMuted()` in [engine.ts](../../src/core/engine.ts), decorated in
+      ([notifications.ts](../../../src/core/state/notifications.ts)); `SessionView.muted`
+      ([types.ts](../../../src/core/model/types.ts):275); in-memory `Set<SessionId>` plus
+      `setMuted()/isMuted()` in [engine.ts](../../../src/core/engine.ts), decorated in
       `getSnapshot()` and re-emitting like `acknowledge()` (engine.ts:258); cleared on `ended`.
       *Acceptance:* unit tests — a muted session yields `notify: false, reason: 'session-muted'`,
       its `status`/`statusSince`/sort position are unchanged, unmuting restores toasts, `ended`
       clears the mute, and a fresh engine starts with no mutes.
 - [x] D5 — **IPC + notifier wiring.** `IPC.setSessionMuted` (`cc:setSessionMuted`) in
-      [ipc.ts](../../src/shared/ipc.ts), preload wrapper
-      ([preload.ts](../../src/main/preload.ts):27) and `ipcMain.handle`
-      ([main/ipc.ts](../../src/main/ipc.ts):36) — mirror `acknowledge` end to end; `isMuted` dep
-      on `Notifier` ([notifier.ts](../../src/main/notifier.ts):20) wired from the engine in
-      [index.ts](../../src/main/index.ts):53. *Acceptance:* calling the preload API flips
+      [ipc.ts](../../../src/shared/ipc.ts), preload wrapper
+      ([preload.ts](../../../src/main/preload.ts):27) and `ipcMain.handle`
+      ([main/ipc.ts](../../../src/main/ipc.ts):36) — mirror `acknowledge` end to end; `isMuted` dep
+      on `Notifier` ([notifier.ts](../../../src/main/notifier.ts):20) wired from the engine in
+      [index.ts](../../../src/main/index.ts):53. *Acceptance:* calling the preload API flips
       `muted` in the next `stateChanged` payload and suppresses the next toast.
 - [x] D6 — **Toast buttons.** Two buttons ("Jump", "Mute this session") via Windows `toastXml`
-      with `activationType="protocol"` in [notifier.ts](../../src/main/notifier.ts); protocol
+      with `activationType="protocol"` in [notifier.ts](../../../src/main/notifier.ts); protocol
       registration and argv parsing (`claude-control://jump|mute?session=…`) in
-      [index.ts](../../src/main/index.ts) on the existing `second-instance` handler (index.ts:131),
+      [index.ts](../../../src/main/index.ts) on the existing `second-instance` handler (index.ts:131),
       with the plain-`Notification` fallback kept for unsupported platforms.
       *Acceptance:* a real toast shows both buttons; "Jump" focuses the session; "Mute this
       session" mutes it and no further toast for it appears.
 - [x] D7 — **Mute visible and revocable in the UI.** Badge + toggle in the popover row
-      ([SessionsView.tsx](../../src/renderer/components/SessionsView.tsx):100-142, row
+      ([SessionsView.tsx](../../../src/renderer/components/SessionsView.tsx):100-142, row
       restructured to `div role="button"` + nested action button) and next to "Jump to session"
-      in [SessionDetailPane.tsx](../../src/renderer/components/SessionDetailPane.tsx):50-54,
+      in [SessionDetailPane.tsx](../../../src/renderer/components/SessionDetailPane.tsx):50-54,
       plus styles. *Acceptance:* a muted session is recognisable as muted in the popover without
       opening anything, and can be unmuted from both surfaces; row click/double-click behaviour
       is unchanged.

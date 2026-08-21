@@ -20,3 +20,23 @@ second roadmap.
   filter behind an injected fail-safe window probe, an in-memory per-session toast mute, and
   two-button Windows toasts ("Jump", "Mute this session") via `toastXml` + protocol activation;
   accepted 2026-08-21.
+- 007 — Light theme · S03 · Added a `prefers-color-scheme: light` branch over the existing custom
+  properties (no in-app toggle), tokenised the four dark-assuming effect rules, made the window
+  background follow `nativeTheme` live and the tray badge rim theme-aware, with WCAG plus OKLab
+  distinguishability enforced by a unit test against the dark scheme's own worst pair; accepted
+  2026-08-21.
+- 010 — Popover drill-down — branch, context, model, subagents · S03 · Replaced story 002's
+  eight-column row with the prototype's two-line block (identity and numbers on line 1, prose at
+  full width on line 2), added collapsible group headers with a status rollup and a session detail
+  block (title, last message, one row per subagent), and lifted the testable logic into
+  `popoverModel.ts` + `subagentParts.ts` so popover and main window cannot describe a run
+  differently; accepted 2026-08-21.
+- 011 — Subagent detail — final message and declared model · S03 · Extracted a finished subagent's
+  final message (clipped to 120 chars at the adapter boundary) and the model declared in the
+  `Agent` call, rendered in both popover and main window, without reading the subagent's prompt and
+  without the rejected `≈`-marked inherited-model guess; accepted 2026-08-21.
+- 012 — S02 residuals — never hide a live session, never steal the focus · S03 · Closed all four
+  points S02 left open: an unanswered pid stays unknown and re-probed (explicit `|FALSE` negative)
+  and is marked on the row, the portable EXE registers its stable `PORTABLE_EXECUTABLE_FILE`
+  protocol path, the popover's initial focus refuses to take focus off Pin or Close, and
+  `ShortcutStatus` is declared once; accepted 2026-08-21.

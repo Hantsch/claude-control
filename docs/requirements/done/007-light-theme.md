@@ -1,13 +1,13 @@
 ---
 id: 007
 title: Light theme
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
 ## Requirement
 
-[styles.css](../../src/renderer/styles.css) defines a single `:root` with no
+[styles.css](../../../src/renderer/styles.css) defines a single `:root` with no
 `prefers-color-scheme` branch. On a light Windows desktop, a dark popover hanging off the tray is
 the one element on screen that does not belong.
 
@@ -16,16 +16,16 @@ checking that the status colours and the four context bands, all chosen against 
 still carry their meaning on a light one. A theme that renders but whose "waiting" and "working"
 become hard to tell apart has made the app worse, not more native.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md).
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md).
 
 ## Acceptance Criteria
 
 - [x] Both schemes are legible and follow the OS preference
 - [x] All statuses remain distinguishable from each other in both schemes
 - [x] All four context bands remain distinguishable in both schemes
-- [x] The tray tiles ([assets/icons/tray/](../../assets/icons/tray/), built by
-      [build-icons.py](../../scripts/build-icons.py)) are checked against a light taskbar,
-      including the badge ([tray-icons.ts](../../src/main/tray-icons.ts))
+- [x] The tray tiles ([assets/icons/tray/](../../../assets/icons/tray/), built by
+      [build-icons.py](../../../scripts/build-icons.py)) are checked against a light taskbar,
+      including the badge ([tray-icons.ts](../../../src/main/tray-icons.ts))
 
 ## Open Questions
 
@@ -44,8 +44,8 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   are the whole theme surface" stops being true the moment the light branch needs a different
   dimming factor.
 - **The two stray literals get tokenised** (`#5a2a2a` at
-  [styles.css:565](../../src/renderer/styles.css#L565), `#1c1c20` at
-  [styles.css:606](../../src/renderer/styles.css#L606)) — a hex that only works on near-black is
+  [styles.css:565](../../../src/renderer/styles.css#L565), `#1c1c20` at
+  [styles.css:606](../../../src/renderer/styles.css#L606)) — a hex that only works on near-black is
   exactly the leak this story exists to close.
 - **Contrast targets are named, not eyeballed:** body text ≥ 4.5:1 against its own surface,
   `--text-dim` / `--text-faint` and all non-text colour (dots, band fills, focus ring, borders)
@@ -59,15 +59,15 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   should fail `npm test`, not a future glance.
 - **The main process learns the theme** (`nativeTheme.shouldUseDarkColors` +
   `nativeTheme.on('updated')`) — `backgroundColor: '#111113'` / `'#17171a'`
-  ([windows.ts:83,190](../../src/main/windows.ts#L83)) is painted before the renderer does
+  ([windows.ts:83,190](../../../src/main/windows.ts#L83)) is painted before the renderer does
   anything, so on a light desktop every popover open would flash dark first.
 - **Switching the Windows scheme under a running app must take effect without a restart** — the
   renderer gets that for free from the media query; the tray badge and the window background need
   the `nativeTheme` listener, which is why they are in scope at all.
 - **No new tray art in this story.** The tiles come from a generated art tree
-  ([build-icons.py:44-50](../../scripts/build-icons.py#L44-L50)) with no colour parameter, so a
+  ([build-icons.py:44-50](../../../scripts/build-icons.py#L44-L50)) with no colour parameter, so a
   light variant is a new art set — out of scope. Only the badge's near-black rim
-  (`BADGE_RIM_COLOR = #121214`, [tray-icons.ts:37](../../src/main/tray-icons.ts#L37)) becomes
+  (`BADGE_RIM_COLOR = #121214`, [tray-icons.ts:37](../../../src/main/tray-icons.ts#L37)) becomes
   theme-aware, since it is code and is the one part predicted to fail on a light taskbar.
 - **AC 4's "checked" is discharged by a rendered artifact plus a finding**, not by a promise: D4
   composites each state tile with and without badge over a light and a dark taskbar swatch into
@@ -90,25 +90,25 @@ main-process and one tray leak that CSS cannot reach.
    outside `:root` and for tokens the new popover added. Anything found is either tokenised or
    listed in `## Done` as deliberate.
 2. **Neutral surfaces (D1).** Add `@media (prefers-color-scheme: light) { :root { … } }` directly
-   below `:root` in [styles.css](../../src/renderer/styles.css): `--bg`/`--bg-raised`/`--bg-hover`/
+   below `:root` in [styles.css](../../../src/renderer/styles.css): `--bg`/`--bg-raised`/`--bg-hover`/
    `--bg-active`/`--border`/`--text`/`--text-dim`/`--text-faint`/`--accent` +
    `color-scheme: light`. The same block absorbs the new effect tokens (`--muted-opacity`,
    `--pulse-min`, `--halo-strength`) and the two tokenised literals.
-3. **Chrome before content (D2).** Thread the theme into [windows.ts](../../src/main/windows.ts) —
+3. **Chrome before content (D2).** Thread the theme into [windows.ts](../../../src/main/windows.ts) —
    initial `backgroundColor` from `nativeTheme.shouldUseDarkColors`, `setBackgroundColor` on
    `nativeTheme.on('updated')` for both live windows. The two colour constants live in one place so
    CSS and main cannot drift.
 4. **Semantic colour (D3).** Retune `--status-*` (8) and `--band-*` (4) in the light branch, with
    `test/unit/theme.test.ts` parsing both branches out of `styles.css` and asserting the targets
    above. Consumers to keep in view: `.dot` fills
-   ([StatusDot.tsx](../../src/renderer/components/StatusDot.tsx)), band fills in
-   [ContextBar.tsx](../../src/renderer/components/ContextBar.tsx) /
-   [ContextGauge.tsx](../../src/renderer/components/ContextGauge.tsx), the same hues used as *text*
+   ([StatusDot.tsx](../../../src/renderer/components/StatusDot.tsx)), band fills in
+   [ContextBar.tsx](../../../src/renderer/components/ContextBar.tsx) /
+   [ContextGauge.tsx](../../../src/renderer/components/ContextGauge.tsx), the same hues used as *text*
    (waiting reason, `.meta.error`), the `--accent` focus ring on `--bg-hover`, and the popover
    scrollbar (`--bg-active` on `--bg`).
 5. **Tray (D4).** `paintBadge` takes the rim colour from the theme;
-   [icon-assets.ts](../../src/main/icon-assets.ts) puts it in the cache key,
-   [tray.ts](../../src/main/tray.ts) invalidates `lastKey` on `nativeTheme.on('updated')` the way
+   [icon-assets.ts](../../../src/main/icon-assets.ts) puts it in the cache key,
+   [tray.ts](../../../src/main/tray.ts) invalidates `lastKey` on `nativeTheme.on('updated')` the way
    `rescale()` already does for DPI. Then render the check artifact and record the finding.
 6. **Verify:** `npm run build`, `npm test`, `npm run typecheck`, then the manual pass below with
    the Windows scheme flipped both ways under a running app.
@@ -118,16 +118,16 @@ Order matters: D1 → D3 (the test needs the light branch to exist); D2 and D4 a
 ## Deliverables
 
 - [x] D1 — **Light branch for surfaces, and the theme surface made honest.**
-      [styles.css](../../src/renderer/styles.css) only: literal sweep across `src/renderer`,
+      [styles.css](../../../src/renderer/styles.css) only: literal sweep across `src/renderer`,
       `@media (prefers-color-scheme: light)` block with the neutral tokens + `color-scheme: light`,
-      the two hardcoded literals ([styles.css:565](../../src/renderer/styles.css#L565),
-      [:606](../../src/renderer/styles.css#L606)) replaced by vars, and `--muted-opacity` /
+      the two hardcoded literals ([styles.css:565](../../../src/renderer/styles.css#L565),
+      [:606](../../../src/renderer/styles.css#L606)) replaced by vars, and `--muted-opacity` /
       `--pulse-min` / `--halo-strength` introduced and consumed at
-      [styles.css:286,364,373,859](../../src/renderer/styles.css#L286).
+      [styles.css:286,364,373,859](../../../src/renderer/styles.css#L286).
       *Accepted when:* the app renders light end to end (main window + popover) on a light OS,
       dark is unchanged apart from the new token declarations, and no colour literal is left
       outside the two `:root` blocks.
-- [x] D2 — **Window chrome follows the OS scheme.** [windows.ts](../../src/main/windows.ts) (plus a
+- [x] D2 — **Window chrome follows the OS scheme.** [windows.ts](../../../src/main/windows.ts) (plus a
       small shared constants spot if one is warranted): initial `backgroundColor` per
       `nativeTheme.shouldUseDarkColors` for the main window (:83) and the popover (:190), and
       `setBackgroundColor` on `nativeTheme.on('updated')` for whichever windows are alive, with the
@@ -136,18 +136,18 @@ Order matters: D1 → D3 (the test needs the light branch to exist); D2 and D4 a
       Windows scheme under a running app updates both windows without a restart.
 - [x] D3 — **Contrast pass over the semantic colours, enforced by a test.** Light-branch values for
       `--status-waiting|done|working|stale|queued|starting|ended|unknown` and
-      `--band-green|yellow|red|critical` in [styles.css](../../src/renderer/styles.css), plus a new
+      `--band-green|yellow|red|critical` in [styles.css](../../../src/renderer/styles.css), plus a new
       `test/unit/theme.test.ts` (mirror the style of
-      [test/unit/presentation.test.ts](../../test/unit/presentation.test.ts)) that parses the two
+      [test/unit/presentation.test.ts](../../../test/unit/presentation.test.ts)) that parses the two
       `:root` blocks and asserts: text ratios ≥ 4.5:1, dim/faint and non-text ≥ 3:1, and worst
       pairwise OKLab distance among statuses and among bands in light ≥ the dark scheme's worst.
       *Accepted when:* `npm test` is green, the test fails if any light status or band value is
       reverted to its dark counterpart, and the four bands read as four steps on a light surface.
 - [x] D4 — **Tray badge follows the taskbar, tiles checked and the result recorded.**
-      [tray-icons.ts](../../src/main/tray-icons.ts) (theme-aware rim in `paintBadge`),
-      [icon-assets.ts](../../src/main/icon-assets.ts) (theme in the `trayImage` cache key),
-      [tray.ts](../../src/main/tray.ts) (`nativeTheme.on('updated')` → invalidate `lastKey`,
-      mirroring `rescale()` at [tray.ts:78-84](../../src/main/tray.ts#L78-L84)), a unit test that
+      [tray-icons.ts](../../../src/main/tray-icons.ts) (theme-aware rim in `paintBadge`),
+      [icon-assets.ts](../../../src/main/icon-assets.ts) (theme in the `trayImage` cache key),
+      [tray.ts](../../../src/main/tray.ts) (`nativeTheme.on('updated')` → invalidate `lastKey`,
+      mirroring `rescale()` at [tray.ts:78-84](../../../src/main/tray.ts#L78-L84)), a unit test that
       the rim colour flips with the flag (`tray-icons.ts` and `icon-assets.ts` have no tests today),
       and a composite artifact under `output/` showing all six states × badge/no-badge over a light
       and a dark taskbar swatch.

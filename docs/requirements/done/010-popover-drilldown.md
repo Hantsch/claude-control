@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Popover drill-down — branch, context, model, subagents
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-21
 ---
 
@@ -17,7 +17,7 @@ The second gap is subagents. A session can be running five of them across three 
 popover says the word `· subagent`. Everything else — each subagent's label, agent type, model,
 its context at the end of the run, its duration, and the error text when it died — is already in
 `SessionView.subagents` and is already rendered by
-[SubagentTree.tsx](../../src/renderer/components/SubagentTree.tsx) in the main window. The
+[SubagentTree.tsx](../../../src/renderer/components/SubagentTree.tsx) in the main window. The
 glance surface has none of it.
 
 What a glance should deliver, and what it should take a click to get:
@@ -39,14 +39,14 @@ exists in `SessionView`. The two facts that would need adapter work — a finish
 final message, and a *running* subagent's model — are story 011, and this story is designed to
 be complete and useful without them.
 
-Design of record for the layout: **[assets/010-popover-drilldown-prototype.html](assets/010-popover-drilldown-prototype.html)**
+Design of record for the layout: **[assets/010-popover-drilldown-prototype.html](../assets/010-popover-drilldown-prototype.html)**
 — a standalone click dummy with fake data, built and refined with the user on 2026-08-21. It
 carries a "Datenherkunft zeigen" toggle that outlines each field by provenance; everything
 outlined blue is this story, everything orange is 011, everything red is not available at all.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md)
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md)
 (the Irrlicht row layout this follows), and story
-[002](done/002-popover-at-a-glance.md) (what it replaces).
+[002](002-popover-at-a-glance.md) (what it replaces).
 
 ## Acceptance Criteria
 
@@ -84,13 +84,13 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 
 - ~~**Height when expanded.** Default is 398 px, one open session with five subagents is 645 px,
   two open sessions are 770 px — against `POPOVER_MAX_HEIGHT = 560`
-  ([windows.ts:19](../../src/main/windows.ts#L19)). Three defensible answers: accept the scroll,
+  ([windows.ts:19](../../../src/main/windows.ts#L19)). Three defensible answers: accept the scroll,
   raise the maximum, or make expansion an accordion (at most one session open at a time).
   Recommendation: **accordion** — it keeps the height predictable and matches the real
   intent ("I want to understand *this* session"), and it needs no main-process change.~~ answered
   → Decisions (Sprint)
 - ~~**Does the expansion state survive?** The popover window is reused and hidden rather than
-  destroyed ([popover.tsx](../../src/renderer/popover.tsx) refocuses on `window.focus`), so a
+  destroyed ([popover.tsx](../../../src/renderer/popover.tsx) refocuses on `window.focus`), so a
   remembered expansion would still be open the next time the popover appears — which is either
   convenient or stale, depending on taste. Recommendation: **reset on hide**, because the
   glance surface should open in its glance state.~~ answered → Decisions (Sprint)
@@ -100,7 +100,7 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   text — it stays reachable without competing with the branch for row width.~~ answered →
   Decisions (Sprint)
 - ~~**Does the group rollup use dots or counts?** The prototype uses coloured dots with a number
-  (`●1 ●1`). Story [006](006-activity-and-history-attribution.md) D1/D2 plans per-status counts
+  (`●1 ●1`). Story [006](../006-activity-and-history-attribution.md) D1/D2 plans per-status counts
   on `ProjectGroup` for exactly this purpose, in both the popover and the main window. Either
   this story renders a local version and 006 later replaces it, or the rollup is deferred to
   006. Recommendation: **render it here from `group.sessions` directly** (no `ProjectGroup`
@@ -172,7 +172,7 @@ group head, session row, subagent row — each carrying a `data-nav-key`, render
    session and is a no-op on a subagent. After a re-render a layout effect refocuses the
    remembered key and scrolls it into view (`block: 'nearest'`).
 7. **Height** (D8) — accept the scroll per the Sprint decision: `resizePopover` already clamps to
-   `POPOVER_MAX_HEIGHT` ([windows.ts:160-171](../../src/main/windows.ts#L160-L171)) and
+   `POPOVER_MAX_HEIGHT` ([windows.ts:160-171](../../../src/main/windows.ts#L160-L171)) and
    `.popover-list` already scrolls, so no main-process change. Verify `report()` across
    expand/collapse cycles and record the measured heights in `## Done`.
 
@@ -187,8 +187,8 @@ arrows/Enter/Esc → D7 · focus survives expand/collapse → D7 · `report()` �
 ## Deliverables
 
 - [x] D1 — **Two-line session row.** Replace the 8-column grid in
-      [popover.tsx](../../src/renderer/popover.tsx) and
-      [styles.css](../../src/renderer/styles.css) with the prototype's two-line row: line 1 =
+      [popover.tsx](../../../src/renderer/popover.tsx) and
+      [styles.css](../../../src/renderer/styles.css) with the prototype's two-line row: line 1 =
       chevron (inert here, wired in D4), status glyph, index within the group, branch, context,
       model, mute toggle; line 2 = status dot, status text (or the waiting reason across the full
       width), subagent summary, `uptime · age`. Width stays at `POPOVER_WIDTH = 620`; story 004's
@@ -197,11 +197,11 @@ arrows/Enter/Esc → D7 · focus survives expand/collapse → D7 · `report()` �
       tests in `test/unit/popoverModel.test.ts`. Mirror for markup and CSS idiom: the prototype's
       `.srow` / `.l1` / `.l2` rules.
 - [x] D2 — **Absolute token count in the context cell.**
-      [ContextBar.tsx](../../src/renderer/components/ContextBar.tsx) gets an additive
+      [ContextBar.tsx](../../../src/renderer/components/ContextBar.tsx) gets an additive
       `valueFormat?: 'percent' | 'tokens'` (default `'percent'`); `tokens` renders
       `formatTokens(context.used)` in `.ctx-value` while the percentage stays in the tooltip.
       The popover passes `valueFormat="tokens"`;
-      [SessionsView.tsx:162](../../src/renderer/components/SessionsView.tsx#L162) is untouched and
+      [SessionsView.tsx:162](../../../src/renderer/components/SessionsView.tsx#L162) is untouched and
       must keep its current appearance.
 - [x] D3 — **Collapsible group headers.** The group head becomes a focusable node with a chevron,
       the project name, the `attention` count when > 0, a status rollup (coloured dot + count per
@@ -218,7 +218,7 @@ arrows/Enter/Esc → D7 · focus survives expand/collapse → D7 · `report()` �
 - [x] D5 — **Subagent rows.** Per node: status dot in the `SubagentStatus` colour, label,
       `agentType` pill, `metrics.model`, a frozen context chip from `metrics.context`, duration.
       Lift the metric-part builder out of
-      [SubagentTree.tsx:78-125](../../src/renderer/components/SubagentTree.tsx#L78-L125) into a
+      [SubagentTree.tsx:78-125](../../../src/renderer/components/SubagentTree.tsx#L78-L125) into a
       shared pure module (`src/renderer/lib/subagentParts.ts`) that both surfaces render from, so
       wording and tooltips cannot drift; `totalTokens`, `toolUses` and lines-touched appear only
       in the tooltip, labelled as cumulative spend. Files: `popover.tsx`, `styles.css`,
@@ -251,7 +251,7 @@ arrows/Enter/Esc → D7 · focus survives expand/collapse → D7 · `report()` �
 - D7 → `deliverable-hard` — it extends key handling that story 003 built and that has not had
   its live acceptance yet; the capture-phase ordering between `NotifySwitch`'s Escape handler
   and the popover's own document listener is already subtle
-  ([popover.tsx:108-117](../../src/renderer/popover.tsx#L108-L117)), and focus restoration
+  ([popover.tsx:108-117](../../../src/renderer/popover.tsx#L108-L117)), and focus restoration
   across a re-render is exactly where "the popover swallowed my arrow key" bugs live.
 - D2 → default tier, but note the blast radius: `ContextBar` is shared with `SessionsView`.
 - D3–D6, D8 → default tier.
@@ -263,7 +263,7 @@ arrows/Enter/Esc → D7 · focus survives expand/collapse → D7 · `report()` �
 
 Run `npm run dev` (unset `ELECTRON_RUN_AS_NODE` when launching from VS Code) and open the tray
 popover. Keep
-[assets/010-popover-drilldown-prototype.html](assets/010-popover-drilldown-prototype.html) open
+[assets/010-popover-drilldown-prototype.html](../assets/010-popover-drilldown-prototype.html) open
 in a browser next to it for comparison.
 
 1. **Glance:** with two or more projects live, confirm the default state — groups expanded,

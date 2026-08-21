@@ -28,7 +28,7 @@ chain, not a ranking:
 
 - **010 first** — it replaces the row layout and the focus handling that everything after it
   touches. Its design of record is the click dummy
-  [assets/010-popover-drilldown-prototype.html](../../requirements/assets/010-popover-drilldown-prototype.html),
+  [assets/010-popover-drilldown-prototype.html](../../../requirements/assets/010-popover-drilldown-prototype.html),
   built with the user on 2026-08-21; its "Datenherkunft" overlay is the scope boundary between
   010 (blue) and 011 (orange).
 - **011 after 010** — it is an optional refinement of the drill-down and crosses into

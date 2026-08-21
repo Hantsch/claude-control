@@ -20,12 +20,12 @@ Rules (so this document does not drift):
 | Phase | Goal | Status |
 | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | ✔ done |
-| 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ▶ **in progress** |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | planned |
+| 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ✔ done |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** |
 
 ---
 
-## Current phase: 2 — Daily use
+## Phase 2 — Daily use — ✔ done (2026-08-21)
 
 Concept: [concepts/reference-tool-comparison.md](concepts/reference-tool-comparison.md) — what
 the comparison with Irrlicht and ClaudeSessionTray said to take, and what it said to refuse.
@@ -76,9 +76,9 @@ Gaps/notes:
   between runs, same pre-existing property as the login-item path; not fixed, not new to this
   sprint.
 - The four points the review left open were picked up by
-  [012](requirements/012-s02-residuals.md) in S03 — the window-probe "unknown" state, the
+  [012](requirements/done/012-s02-residuals.md) in S03 — the window-probe "unknown" state, the
   portable target's protocol-handler path, the popover focus steal and the duplicate
-  `ShortcutStatus` — and all four are now built (acceptance pending). The two residual-risk notes
+  `ShortcutStatus` — and all four are accepted with S03. The two residual-risk notes
   above are therefore closed in code: the probe now emits an explicit negative so an unanswered
   pid stays unknown and re-probed, and the portable target registers its stable
   `PORTABLE_EXECUTABLE_FILE` path. What remains of the latter is a smaller limit: moving or
@@ -94,7 +94,7 @@ Gaps/notes:
   [testplan.md](sprints/done/S02/testplan.md) — the build session itself was headless, so both
   stories landed as "built, acceptance pending" and were only confirmed afterwards. M2 accepted.
 
-### M3 — Popover drill-down — built, acceptance pending
+### M3 — Popover drill-down — ✔ accepted (2026-08-21)
 
 The glance surface is over-subscribed: story 002's eight-column row ellipsizes every flexible
 cell, and the cell hit hardest is the waiting reason — the one piece of text that explains why
@@ -107,14 +107,14 @@ Design of record: [assets/010-popover-drilldown-prototype.html](requirements/ass
 — a click dummy built with the user on 2026-08-21, whose provenance overlay is the scope
 boundary between the two stories.
 
-Stories: [010](requirements/010-popover-drilldown.md) — renderer/shared only ·
-[011](requirements/011-subagent-detail-from-result.md) — the two facts that need adapter work
-Sprints: [S03](sprints/S03/sprint.md) — see [review.md](sprints/S03/review.md) and
-[testplan.md](sprints/S03/testplan.md)
+Stories: [010](requirements/done/010-popover-drilldown.md) — renderer/shared only ·
+[011](requirements/done/011-subagent-detail-from-result.md) — the two facts that need adapter work
+Sprints: [S03](sprints/done/S03/sprint.md) — see [review.md](sprints/done/S03/review.md) and
+[testplan.md](sprints/done/S03/testplan.md)
 Gaps/notes:
-- Both stories are built and reviewed; neither is live-accepted. The build session was headless
-  (no Electron GUI reachable), so the whole end-to-end path ran on unit level only — the user
-  marks this milestone accepted after working through the test plan.
+- The build session was headless (no Electron GUI reachable), so both stories landed as "built,
+  acceptance pending" and ran on unit level only. Live acceptance was worked through by the user
+  from [testplan.md](sprints/done/S03/testplan.md) on 2026-08-21 — M3 accepted.
 - 011 is an optional refinement: 010 is designed to be complete and useful without it.
 - 011 reverses a documented decision in `subagentRunResultOf` (the subagent result's text is
   deliberately not read) and touches the CONCEPT §4 privacy statement — a reviewer has to check
@@ -126,21 +126,21 @@ Gaps/notes:
   marker in the prototype therefore has no counterpart in the shipped UI.
 - 010's popover height: the scroll was accepted rather than raising `POPOVER_MAX_HEIGHT` or making
   expansion an accordion, so several sessions can be open at once and the list scrolls. The
-  self-measured height was code-verified but never live-measured — first thing to watch in
-  acceptance.
+  self-measured height was code-verified rather than live-measured in the build session; it held
+  in live acceptance.
 - The M1 group-sort ranking (a *seen* waiting group can outrank an unseen done group that is
   colouring the tray badge) was **not** taken in 010 as the sprint notes allowed: it turned out to
   be shared with the tray badge rather than local to the group rollup. Still open.
 
-### M4 — Light theme — built, acceptance pending
+### M4 — Light theme — ✔ accepted (2026-08-21)
 
 The one visual element that does not belong on a light Windows desktop. The custom properties
 already are the whole theme surface, so the work is not the switch — it is checking that the
 status colours and the four context bands still carry their meaning on a light surface.
 
-Stories: [007](requirements/007-light-theme.md)
-Sprints: [S03](sprints/S03/sprint.md) — built after M3; see
-[review.md](sprints/S03/review.md) and [testplan.md](sprints/S03/testplan.md)
+Stories: [007](requirements/done/007-light-theme.md)
+Sprints: [S03](sprints/done/S03/sprint.md) — built after M3; see
+[review.md](sprints/done/S03/review.md) and [testplan.md](sprints/done/S03/testplan.md)
 Gaps/notes:
 - Earlier note "deliberately not bundled, so a contrast regression is not hidden inside a larger
   diff" was reversed on 2026-08-21: the contrast pass has to run on the row layout that ships,
@@ -162,7 +162,15 @@ Gaps/notes:
 
 ---
 
-## Phase 3 — Accuracy & breadth (planned)
+## Current phase: 3 — Accuracy & breadth
+
+Design of record stays [CONCEPT.md](CONCEPT.md); the comparison that fed Phase 2 is in
+[concepts/reference-tool-comparison.md](concepts/reference-tool-comparison.md).
+
+Way of working, unchanged: milestones ordered by payoff per hour, stories cut into a sprint only
+once the previous milestone is accepted. M6 goes first because M5 is blocked on a decision and M7
+is the largest, least-bounded piece of work in the phase — the adapter seam is worth proving on a
+codebase that has just stopped changing shape, not while it still is.
 
 ### M5 — Exact context windows — blocked on a product decision
 
@@ -172,14 +180,32 @@ and Diagnostics, or close the story as rejected and keep labelling the gauge an 
 
 Stories: [005](requirements/005-exact-context-windows.md)
 
-### M6 — Attribution — planned
+### M6 — Attribution — ▶ in progress (S04 planned)
 
-Live activity matrix per project group, and history grouped by project / branch / model with
-totals. Depends on M1 for the group headers it renders into.
+Live status counts per project group, and history grouped by project / branch / model with totals.
+Depends on M1 for the group headers it renders into, and inherits a half-built live side from M3.
 
-Stories: [006](requirements/006-activity-and-history-attribution.md)
+Stories: [006](requirements/006-activity-and-history-attribution.md) — the milestone ·
+[013](requirements/013-s03-residuals.md) — the S01–S03 residuals, bundled alongside
+Sprints: [S04](sprints/S04/sprint.md) — planned, not started
+Gaps/notes:
+- 010 already ships the popover's group rollup (coloured dot + count per status, zero counts
+  omitted) but *renderer-locally*, in `popoverModel.ts`. The planning decision (2026-08-21) is to
+  lift it into the shared layer and give the main window the same counts, rather than declaring the
+  live half done — two implementations of the same number is the drift 006 exists to prevent. What
+  the popover shows today must not visibly change; M3 is accepted.
+- 006 was deliberately **not** split into a live and a retrospective story: both halves rest on the
+  same "one number, one source" argument. This makes S04 a two-story sprint.
+- The risk in this milestone is N5, not the UI: per-entry usage in the history index reads more per
+  file than today, so the cold-start budget has to be measured rather than argued.
+- 013 bundles the four carried points — the Diagnostics field that recomputes the protocol target
+  instead of reporting the registered one (and swallows a failed registry write), the group-sort
+  ranking that ignores whether a waiting session has already been seen, the two contrast edges 007
+  left as effect-token findings, and 010's ARIA slip. Same pattern as 012 for S02.
+- Still not scoped anywhere: new tray tile art for a light taskbar (007 left it as a follow-up;
+  only the badge rim is theme-aware).
 
-### M7 — Second agent — planned
+### M7 — Second agent — planned (last in the phase)
 
 Codex or Gemini CLI alongside Claude Code, as the first real test of the adapter boundary. Its
 own milestone by construction.

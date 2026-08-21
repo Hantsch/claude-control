@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Subagent detail — final message and declared model
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-21
 ---
 
@@ -13,42 +13,42 @@ them. Both are in the parent transcript; neither needs a new data source.
 
 **A — what the subagent actually reported.** The `Agent` tool result carries the run's full
 `prompt` and `content`; `subagentRunResultOf` deliberately takes only the numbers from it
-([types.ts:100-102](../../src/core/model/types.ts#L100-L102): *"Neither is read here; only these
+([types.ts:100-102](../../../src/core/model/types.ts#L100-L102): *"Neither is read here; only these
 numbers are"*). So a finished subagent can be shown as `general-purpose · Sonnet 5 · ctx 16% ·
 4m 12s` and not a word about what it found. That is the least useful part of the whole run.
 
-This is a choice, not a constraint: CONCEPT [§4](../CONCEPT.md) already permits it — *"Prompt and
+This is a choice, not a constraint: CONCEPT [§4](../../CONCEPT.md) already permits it — *"Prompt and
 response text is read (it is needed for titles and the timeline) but never leaves the process"* —
 and the app already reads and displays `lastAssistantText` for exactly this purpose, in the
 `done` toast body. The subagent's final message is the same class of data from a nested run.
 
 The **hard** limit sits next to it and must not be confused with this one: a *running* subagent
 has no message at all. `isSidechain` was `true` on zero records across ~55 000
-([RESEARCH.md §2](../RESEARCH.md)), so its inner transcript is not interleaved into the parent
+([RESEARCH.md §2](../../RESEARCH.md)), so its inner transcript is not interleaved into the parent
 file and nothing about its progress is observable. Only the result brings text, and only when
 the run is over.
 
 **B — which model a running subagent is on.** `metrics` is populated from the result
-([subagents.ts:57](../../src/core/state/subagents.ts#L57)), so `metrics.model` — the exact
+([subagents.ts:57](../../../src/core/state/subagents.ts#L57)), so `metrics.model` — the exact
 `resolvedModel`, `[1m]` suffix included — exists only once the run has finished. While it runs,
 the popover has nothing to show. Two sources would fix that, with different accuracy:
 
 - The `Agent` call can set a model explicitly, and `agentTypeOf` reads `subagent_type` out of
   that same input object while ignoring a `model` key sitting next to it
-  ([records.ts:216-219](../../src/core/adapters/claude/records.ts#L216-L219)). Where it is set,
+  ([records.ts:216-219](../../../src/core/adapters/claude/records.ts#L216-L219)). Where it is set,
   it is exact.
 - Where it is not set, the subagent inherits the session's model — derivable from the parent,
   correct in the common case, wrong for a run whose model was chosen deliberately.
 
 The second case must not look like the first. The app already has the pattern for this
 distinction: `statusSource: 'reported' | 'inferred'` from story
-[001](done/001-registry-status-field.md). The prototype renders the inherited case with a `≈`
+[001](001-registry-status-field.md). The prototype renders the inherited case with a `≈`
 marker for the same reason.
 
 Both parts are optional refinements of 010, which is complete without them — this story exists
 separately because it crosses into `core/adapters/`, which 010 deliberately does not touch.
 
-Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popover-drilldown-prototype.html)
+Design of record: [assets/010-popover-drilldown-prototype.html](../assets/010-popover-drilldown-prototype.html)
 — everything its "Datenherkunft" overlay outlines **orange** is this story.
 
 ## Acceptance Criteria
@@ -82,7 +82,7 @@ Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popov
   is the other candidate home for it, and there it costs nothing. Deciding this decides how much
   of the story is worth building.~~ answered → Decisions (Sprint)
 - ~~**Clip length.** `toolInputHint` clips to 120 characters
-  ([records.ts:209-210](../../src/core/adapters/claude/records.ts#L209-L210)) and
+  ([records.ts:209-210](../../../src/core/adapters/claude/records.ts#L209-L210)) and
   `lastAssistantText` has its own rule for the toast body. A third convention would be one too
   many — reuse one of them or state why neither fits.~~ answered → Decisions (Sprint)
 - ~~**Is the inherited-model derivation worth it?** A `≈`-marked value that is right most of the
@@ -100,7 +100,7 @@ Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popov
 - **(User)** Final message ships in the popover drill-down (010), not just the main window's
   subagent tree.
 - **(User)** Clip length reuses `toolInputHint`'s 120-character convention
-  ([records.ts:209-210](../../src/core/adapters/claude/records.ts#L209-L210)) rather than
+  ([records.ts:209-210](../../../src/core/adapters/claude/records.ts#L209-L210)) rather than
   inventing a third rule.
 - **(User)** No inherited-model derivation. A running subagent with no declared model in the
   `Agent` call shows no model at all (empty cell) rather than a `≈`-marked guess. D3/D4 narrow
@@ -114,7 +114,7 @@ Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popov
 
 - Field name and placement: the text lands as `finalText` on `SubagentRunResult` **and** on
   `SubagentNode` next to `errorText`, not inside `SubagentMetrics` — `toNode` nulls `metrics`
-  whenever `hasNumbers()` is false ([subagents.ts:63-72](../../src/core/state/subagents.ts#L63-L72)),
+  whenever `hasNumbers()` is false ([subagents.ts:63-72](../../../src/core/state/subagents.ts#L63-L72)),
   which would swallow the text for a result that carries a report but no numbers.
 - Extraction rule: take the **last** `type: 'text'` block of the result's `content`, and accept a
   plain-string `content` too — the anonymized sample fixture
@@ -124,11 +124,11 @@ Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popov
   characters (the User decision above), so the popover tooltip adds no longer text than the row —
   the tooltip carries provenance wording instead of a longer excerpt.
 - `launched` runs stay textless: their result has `outputFile` / `canReadOutputFile`
-  ([builders.ts:185-203](../../test/fixtures/builders.ts#L185-L203)) but opening a second file is a
+  ([builders.ts:185-203](../../../test/fixtures/builders.ts#L185-L203)) but opening a second file is a
   new data source and a new read cost, which this story explicitly does not take on.
 - The privacy test keeps its teeth by splitting the marker: the fixture's `prompt` stays
   `PRIVATE PROMPT …` and its `content` gets a distinct marker, so
-  [reading.test.ts:324-331](../../test/unit/reading.test.ts#L324-L331) can assert the prompt marker
+  [reading.test.ts:324-331](../../../test/unit/reading.test.ts#L324-L331) can assert the prompt marker
   is absent *and* the report marker is present-but-clipped, instead of a blanket `/PRIVATE/`.
 - The resolved model is exposed as one new field `SubagentNode.model` (= `metrics.model` ??
   `declaredModel`) and both renderers read it; `metrics.model` keeps meaning `resolvedModel` only —
@@ -146,7 +146,7 @@ Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popov
 - D3 drops to the default tier: the User decision removed the third source and the provenance
   marker, which is exactly what made the original justification a `deliverable-hard` case.
 - The N5 number comes from the existing cold-start test
-  ([pipeline.test.ts:590](../../test/unit/pipeline.test.ts#L590)), extended so the tails carry agent
+  ([pipeline.test.ts:590](../../../test/unit/pipeline.test.ts#L590)), extended so the tails carry agent
   results with long reports — a new benchmark script would measure something nothing else asserts.
 - The CLI (`npm run cli`) prints the final message too, so the live smoke can be cross-checked from
   a terminal — a cross-check, never a substitute for the UI acceptance (P1).
@@ -188,19 +188,19 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
 ## Deliverables
 
 - [x] D1 — **Final message at the adapter boundary and on the node.**
-      New `finalTextOf` in [summarize.ts](../../src/core/adapters/claude/summarize.ts) (next to
+      New `finalTextOf` in [summarize.ts](../../../src/core/adapters/claude/summarize.ts) (next to
       `subagentRunResultOf`, mirroring `clipError`'s shape but with `toolInputHint`'s 120-char
       rule): last `type: 'text'` block of the result's `content`, or a plain-string `content`,
       collapsed to one line and clipped; `null` when there is no text.
       `SubagentRunResult.finalText` + `SubagentNode.finalText` in
-      [types.ts](../../src/core/model/types.ts), carried in `toNode` next to `errorText` in
-      [subagents.ts](../../src/core/state/subagents.ts) (**not** via `toMetrics`).
+      [types.ts](../../../src/core/model/types.ts), carried in `toNode` next to `errorText` in
+      [subagents.ts](../../../src/core/state/subagents.ts) (**not** via `toMetrics`).
       Correct the two comments that promise `content` is not read
-      ([types.ts:96-102](../../src/core/model/types.ts#L96-L102),
-      [summarize.ts:190-195](../../src/core/adapters/claude/summarize.ts#L190-L195)).
-      Fixture: give [builders.ts:154](../../test/fixtures/builders.ts#L154) a report marker
+      ([types.ts:96-102](../../../src/core/model/types.ts#L96-L102),
+      [summarize.ts:190-195](../../../src/core/adapters/claude/summarize.ts#L190-L195)).
+      Fixture: give [builders.ts:154](../../../test/fixtures/builders.ts#L154) a report marker
       distinct from the prompt marker, and a `content` override so a long report can be built.
-      Tests in [reading.test.ts](../../test/unit/reading.test.ts): normal block array, plain-string
+      Tests in [reading.test.ts](../../../test/unit/reading.test.ts): normal block array, plain-string
       `content`, a >120-char report (clipped, ends `…`), an object result with no text (`null`),
       the plain-string *error* result (`errorText` set, `finalText` null), a running call (`null`),
       an `async_launched` result (`null`, `outputFile` not opened), and the split privacy assertion
@@ -209,9 +209,9 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
       *Files:* `summarize.ts`, `types.ts`, `subagents.ts`, `builders.ts`, `reading.test.ts`.
 
 - [x] D2 — **Declared model and its precedence.**
-      `declaredModelOf(input)` in [records.ts](../../src/core/adapters/claude/records.ts#L216),
+      `declaredModelOf(input)` in [records.ts](../../../src/core/adapters/claude/records.ts#L216),
       mirroring `agentTypeOf` exactly (trimmed non-empty string, else `null`); wired at
-      [summarize.ts:144](../../src/core/adapters/claude/summarize.ts#L144) into a new
+      [summarize.ts:144](../../../src/core/adapters/claude/summarize.ts#L144) into a new
       `ToolCallEvent.declaredModel`; resolved once in `toNode` as
       `SubagentNode.model = result?.model ?? call.declaredModel ?? null`.
       `metrics.model`, `toMetrics` and `pressureFor` stay untouched — a declared alias must never
@@ -222,33 +222,33 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
       *Files:* `records.ts`, `summarize.ts`, `types.ts`, `subagents.ts`, `reading.test.ts`.
 
 - [x] D3 — **Main window renders both.** In
-      [SubagentTree.tsx](../../src/renderer/components/SubagentTree.tsx): `finalText` as its own
+      [SubagentTree.tsx](../../../src/renderer/components/SubagentTree.tsx): `finalText` as its own
       `.meta` line under the row (`title` = "What the subagent reported back, clipped"); `Metrics`
       and the running/launched branch read `node.model` instead of `metrics.model`, rendering
       nothing when it is `null`; the running **and** `launched` hint states that no interim report
       exists (today only `running` gets a hint at all,
-      [SubagentTree.tsx:60-66](../../src/renderer/components/SubagentTree.tsx#L60-L66)).
+      [SubagentTree.tsx:60-66](../../../src/renderer/components/SubagentTree.tsx#L60-L66)).
       `errorText` keeps its own line and is rendered before `finalText`. Plus one line in
-      [cli/index.ts:183](../../src/cli/index.ts#L183) so the smoke can be cross-checked.
+      [cli/index.ts:183](../../../src/cli/index.ts#L183) so the smoke can be cross-checked.
       *Acceptance:* main window detail pane shows a finished subagent's report and a running one's
       declared model; a subagent with neither shows no empty cell and no stray separator.
       *Files:* `SubagentTree.tsx`, `styles.css`, `cli/index.ts`.
 
 - [x] D4 — **Popover renders both** — *after story 010 D5/D6 have landed.* In
-      [popover.tsx](../../src/renderer/popover.tsx) + [styles.css](../../src/renderer/styles.css),
+      [popover.tsx](../../../src/renderer/popover.tsx) + [styles.css](../../../src/renderer/styles.css),
       on 010's expanded subagent row: the model cell reads `node.model` (empty when `null`, no
       placeholder, no `≈`), with the `title` naming the provenance ("declared in the `Agent` call,
       not yet confirmed by the run" vs. "model the run actually resolved to"); the report on the
       row's second line, clipped text as delivered by D1, never the parent's `lastAssistantText`.
       `presentation.ts` gains the alias branch (`opus`/`sonnet`/`haiku`/`fable` → title-cased) with
-      cases in [presentation.test.ts](../../test/unit/presentation.test.ts).
+      cases in [presentation.test.ts](../../../test/unit/presentation.test.ts).
       Mirror the wording and tooltips of `SubagentTree` so the two surfaces cannot describe the
       same run differently.
       *Acceptance:* popover and main window show the identical string for the same run.
       *Files:* `popover.tsx`, `styles.css`, `presentation.ts`, `presentation.test.ts`.
 
 - [x] D5 — **Measure the N5 cost.** Extend the cold-start test
-      ([pipeline.test.ts:590](../../test/unit/pipeline.test.ts#L590)) so every live tail carries an
+      ([pipeline.test.ts:590](../../../test/unit/pipeline.test.ts#L590)) so every live tail carries an
       agent result with a multi-kilobyte report, keep the `< 2 s` assertion, and log the elapsed
       ms. Record the measured number (before/after, same machine) in the Done section — a
       number, not an assurance.

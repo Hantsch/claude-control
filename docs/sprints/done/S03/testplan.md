@@ -1,9 +1,9 @@
 # S03 — Manual acceptance test plan
 
-Covers the four stories built in this sprint: [010](../../requirements/010-popover-drilldown.md)
-(popover drill-down), [011](../../requirements/011-subagent-detail-from-result.md) (subagent
-final message + declared model), [007](../../requirements/007-light-theme.md) (light theme), and
-[012](../../requirements/012-s02-residuals.md) (S02 residuals: probe-unknown marker, portable
+Covers the four stories built in this sprint: [010](../../../requirements/done/010-popover-drilldown.md)
+(popover drill-down), [011](../../../requirements/done/011-subagent-detail-from-result.md) (subagent
+final message + declared model), [007](../../../requirements/done/007-light-theme.md) (light theme), and
+[012](../../../requirements/done/012-s02-residuals.md) (S02 residuals: probe-unknown marker, portable
 protocol path, popover focus, `ShortcutStatus` dedupe).
 
 None of this sprint's work has had a live human pass yet — every story's own `## Done` section

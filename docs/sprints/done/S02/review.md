@@ -82,8 +82,8 @@ What's open is live acceptance:
 
 - **003 and 004 are "built, live acceptance pending."** Run `npm run dev` and walk each story's
   `## Test Plan (manual acceptance)` section (in
-  [003](../../requirements/003-popover-reachability.md) and
-  [004](../../requirements/004-session-noise-control.md), also consolidated in
+  [003](../../../requirements/done/003-popover-reachability.md) and
+  [004](../../../requirements/done/004-session-noise-control.md), also consolidated in
   [testplan.md](testplan.md)) before considering M2 accepted. In particular: real Windows toast
   rendering with both buttons, and `notification.on('click')`/protocol-activation behaviour under
   `toastXml`, could not be exercised at all outside a live Windows session with a running

@@ -1,14 +1,14 @@
 ---
 id: 012
 title: S02 residuals — never hide a live session, never steal the focus
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-21
 ---
 
 ## Requirement
 
 Sprint S02 landed with four points its review deliberately left open
-([review.md](../sprints/done/S02/review.md)). None of them has been observed in practice, which
+([review.md](../../sprints/done/S02/review.md)). None of them has been observed in practice, which
 is exactly why they are worth writing down before they are forgotten: two of them can, in a
 narrow case, make the app lie about a session, and the app's whole promise is that the list on
 screen is the truth.

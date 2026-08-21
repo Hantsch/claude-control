@@ -28,11 +28,11 @@ Concretely, what a glance should deliver without a click, a hover, or a second w
   gets touched. This is the single best idea in ClaudeSessionTray
   (`SessionFlyoutForm.cs:144`).
 
-No engine work: this lives in [popover.tsx](../../src/renderer/popover.tsx),
-[presentation.ts](../../src/shared/presentation.ts),
-[styles.css](../../src/renderer/styles.css) and the small shared components.
+No engine work: this lives in [popover.tsx](../../../src/renderer/popover.tsx),
+[presentation.ts](../../../src/shared/presentation.ts),
+[styles.css](../../../src/renderer/styles.css) and the small shared components.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md).
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md).
 
 ## Acceptance Criteria
 
@@ -65,22 +65,22 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   in the list below it.
 - **Waiting count is counted over `state.traySessions`, not `state.sessions`** — the user
   decision demands agreement with the dots *visible below*, and the popover list is
-  `traySessions` ([popover.tsx:78](../../src/renderer/popover.tsx#L78)).
+  `traySessions` ([popover.tsx:78](../../../src/renderer/popover.tsx#L78)).
 - **The quick-switch is an in-renderer React dropdown, not `Menu.popup`** — the popover hides
-  on the window's `blur` ([windows.ts:195](../../src/main/windows.ts#L195)) and the only
+  on the window's `blur` ([windows.ts:195](../../../src/main/windows.ts#L195)) and the only
   existing suppression is the pin; a plain React overlay creates no second focus target, so
   AC 2 falls out for free and no main-process change is needed.
 - **Four modes mapped onto the existing booleans, no new settings field** — `off`
   (`enabled:false`), `waiting`, `done`, `all`; `enabled:true` and `cooldownMs` stay untouched
   by the other three, so nothing about the default stance changes
-  ([settings.ts:132](../../src/core/model/settings.ts#L132)) and mode `off` restores the
+  ([settings.ts:132](../../../src/core/model/settings.ts#L132)) and mode `off` restores the
   previous on/off pair when switched back on.
 - **Writing uses `api.setSettings({ ...settings, notifications: {...} })` exactly like
-  `SettingsView.apply()`** ([SettingsView.tsx:29](../../src/renderer/components/SettingsView.tsx#L29))
+  `SettingsView.apply()`** ([SettingsView.tsx:29](../../../src/renderer/components/SettingsView.tsx#L29))
   — the store merges and broadcasts `onSettingsChanged`, which the Settings tab already
   subscribes to, so AC 1 needs no new IPC.
 - **Grouping reuses `groupSessions()` from
-  [aggregate.ts:101](../../src/core/state/aggregate.ts#L101), called on `traySessions`** —
+  [aggregate.ts:101](../../../src/core/state/aggregate.ts#L101), called on `traySessions`** —
   `state.groups` is built over *all* sessions and would show rows the popover deliberately
   hides; the function is pure (type-only imports), so calling it in the renderer costs nothing
   and keeps one grouping rule in the app.
@@ -93,7 +93,7 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   clipped at the window edge; observing all three regions also covers group headers (AC 12).
 - **Row grid grows to 8 columns instead of a second row line**
   (`14px 2.1fr 1.5fr 1.2fr 58px 46px 62px 62px` over the fixed 620 px,
-  [windows.ts:17](../../src/main/windows.ts#L17)) — every new value is one glance-token; a
+  [windows.ts:17](../../../src/main/windows.ts#L17)) — every new value is one glance-token; a
   second line per row would double popover height, and all flexible cells keep the existing
   `text-overflow: ellipsis`, so nothing can widen the window.
 - **Unknown model ids pass through unchanged, `null`/blank renders nothing** — mirrors
@@ -101,7 +101,7 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   (AC 5) is about the absent case; a live but unrecognised id is information, not noise.
 - **`[1m]` renders as a separate `· 1M` suffix** (`Opus 5 · 1M`) — the suffix changes what the
   context gauge means, so it must stay legible rather than glued into the name.
-- **The detail pane keeps its `—` fallback** ([SessionDetailPane.tsx:76](../../src/renderer/components/SessionDetailPane.tsx#L76))
+- **The detail pane keeps its `—` fallback** ([SessionDetailPane.tsx:76](../../../src/renderer/components/SessionDetailPane.tsx#L76))
   and gains the raw id as `title` — a `<dl>` row with an empty `<dd>` reads as broken, and the
   raw id is still the thing you copy into a bug report.
 - **Uptime gets its own cell with an `↑` prefix and a "Running for …" tooltip, ≥ 1 h only** —
@@ -109,11 +109,11 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   plus tooltip is the equivalent that keeps it from reading as a second age.
 - **`formatAge` changes for all callers, not just the popover** — AC 11 says "on every
   surface", and `formatAge` is the single age formatter
-  ([format.ts:3](../../src/renderer/lib/format.ts#L3)); the existing `< 1 s → 'now'` branch is
+  ([format.ts:3](../../../src/renderer/lib/format.ts#L3)); the existing `< 1 s → 'now'` branch is
   absorbed by the new `< 5 s → 'just now'`.
 - **New unit tests go to `test/unit/presentation.test.ts`** — vitest only collects
   `test/unit/**/*.test.ts` in a Node environment
-  ([vitest.config.ts:7](../../vitest.config.ts#L7)); both new functions are pure and need no DOM.
+  ([vitest.config.ts:7](../../../vitest.config.ts#L7)); both new functions are pure and need no DOM.
 
 ## Plan
 
@@ -121,22 +121,22 @@ Renderer + shared only, no engine work. Order matters: layout groundwork first, 
 glance-token per deliverable, the quick-switch last (largest, most isolated).
 
 1. **Groundwork (D1):** widen the `.popover-row` grid in
-   [styles.css](../../src/renderer/styles.css) to the 8 columns above and make `report()` in
-   [popover.tsx](../../src/renderer/popover.tsx) observe `head` and `foot` alongside `rows`, so
+   [styles.css](../../../src/renderer/styles.css) to the 8 columns above and make `report()` in
+   [popover.tsx](../../../src/renderer/popover.tsx) observe `head` and `foot` alongside `rows`, so
    every later addition (group headers, dropdown) resizes the window correctly.
 2. **Structure (D2):** replace the flat `traySessions.map` with
    `groupSessions(state.traySessions)`, a compact `.popover-group-head` per group (name +
    count), suppressed when there is exactly one group. Branch stays on the row.
 3. **Row content (D3–D6, D9):** `modelDisplayName()` in
-   [presentation.ts](../../src/shared/presentation.ts) + test; model badge on the row and in
-   [SessionDetailPane.tsx](../../src/renderer/components/SessionDetailPane.tsx); waiting reason
+   [presentation.ts](../../../src/shared/presentation.ts) + test; model badge on the row and in
+   [SessionDetailPane.tsx](../../../src/renderer/components/SessionDetailPane.tsx); waiting reason
    replacing the branch in `.where`; tool + `· subagent` in `.status` mirroring
-   [SessionsView.tsx:129-137](../../src/renderer/components/SessionsView.tsx#L129-L137); uptime
+   [SessionsView.tsx:129-137](../../../src/renderer/components/SessionsView.tsx#L129-L137); uptime
    cell from `startedAt`.
 4. **Signals (D7, D8, D10):** halo on the waiting dot in
-   [StatusDot.tsx](../../src/renderer/components/StatusDot.tsx) (colour from
+   [StatusDot.tsx](../../../src/renderer/components/StatusDot.tsx) (colour from
    `--status-waiting`, so it cannot drift), waiting count in the header, `just now` in
-   [format.ts](../../src/renderer/lib/format.ts).
+   [format.ts](../../../src/renderer/lib/format.ts).
 5. **Quick-switch (D11):** in-renderer dropdown in the header over the existing
    `getSettings`/`setSettings`/`onSettingsChanged` API.
 
@@ -149,21 +149,21 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       `14px minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,1.2fr) 58px 46px 62px 62px` with the
       ellipsis rules extended to the new cells; `report()`'s `ResizeObserver` observes `head`
       and `foot` in addition to `rows`. Files:
-      [styles.css](../../src/renderer/styles.css) (`.popover-row` block ~691-725),
-      [popover.tsx](../../src/renderer/popover.tsx#L56-L72).
+      [styles.css](../../../src/renderer/styles.css) (`.popover-row` block ~691-725),
+      [popover.tsx](../../../src/renderer/popover.tsx#L56-L72).
       *Acceptance:* popover renders unchanged visually, empty new cells collapse, window height
       still matches content on open/close and when the list changes length.
 - [x] D2 — **Group rows by project.** `groupSessions(state.traySessions)` instead of the flat
       loop; `.popover-group-head` (project name + `N session(s)`, dim, ~11 px) mirroring the
       wording of `.project-header` in
-      [SessionsView.tsx:72-81](../../src/renderer/components/SessionsView.tsx#L72-L81) but sized
+      [SessionsView.tsx:72-81](../../../src/renderer/components/SessionsView.tsx#L72-L81) but sized
       for the popover; groups sorted by most urgent session then name; exactly one group ⇒ no
-      header at all. Files: [popover.tsx](../../src/renderer/popover.tsx),
-      [styles.css](../../src/renderer/styles.css).
+      header at all. Files: [popover.tsx](../../../src/renderer/popover.tsx),
+      [styles.css](../../../src/renderer/styles.css).
       *Acceptance:* multi-project state shows headers with the waiting group on top, a
       single-project state shows none, height stays correct in both.
 - [x] D3 — **`modelDisplayName()` in
-      [presentation.ts](../../src/shared/presentation.ts)** — strip everything up to the last
+      [presentation.ts](../../../src/shared/presentation.ts)** — strip everything up to the last
       `.` (`us.anthropic.…`), split off a trailing `[…]` suffix, drop `claude-`, title-case the
       hyphen-separated words, re-append the suffix upper-cased as ` · 1M`; unknown shapes
       returned unchanged, `null`/blank ⇒ `null`. Mirror: `SessionState.cs:61`. Test in
@@ -172,38 +172,38 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       *Acceptance:* `npm test` green, no throw on any input.
 - [x] D4 — **Model badge.** New `.model` cell on the popover row (dim pill, `title` = raw id,
       nothing rendered when the formatter returns `null`), and
-      [SessionDetailPane.tsx:76](../../src/renderer/components/SessionDetailPane.tsx#L76) uses
+      [SessionDetailPane.tsx:76](../../../src/renderer/components/SessionDetailPane.tsx#L76) uses
       the formatter with the raw id as `title`, keeping `—`.
       *Acceptance:* a running session shows e.g. `Opus 5 · 1M`; a session without a model shows
       an empty cell, no dash.
 - [x] D5 — **Waiting reason inline.** For `status === 'waiting'` the `.where` cell renders
       `statusReason` in `var(--status-waiting)` instead of `project · branch` (project name is
       already in the group header from D2), ellipsized, full text still on the row `title`.
-      Mirror: `SessionRow.cs:166`. File: [popover.tsx](../../src/renderer/popover.tsx#L135-L138),
-      [styles.css](../../src/renderer/styles.css).
+      Mirror: `SessionRow.cs:166`. File: [popover.tsx](../../../src/renderer/popover.tsx#L135-L138),
+      [styles.css](../../../src/renderer/styles.css).
       *Acceptance:* a long reason ellipsizes and the window width never changes.
 - [x] D6 — **Tool + subagent marker** in `.status`, copied from
-      [SessionsView.tsx:129-137](../../src/renderer/components/SessionsView.tsx#L129-L137)
+      [SessionsView.tsx:129-137](../../../src/renderer/components/SessionsView.tsx#L129-L137)
       (`session.pendingTool.name`, `· subagent` when any `subagents[].status === 'running'`,
-      `pendingTool.hint` as tooltip). File: [popover.tsx](../../src/renderer/popover.tsx).
+      `pendingTool.hint` as tooltip). File: [popover.tsx](../../../src/renderer/popover.tsx).
       *Acceptance:* a working session with a tool reads `working · Bash`; without one, just
       `working`.
-- [x] D7 — **Halo on the waiting dot.** [StatusDot.tsx](../../src/renderer/components/StatusDot.tsx)
+- [x] D7 — **Halo on the waiting dot.** [StatusDot.tsx](../../../src/renderer/components/StatusDot.tsx)
       adds a `halo` class for `waiting` only; CSS `box-shadow` derived from `--status-waiting`
       so it cannot drift; check the popover row/list padding does not clip it.
       *Acceptance:* the waiting dot is the only one with a halo, in popover **and** main window.
 - [x] D8 — **Waiting count in the header** — count of `traySessions` with `status === 'waiting'`
       rendered in `var(--status-waiting)` when > 0, next to the existing session count, which
       stays as-is when zero; keeps the existing `· N settled` hint. File:
-      [popover.tsx:84-95](../../src/renderer/popover.tsx#L84-L95).
+      [popover.tsx:84-95](../../../src/renderer/popover.tsx#L84-L95).
       *Acceptance:* header number equals the number of waiting dots below it.
 - [x] D9 — **Uptime cell** from `startedAt`, only when `now - startedAt >= 1 h`, rendered
       `↑{formatDuration(...)}` dim with `title="Running for …"`, in its own 46 px column left of
       `.age`. Mirror: `SessionRow.cs:116`. Files:
-      [popover.tsx](../../src/renderer/popover.tsx), [styles.css](../../src/renderer/styles.css).
+      [popover.tsx](../../../src/renderer/popover.tsx), [styles.css](../../../src/renderer/styles.css).
       *Acceptance:* a session younger than an hour shows an empty cell; an older one shows
       `↑3h 12m` clearly distinct from `4m ago`.
-- [x] D10 — **`just now` under 5 s** in [format.ts](../../src/renderer/lib/format.ts)
+- [x] D10 — **`just now` under 5 s** in [format.ts](../../../src/renderer/lib/format.ts)
       `formatAge` (replaces the `< 1 s → 'now'` branch). Mirror: `SessionRow.cs:190`. Boundary
       test (4 999 ms / 5 000 ms) in `test/unit/presentation.test.ts`.
       *Acceptance:* `npm test` green; popover, main list and history all read `just now`.
@@ -213,8 +213,8 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       session is done / Both) mapped onto `notifications.enabled|onDone|onWaiting`; writes via
       `api.setSettings({ ...settings, notifications: { ... } })`; menu closes on select,
       `Escape` and outside click *inside the popover*; defaults untouched. Files:
-      [popover.tsx](../../src/renderer/popover.tsx), [styles.css](../../src/renderer/styles.css);
-      pattern: [SettingsView.tsx:29-34](../../src/renderer/components/SettingsView.tsx#L29-L34).
+      [popover.tsx](../../../src/renderer/popover.tsx), [styles.css](../../../src/renderer/styles.css);
+      pattern: [SettingsView.tsx:29-34](../../../src/renderer/components/SettingsView.tsx#L29-L34).
       *Acceptance:* switching the mode persists, the popover stays open while the menu is up,
       and the Settings tab in the already-open main window updates without a reload.
 

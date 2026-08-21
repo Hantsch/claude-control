@@ -30,7 +30,7 @@ reintroduces the field, it is the authoritative answer to a question we currentl
 and permission prompts are the one case transcript watching cannot see at all. While the field
 is absent, nothing changes.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md).
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md).
 
 ## Acceptance Criteria
 

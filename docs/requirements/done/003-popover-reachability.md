@@ -22,7 +22,7 @@ Three things close that gap, and they build on each other:
   half a feature. The rows are already `<button>` elements, so this is focus management, not
   markup.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md).
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md).
 
 ## Acceptance Criteria
 
@@ -54,10 +54,10 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 - **(User)** Default global shortcut: `Ctrl+Alt+C`.
 - **Two new fields under `ui`: `autostart: boolean` (default `false`) and `globalShortcut:
   string` (default `'Ctrl+Alt+C'`, `''` = disabled)** — `ui` already holds the surface-level
-  prefs ([settings.ts:76](../../src/core/model/settings.ts#L76)), and a single string field
+  prefs ([settings.ts:76](../../../src/core/model/settings.ts#L76)), and a single string field
   covers "configurable" plus "off" without a third boolean.
 - **No `SETTINGS_SCHEMA_VERSION` bump** — both fields are additive and `mergeSettings`
-  ([settings.ts:238](../../src/core/model/settings.ts#L238)) fills missing keys from
+  ([settings.ts:238](../../../src/core/model/settings.ts#L238)) fills missing keys from
   `DEFAULT_SETTINGS`; the version gate exists for *changed* defaults, not for new ones.
 - **Autostart defaults to `false`, the shortcut default is active from first start** —
   registering a login item without being asked is an install-time side effect, while a hotkey
@@ -71,26 +71,26 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   EXE, and Windows paths are case-insensitive so a case-only difference must not cause a
   pointless registry write on every start.
 - **`--autostart` suppresses the "No Claude Code data found" dialog**
-  ([index.ts:109-119](../../src/main/index.ts#L109)) — AC 2 says "comes up to the tray without
+  ([index.ts:109-119](../../../src/main/index.ts#L109)) — AC 2 says "comes up to the tray without
   opening a window", and a modal at login is exactly the window nobody asked for.
 - **No `--hidden` flag and no window-suppression code** — the normal start is already
-  tray-only ([index.ts:123](../../src/main/index.ts#L123): a window only opens for `--show`),
+  tray-only ([index.ts:123](../../../src/main/index.ts#L123): a window only opens for `--show`),
   so AC 2 needs the dialog fix, not a new start mode.
 - **Autostart and shortcut live in their own main modules (`src/main/autostart.ts`,
   `src/main/shortcuts.ts`), wired from `index.ts` via the existing `settings.onChange`
-  listener** ([index.ts:86](../../src/main/index.ts#L86)) — `index.ts` is the bootstrap
+  listener** ([index.ts:86](../../../src/main/index.ts#L86)) — `index.ts` is the bootstrap
   sequence, and both concerns need a re-apply on every settings change.
 - **The shortcut handler reuses the `--show popover` path
   (`tray.getBounds()` → `windows.togglePopover(bounds)`,
-  [index.ts:124-126](../../src/main/index.ts#L124))** — `togglePopover`
-  ([windows.ts:109](../../src/main/windows.ts#L109)) already hides a visible popover, pinned or
+  [index.ts:124-126](../../../src/main/index.ts#L124))** — `togglePopover`
+  ([windows.ts:109](../../../src/main/windows.ts#L109)) already hides a visible popover, pinned or
   not, so "pressing it again closes" (AC 4) falls out with no new state.
 - **Registration status is its own IPC pair (`cc:get-shortcut-status` +
   `cc:shortcut-status`), mirroring `getSettings`/`settingsChanged`** — a failed registration is
   main-process truth that no settings value can express, and Settings must show it both on open
   and the moment a new combination fails.
 - **Release on quit uses `app.on('will-quit', () => globalShortcut.unregisterAll())`** — the
-  existing `before-quit` ([index.ts:140](../../src/main/index.ts#L140)) can still be cancelled;
+  existing `before-quit` ([index.ts:140](../../../src/main/index.ts#L140)) can still be cancelled;
   `will-quit` is the last point at which the process-global registration is certainly dead.
 - **The Settings field captures a key chord instead of accepting a raw accelerator string** —
   `Ctrl+Alt+C` is a developer-facing artefact, and capture makes an unparseable value
@@ -101,21 +101,21 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
   row, so wrapping `↑` from the top would jump to the *least* urgent row, which is the opposite
   of what the key implies.
 - **Group heads need no skip logic: they are plain `<div class="popover-group-head">`, rows are
-  `<button>`** ([popover.tsx:280,288](../../src/renderer/popover.tsx#L280)) — navigation walks
+  `<button>`** ([popover.tsx:280,288](../../../src/renderer/popover.tsx#L280)) — navigation walks
   `button.popover-row` only, so AC 7's "skipping group headers" is structural, not a special
   case.
 - **"Most urgent row" = the first `.popover-row` in DOM order** — groups are already sorted by
   `STATUS_SORT_RANK` and rows within a group by `compareSessions`
-  ([aggregate.ts:145-159](../../src/core/state/aggregate.ts#L145)), so the top row is by
+  ([aggregate.ts:145-159](../../../src/core/state/aggregate.ts#L145)), so the top row is by
   construction the session that colours the tray badge (002's group-order decision).
 - **Initial focus is driven by the renderer's `window` `focus` event, not a new IPC event** —
   the popover window is reused and `togglePopover` calls `show()` + `focus()` on every open,
   so the event fires exactly once per open with no main-process change.
-- **Esc calls the existing `api.closePopover()`** ([ipc.ts:106](../../src/shared/ipc.ts#L106))
+- **Esc calls the existing `api.closePopover()`** ([ipc.ts:106](../../../src/shared/ipc.ts#L106))
   — the popover's own close button already uses it, and it forces past the pin, which is what
   a deliberate Esc means.
 - **The Esc/arrow handler is document-level and ignores `event.defaultPrevented`; the
-  NotifySwitch menu's Escape handler ([popover.tsx:96](../../src/renderer/popover.tsx#L96))
+  NotifySwitch menu's Escape handler ([popover.tsx:96](../../../src/renderer/popover.tsx#L96))
   gains a `preventDefault()`** — otherwise one Esc would close both the menu and the window,
   which would undo 002's AC "the popover does not close while that menu is open".
 - **Focus styling targets `.popover-row:focus`, not only `:focus-visible`** — the row is
@@ -129,15 +129,15 @@ Three independent tracks; only the settings schema (D1) is shared groundwork. Or
 schema → autostart → shortcut → keyboard, so each track can be verified on its own.
 
 1. **Schema (D1):** `ui.autostart` + `ui.globalShortcut` in
-   [settings.ts](../../src/core/model/settings.ts) — interface, `DEFAULT_SETTINGS`,
+   [settings.ts](../../../src/core/model/settings.ts) — interface, `DEFAULT_SETTINGS`,
    `mergeSettings` whitelist — plus merge tests in `test/unit/derivations.test.ts`.
 2. **Autostart (D2, D3):** new `src/main/autostart.ts` (`applyAutostart(enabled)`,
    `healAutostartPath()`) over `app.setLoginItemSettings`/`getLoginItemSettings` with
    `{ path: process.execPath, args: ['--autostart'] }`; called from
-   [index.ts](../../src/main/index.ts) after `whenReady` and again from the existing
+   [index.ts](../../../src/main/index.ts) after `whenReady` and again from the existing
    `settings.onChange` listener; `--autostart` also suppresses the "No Claude Code data found"
    dialog. Then the checkbox + portable-EXE hint in
-   [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx).
+   [SettingsView.tsx](../../../src/renderer/components/SettingsView.tsx).
 3. **Shortcut (D4–D7):** pure `src/shared/accelerator.ts` (chord → accelerator string +
    validation) with tests; `src/main/shortcuts.ts` (`ShortcutManager`: apply on start and on
    settings change, unregister the old one first, `will-quit` → `unregisterAll`, toggle via
@@ -145,10 +145,10 @@ schema → autostart → shortcut → keyboard, so each track can be verified on
    (`shared/ipc.ts` → `main/ipc.ts` → `preload.ts` → `renderer/api.ts`); finally the capture
    field + conflict message in Settings.
 4. **Keyboard (D8):** document-level keydown in
-   [popover.tsx](../../src/renderer/popover.tsx) (↑/↓ over `button.popover-row`, clamped; Esc →
+   [popover.tsx](../../../src/renderer/popover.tsx) (↑/↓ over `button.popover-row`, clamped; Esc →
    `api.closePopover()`), focus of the first row on `window` `focus` and on mount, one
    `preventDefault()` in NotifySwitch's Escape branch, `.popover-row:focus` style in
-   [styles.css](../../src/renderer/styles.css).
+   [styles.css](../../../src/renderer/styles.css).
 
 Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final acceptance via
 `npm run dev` (see Test Plan).
@@ -159,7 +159,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       `globalShortcut: string` (default `'Ctrl+Alt+C'`); `DEFAULT_SETTINGS.ui` and the
       `mergeSettings` `ui` branch accept both (boolean / string type-check, unknown values
       ignored like the neighbouring fields), no schema-version bump. Files:
-      [settings.ts](../../src/core/model/settings.ts) (interface L76, defaults L164,
+      [settings.ts](../../../src/core/model/settings.ts) (interface L76, defaults L164,
       `mergeSettings` L238), `test/unit/derivations.test.ts` (mirror the existing
       `mergeSettings` cases).
       *Acceptance:* `npm test` green; a settings file without the new keys merges to the
@@ -169,7 +169,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       `{ path: process.execPath, args: ['--autostart'] }` for get *and* set; `healAutostartPath`
       re-registers when `openAtLogin` is true and no `launchItems[].path` matches
       `process.execPath` case-insensitively. Wired in
-      [index.ts](../../src/main/index.ts): heal + apply once after settings load, re-apply from
+      [index.ts](../../../src/main/index.ts): heal + apply once after settings load, re-apply from
       the existing `settings.onChange` listener (L86), and `--autostart` in `process.argv`
       suppresses the "No Claude Code data found" dialog (L109-119).
       *Acceptance:* toggling `ui.autostart` creates/removes the `HKCU:\…\Run` entry pointing at
@@ -179,7 +179,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       `ui.autostart`, saved through the existing `apply()` path, plus a `<span className="hint">`
       naming the portable-EXE behaviour ("the entry points at where the EXE is now; if you move
       it, the entry is repaired the next time the app starts"). File:
-      [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx); mirror: the
+      [SettingsView.tsx](../../../src/renderer/components/SettingsView.tsx); mirror: the
       "Index history on start" checkbox (~L269-276).
       *Acceptance:* the checkbox reflects the persisted value after an app restart and switching
       it takes effect without a restart.
@@ -195,7 +195,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       before registering the new one, treats `''` as "disabled", records
       `{ accelerator, registered, error }` when `globalShortcut.register` returns false or
       throws, and toggles via the injected `onToggle`. Wired in
-      [index.ts](../../src/main/index.ts): construct after the tray, `onToggle` =
+      [index.ts](../../../src/main/index.ts): construct after the tray, `onToggle` =
       `const b = tray.getBounds(); if (b) windows.togglePopover(b)` (same as L124-126),
       `apply()` on start and from `settings.onChange`, and
       `app.on('will-quit', () => globalShortcut.unregisterAll())`.
@@ -204,11 +204,11 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       the combination reaches other apps again.
 - [x] D6 — **Shortcut status over IPC.** `IPC.getShortcutStatus = 'cc:get-shortcut-status'` and
       `IPC.shortcutStatusChanged = 'cc:shortcut-status'` plus a `ShortcutStatus` type in
-      [shared/ipc.ts](../../src/shared/ipc.ts); `ipcMain.handle` in
-      [main/ipc.ts](../../src/main/ipc.ts); `broadcast(IPC.shortcutStatusChanged, …)` after every
-      `apply()` in [index.ts](../../src/main/index.ts); `getShortcutStatus` +
-      `onShortcutStatusChanged` in [preload.ts](../../src/main/preload.ts) and
-      [renderer/api.ts](../../src/renderer/api.ts). Mirror throughout:
+      [shared/ipc.ts](../../../src/shared/ipc.ts); `ipcMain.handle` in
+      [main/ipc.ts](../../../src/main/ipc.ts); `broadcast(IPC.shortcutStatusChanged, …)` after every
+      `apply()` in [index.ts](../../../src/main/index.ts); `getShortcutStatus` +
+      `onShortcutStatusChanged` in [preload.ts](../../../src/main/preload.ts) and
+      [renderer/api.ts](../../../src/renderer/api.ts). Mirror throughout:
       `getSettings`/`onSettingsChanged`.
       *Acceptance:* `npm run typecheck` green; the renderer can read the status on mount and
       receives an update when a registration fails.
@@ -218,20 +218,20 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       "Reset" (back to `Ctrl+Alt+C`) and "Off" (`''`). Below it, the D6 status: nothing when
       registered, otherwise a visible warning ("Ctrl+Alt+C is already taken by another
       application — pick a different combination"). Files:
-      [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx),
-      [styles.css](../../src/renderer/styles.css).
+      [SettingsView.tsx](../../../src/renderer/components/SettingsView.tsx),
+      [styles.css](../../../src/renderer/styles.css).
       *Acceptance:* a conflicting combination (e.g. one already held by another running app)
       shows the warning instead of failing silently; "Off" removes the shortcut; the value
       survives a restart.
 - [x] D8 — **Keyboard navigation in the popover.** Document-level `keydown` in
-      [popover.tsx](../../src/renderer/popover.tsx): `ArrowDown`/`ArrowUp` move focus over
+      [popover.tsx](../../../src/renderer/popover.tsx): `ArrowDown`/`ArrowUp` move focus over
       `containerRef.current.querySelectorAll('button.popover-row')` (clamped at both ends,
       `preventDefault` so the window does not scroll), `Escape` → `void api.closePopover()`;
       the handler ignores events with `defaultPrevented`, and NotifySwitch's Escape branch
       (L96) gains `event.preventDefault()`. The first row is focused on mount and on the
       window's `focus` event, and re-focused when the previously focused row disappears from
       the list. `.popover-row:focus` gets an outline + hover background in
-      [styles.css](../../src/renderer/styles.css) (next to `.popover-row:hover`, ~L808).
+      [styles.css](../../../src/renderer/styles.css) (next to `.popover-row:hover`, ~L808).
       *Acceptance:* opening the popover focuses the top row, ↑/↓ walk the rows across group
       headers, Enter jumps to the focused session (native button activation), Esc closes the
       popover, and Esc with the notify menu open closes only the menu.
@@ -307,7 +307,7 @@ review-fix cycles with `story-review-hard` (see Decisions) before landing clean.
   already correct. There is no public-API way to detect drift independent of already knowing the
   drifted path. The portable-EXE acceptance criterion is instead satisfied end-to-end by
   `applyAutostart()`'s existing unconditional call on every start
-  ([index.ts:47](../../src/main/index.ts#L47)), which always writes the *current*
+  ([index.ts:47](../../../src/main/index.ts#L47)), which always writes the *current*
   `process.execPath` — so a moved EXE's entry is corrected the next time the app starts with
   autostart on. Functionally equivalent to the planned mechanism, arrived at differently; see
   `src/main/autostart.ts` for the full reasoning in the doc comment.

@@ -1,6 +1,6 @@
 ---
 sprint: S02
-status: in-progress # planned | in-progress | done
+status: done # planned | in-progress | done
 branch: sprint/S02
 milestone: M2 — Always there, no mouse required
 ---

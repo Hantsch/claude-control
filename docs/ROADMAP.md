@@ -54,17 +54,28 @@ Gaps/notes:
   tray badge. Not fixed in S01; flagged for whoever next touches tray-badge/group-sort logic.
 - 002's testplan.md was run live by the user on 2026-08-21; M1 accepted.
 
-### M2 — Always there, no mouse required — planned
+### M2 — Always there, no mouse required — built, acceptance pending
 
 Autostart, global hotkey, keyboard navigation in the popover, plus the two noise sources:
 abandoned windowless sessions and toasts you cannot act on.
 
-Stories: [003](requirements/003-popover-reachability.md) ·
-[004](requirements/004-session-noise-control.md)
-Sprints: [S02](sprints/S02/sprint.md) — planned
+Stories: [003](requirements/003-popover-reachability.md) — done ·
+[004](requirements/004-session-noise-control.md) — done
+Sprints: [S02](sprints/S02/sprint.md) — see [review.md](sprints/S02/review.md) and
+[testplan.md](sprints/S02/testplan.md)
 Gaps/notes:
-- 003 needs a decision on the portable-EXE autostart path and a default shortcut
-- 004 needs a decision on whether mutes survive a restart
+- 003's portable-EXE path drift is self-healed by an unconditional rewrite on every start
+  (`applyAutostart()`), not by the originally planned drift-detection — Electron's
+  `getLoginItemSettings` cannot observe a registered path different from the one you ask about.
+- 004's window-probe failure-caching (a single failed pid probe is cached as a definite "no
+  window" for the 30s TTL rather than "unknown") is an accepted, narrow residual risk — flagged
+  for whoever next touches `windowProbe.ts`.
+- 004's portable-target protocol-handler path (`app.setAsDefaultProtocolClient`) can go stale
+  between runs, same pre-existing property as the login-item path; not fixed, not new to this
+  sprint.
+- Both stories are built, unit-tested and reviewed but not live-verified — the build session was
+  headless with no Electron UI available. Run [testplan.md](sprints/S02/testplan.md) before
+  marking M2 accepted.
 
 ### M3 — Light theme — planned
 

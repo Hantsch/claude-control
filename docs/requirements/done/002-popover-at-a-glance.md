@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Popover at a glance
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
@@ -36,23 +36,23 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 
 ## Acceptance Criteria
 
-- [ ] The popover header carries a notification quick-switch showing the current mode; changing
+- [x] The popover header carries a notification quick-switch showing the current mode; changing
       it persists immediately and the main window's Settings tab reflects it without a reload
-- [ ] The popover does not close while that menu is open
+- [x] The popover does not close while that menu is open
 - [x] `enabled: true` stays the default — only the reachability of the switch is copied from
       ClaudeSessionTray, not its off-by-default stance (telling you about a finished turn is
       this app's stated purpose)
-- [ ] Rows are grouped by project, sorted so the group explaining the tray badge is on top; a
+- [x] Rows are grouped by project, sorted so the group explaining the tray badge is on top; a
       single-project case renders no header at all
-- [ ] Each row shows a readable model name; an unknown model renders nothing, not a placeholder
-- [ ] A waiting row shows its reason inline in the waiting colour, ellipsized, never widening
+- [x] Each row shows a readable model name; an unknown model renders nothing, not a placeholder
+- [x] A waiting row shows its reason inline in the waiting colour, ellipsized, never widening
       the popover
-- [ ] A working row shows the current tool and the subagent marker when one is running
-- [ ] The waiting dot is findable without reading — it carries a halo, and no other status does
-- [ ] The header shows the waiting count when non-zero, in the waiting colour
-- [ ] Uptime is visible for long-lived sessions without being mistakable for the idle age
+- [x] A working row shows the current tool and the subagent marker when one is running
+- [x] The waiting dot is findable without reading — it carries a halo, and no other status does
+- [x] The header shows the waiting count when non-zero, in the waiting colour
+- [x] Uptime is visible for long-lived sessions without being mistakable for the idle age
 - [x] Ages under 5 s read "just now" instead of "0s" on every surface
-- [ ] The popover's self-measuring height (`report()`) stays correct with headers present
+- [x] The popover's self-measuring height (`report()`) stays correct with headers present
 
 ## Open Questions
 
@@ -275,14 +275,8 @@ error handling on the settings write) and verified green again.
 - Code review (story-review-hard, clean agent): verdict UNCLEAR → 4 confirmed findings fixed
   (see Decisions below for the remaining 7, deliberately left as documented deviations/
   accepted risk), then build/test/typecheck re-verified green.
-- **Live smoke: NOT performed.** This story is UI-only (popover layout, colours, halo,
-  ellipsis, an in-renderer dropdown) and `live-smoke-required: true` / `ui-acceptance-required:
-  true` apply. Driving and *visually* judging a popover (halo shape, ellipsis behaviour, dropdown
-  clipping, the menu staying open on blur, cross-window settings sync) is not something this
-  session can do — no browser automation is available for the Electron tray UI, and CLI/log
-  inspection cannot substitute for looking at rendered pixels. Per policy P2 the story is left
-  **`in-progress`**, not `done`; handing over `## Test Plan (manual acceptance)` below (already
-  present, unchanged) for a human to run via `npm run dev`.
+- **Live smoke: performed by the user on 2026-08-21**, following
+  `## Test Plan (manual acceptance)` below via `npm run dev`. Accepted — story moved to `done`.
 
 **Decisions (implementation-time, beyond the pre-existing Decisions section above):**
 - D2's `groupSessions` sort needs the urgency rank table; `STATUS_SORT_RANK` was not exported

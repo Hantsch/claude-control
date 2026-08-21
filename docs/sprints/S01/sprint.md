@@ -17,11 +17,11 @@ for the popover's status read.
 ## Stories (in build order)
 
 - [x] 001 — Registry status field — record its absence, use it if it returns
-- [x] 002 — Popover at a glance (built, live acceptance pending)
+- [x] 002 — Popover at a glance
 
 ## Notes
 
 First sprint of Phase 2 — M1 is deliberately engine-free (renderer + shared presentation only)
 so it can be built in one sitting. 002's open decision (waiting count vs. `attention`) was
-resolved in the clarification round — see review.md. 002 is built but left `in-progress`
-(live acceptance pending); see review.md and testplan.md.
+resolved in the clarification round — see review.md. Live acceptance (testplan.md) completed by
+the user on 2026-08-21; M1 is accepted.

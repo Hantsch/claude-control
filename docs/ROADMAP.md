@@ -1,7 +1,7 @@
 # Roadmap
 
 **The** one source of status and planning: where we stand, what comes next, what is not planned
-at all yet. As of: 2026-08-13.
+at all yet. As of: 2026-08-21.
 
 Rules (so this document does not drift):
 
@@ -35,7 +35,7 @@ Way of working: the milestones below are ordered by payoff per hour, not by size
 that changes the day-to-day feel and is deliberately engine-free, so it can be built in one
 sitting. Stories are cut into a sprint only once the previous milestone is accepted.
 
-### M1 — Popover at a glance — built, acceptance pending
+### M1 — Popover at a glance — ✔ accepted (2026-08-21)
 
 The popover shows grouping, model, waiting reason, current tool, waiting count and a reachable
 notification switch. No engine work — renderer and shared presentation only. Includes the
@@ -43,7 +43,7 @@ ten-minute research correction, which is bookkeeping but is the basis on which t
 status read can later be judged at all.
 
 Stories: [001](requirements/done/001-registry-status-field.md) — done ·
-[002](requirements/002-popover-at-a-glance.md) — built, live acceptance pending
+[002](requirements/done/002-popover-at-a-glance.md) — done
 Sprints: [S01](sprints/S01/sprint.md) — see [review.md](sprints/S01/review.md) and
 [testplan.md](sprints/S01/testplan.md)
 Gaps/notes:
@@ -52,9 +52,7 @@ Gaps/notes:
 - Group sort ranks on raw status without special-casing an already-*seen* waiting/done session —
   a seen waiting group could in theory outrank an unseen done group that actually colours the
   tray badge. Not fixed in S01; flagged for whoever next touches tray-badge/group-sort logic.
-- 002's visual acceptance (halo shape, ellipsis, dropdown clipping/blur behaviour, cross-window
-  settings sync) was not run live — no browser automation exists for the Electron tray UI. Run
-  `docs/sprints/S01/testplan.md` before marking M1 accepted.
+- 002's testplan.md was run live by the user on 2026-08-21; M1 accepted.
 
 ### M2 — Always there, no mouse required — planned
 
@@ -63,7 +61,7 @@ abandoned windowless sessions and toasts you cannot act on.
 
 Stories: [003](requirements/003-popover-reachability.md) ·
 [004](requirements/004-session-noise-control.md)
-Sprints: —
+Sprints: [S02](sprints/S02/sprint.md) — planned
 Gaps/notes:
 - 003 needs a decision on the portable-EXE autostart path and a default shortcut
 - 004 needs a decision on whether mutes survive a restart

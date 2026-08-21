@@ -1135,11 +1135,20 @@ table.history .title {
 
 .popover-subagent-row {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
   padding: 3px 5px;
   border-radius: 5px;
   font-size: 11px;
+}
+
+/* Line 1 — identity and numbers, unchanged from story 010's single-line row (see below).
+   Split into its own flex child so the report line (story 011 D4) can sit underneath it
+   without disturbing this row's own alignment. */
+.popover-subagent-row .popover-subagent-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .popover-subagent-row:hover {
@@ -1232,6 +1241,18 @@ table.history .title {
   color: var(--text-dim);
   font-size: 10.5px;
   white-space: nowrap;
+}
+
+/* The subagent's own final report (story 011 D4), one ellipsized line under the row —
+   `finalText` is already clipped to 120 chars at the adapter boundary (D1), so this never
+   wraps and never grows the row further than that. */
+.popover-subagent-row .popover-subagent-report {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 16px;
 }
 
 /* Flat-hierarchy disclaimer (story 010 D6) — once below the whole subagent list, mirroring

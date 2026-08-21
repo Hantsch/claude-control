@@ -184,6 +184,9 @@ function printSession(session: SessionView, options: CliOptions): void {
       const duration = node.durationMs !== null ? formatAge(node.durationMs) : '—';
       process.stdout.write(`        └─ ${node.status.padEnd(9)} ${duration.padEnd(8)} ${node.label}\n`);
       if (node.errorText) process.stdout.write(`           ${node.errorText}\n`);
+      if (node.finalText || node.model) {
+        process.stdout.write(`           model=${node.model ?? '—'} report=${node.finalText ?? '—'}\n`);
+      }
       const metrics = node.metrics;
       if (metrics) {
         const ctx = metrics.context ? `ctx=${Math.round(metrics.context.ratio * 100)}%` : 'ctx=—';

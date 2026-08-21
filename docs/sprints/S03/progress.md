@@ -14,3 +14,14 @@
 - 2026-08-21 14:08 · 010 · D7 Keyboard expand/collapse · done
 - 2026-08-21 14:08 · 010 · D8 Height accept the scroll · started
 - 2026-08-21 14:10 · 010 · D8 Height accept the scroll · done
+- 2026-08-21 14:27 · 011 · D1 Final message at adapter boundary · started
+- 2026-08-21 14:27 · 011 · D1 Final message at adapter boundary · done
+- 2026-08-21 14:27 · 011 · D2 Declared model and precedence · started
+- 2026-08-21 14:27 · 011 · D2 Declared model and precedence · done
+- 2026-08-21 14:27 · 011 · D3 Main window renders both · started
+- 2026-08-21 14:27 · 011 · D3 Main window renders both · done
+- 2026-08-21 14:27 · 011 · D5 Measure the N5 cost · done
+- 2026-08-21 14:27 · 011 · D4 Popover renders both · started
+- 2026-08-21 14:27 · 011 · D4 Popover renders both · done
+- 2026-08-21 14:57 · 011 · review + fix cycle (story-review-hard) · done
+- 2026-08-21 14:57 · 011 · Done section filled, status in-progress (live acceptance pending) · done

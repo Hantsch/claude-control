@@ -28,6 +28,8 @@ function node(status: SubagentNode['status'], id: string = status): SubagentNode
     status,
     metrics: null,
     errorText: null,
+    finalText: null,
+    model: null,
     children: [],
   };
 }
@@ -155,7 +157,11 @@ describe('subagentMessage', () => {
     });
   });
 
-  it('never claims an absent state once metrics have arrived, even mid-run', () => {
+  it('still claims the absent state while running/launched even once metrics have arrived', () => {
+    // A `launched` result already carries `agentId` + `resolvedModel` (so `metrics` is
+    // non-null) while the run is still going in the background with no interim report —
+    // verified as the *common* case against real agent results (163/351 sampled), not an
+    // edge case, so this must key off `status` alone and never off `metrics`.
     const metrics = {
       model: 'sonnet',
       totalTokens: 100,
@@ -164,7 +170,14 @@ describe('subagentMessage', () => {
       linesAdded: null,
       linesRemoved: null,
     };
-    expect(subagentMessage('running', metrics, null)).toEqual({ kind: 'none', text: null });
+    expect(subagentMessage('running', metrics, null)).toEqual({
+      kind: 'absent',
+      text: SUBAGENT_NO_INTERIM_STATE,
+    });
+    expect(subagentMessage('launched', metrics, null)).toEqual({
+      kind: 'absent',
+      text: SUBAGENT_NO_INTERIM_STATE,
+    });
   });
 
   it('surfaces the error text for a failed run, regardless of any leftover metrics', () => {

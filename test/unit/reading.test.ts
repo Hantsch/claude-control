@@ -321,13 +321,191 @@ describe('tool pairing and subagents', () => {
     expect(facts.subagents[0]!.durationMs).toBe(5_000);
   });
 
-  it('never retains the subagent prompt or output carried by its result (§4)', () => {
+  it('takes the report from the last text block of the result, like a session\'s last message', () => {
     const records = [
       assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
-      agentResult('u1', 60_000, { assistantUuid: 'a1', toolUseId: 't1' }),
+      agentResult('u1', 60_000, {
+        assistantUuid: 'a1',
+        toolUseId: 't1',
+        content: [
+          { type: 'text', text: 'An interim note from halfway through' },
+          { type: 'thinking', thinking: 'not a report' },
+          { type: 'text', text: 'Three combat modules are relevant.' },
+        ],
+      }),
     ];
     const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
-    expect(JSON.stringify(facts.subagents)).not.toMatch(/PRIVATE/);
+    expect(facts.subagents[0]!.finalText).toBe('Three combat modules are relevant.');
+  });
+
+  it('accepts a plain-string content too, which is how some results deliver the report', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentResult('u1', 60_000, {
+        assistantUuid: 'a1',
+        toolUseId: 't1',
+        content: '  Survey done:\n  three modules.  ',
+      }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
+    // Collapsed to one line, because a row is one line.
+    expect(facts.subagents[0]!.finalText).toBe('Survey done: three modules.');
+  });
+
+  it('clips a long report at the adapter boundary, so the renderer never sees the full text', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentResult('u1', 60_000, {
+        assistantUuid: 'a1',
+        toolUseId: 't1',
+        content: [{ type: 'text', text: `${'A long report that keeps going. '.repeat(12)}TAIL-MARKER` }],
+      }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
+    const finalText = facts.subagents[0]!.finalText!;
+
+    expect(finalText.startsWith('A long report that keeps going.')).toBe(true);
+    // `toolInputHint`'s 120-character rule, not a third convention.
+    expect(finalText.length).toBeLessThanOrEqual(120);
+    expect(finalText.endsWith('…')).toBe(true);
+    expect(JSON.stringify(facts)).not.toContain('TAIL-MARKER');
+  });
+
+  it('reports no final message when the result object carries no text', () => {
+    const records = [
+      assistant({
+        uuid: 'a1',
+        at: 0,
+        tools: [
+          { id: 't1', name: 'Agent', input: { description: 'no text block' } },
+          { id: 't2', name: 'Agent', input: { description: 'no content at all' } },
+        ],
+      }),
+      agentResult('u1', 60_000, {
+        assistantUuid: 'a1',
+        toolUseId: 't1',
+        content: [{ type: 'image', source: {} }],
+      }),
+      agentResult('u2', 60_000, { assistantUuid: 'a1', toolUseId: 't2', content: undefined }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
+
+    expect(facts.subagents.map((node) => node.finalText)).toEqual([null, null]);
+    // The numbers still arrived — it is the text that is missing, not the result.
+    expect(facts.subagents[0]!.metrics!.totalTokens).toBe(67_430);
+  });
+
+  it('never mistakes a failed run\'s error string for a report', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentErrorResult('u1', 5_000, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 6_000, read: READ_DIAG });
+    const node = facts.subagents[0]!;
+
+    // The plain-string result shape is the death notice; only `errorText` may carry it.
+    expect(node.errorText).toMatch(/529 Overloaded/);
+    expect(node.finalText).toBeNull();
+  });
+
+  it('shows no report for a running subagent, because none exists yet', () => {
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 5_000, read: READ_DIAG });
+    expect(facts.subagents[0]!.status).toBe('running');
+    expect(facts.subagents[0]!.finalText).toBeNull();
+  });
+
+  it('leaves a launched run textless and never opens its outputFile', () => {
+    const records = [
+      assistant({
+        uuid: 'a1',
+        at: 0,
+        tools: [{ id: 't1', name: 'Agent', input: { description: 'background work' } }],
+      }),
+      agentLaunchedResult('u1', 2_400, { assistantUuid: 'a1', toolUseId: 't1' }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 3_600_000, read: READ_DIAG });
+
+    expect(facts.subagents[0]!.status).toBe('launched');
+    expect(facts.subagents[0]!.finalText).toBeNull();
+    // Opening that second file would be a new data source and a new read cost.
+    const serialized = JSON.stringify(facts);
+    expect(serialized).not.toContain('outputFile');
+    expect(serialized).not.toContain('agent-bg.jsonl');
+  });
+
+  it('never retains the subagent prompt, and keeps only a clipped row of its report (§4)', () => {
+    const report = `PRIVATE REPORT — ${'the body runs on and on and on. '.repeat(8)}END-OF-REPORT`;
+    const records = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      agentResult('u1', 60_000, {
+        assistantUuid: 'a1',
+        toolUseId: 't1',
+        content: [{ type: 'text', text: report }],
+      }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
+    const serialized = JSON.stringify(facts);
+
+    // The prompt is still not read — anywhere, not just on the node.
+    expect(serialized).not.toContain('PRIVATE PROMPT');
+    // The report is read, but only ever as much of it as fits on a row.
+    expect(facts.subagents[0]!.finalText).toContain('PRIVATE REPORT');
+    expect(facts.subagents[0]!.finalText!.length).toBeLessThanOrEqual(120);
+    expect(facts.subagents[0]!.finalText!.endsWith('…')).toBe(true);
+    expect(serialized).not.toContain('END-OF-REPORT');
+  });
+
+  it('shows the declared model while a subagent is still running', () => {
+    const records = [
+      assistant({
+        uuid: 'a1',
+        at: 0,
+        tools: [{ id: 't1', name: 'Agent', input: { description: 'x', model: 'sonnet' } }],
+      }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 5_000, read: READ_DIAG });
+    expect(facts.subagents[0]!.status).toBe('running');
+    expect(facts.subagents[0]!.model).toBe('sonnet');
+  });
+
+  it('lets the resolved model win once the result arrives, even over a different declared alias', () => {
+    const records = [
+      assistant({
+        uuid: 'a1',
+        at: 0,
+        tools: [{ id: 't1', name: 'Agent', input: { description: 'x', model: 'haiku' } }],
+      }),
+      agentResult('u1', 60_000, {
+        assistantUuid: 'a1',
+        toolUseId: 't1',
+        model: 'claude-opus-5[1m]',
+      }),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 61_000, read: READ_DIAG });
+    expect(facts.subagents[0]!.status).toBe('completed');
+    expect(facts.subagents[0]!.model).toBe('claude-opus-5[1m]');
+  });
+
+  it('shows no model at all when none was declared, whether running or finished', () => {
+    const runningRecords = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+    ];
+    const running = summarizeRecords(runningRecords as never, { now: T0 + 5_000, read: READ_DIAG });
+    expect(running.subagents[0]!.status).toBe('running');
+    expect(running.subagents[0]!.model).toBeNull();
+
+    const noModelResult = agentResult('u1', 60_000, { assistantUuid: 'a1', toolUseId: 't1' });
+    delete (noModelResult.toolUseResult as Record<string, unknown>).resolvedModel;
+    const finishedRecords = [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent', input: { description: 'x' } }] }),
+      noModelResult,
+    ];
+    const finished = summarizeRecords(finishedRecords as never, { now: T0 + 61_000, read: READ_DIAG });
+    expect(finished.subagents[0]!.status).toBe('completed');
+    expect(finished.subagents[0]!.model).toBeNull();
   });
 
   it('ignores the run-number shape for ordinary tool results', () => {

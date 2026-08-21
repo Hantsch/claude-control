@@ -49,7 +49,7 @@ import {
   subagentMessage,
   subagentSummary,
 } from './lib/popoverModel.ts';
-import { buildMetricParts } from './lib/subagentParts.ts';
+import { buildMetricParts, type MetricPart } from './lib/subagentParts.ts';
 import './styles.css';
 
 /** Uptime cell (D9) only kicks in once a session has been running a while — below that
@@ -196,21 +196,43 @@ function NotifySwitch(): React.JSX.Element {
  * text, and the flat-hierarchy note) are decided by `subagentMessage()` in `popoverModel.ts`
  * (story 010 D6) — this component only renders what that pure function returns, so the
  * wording and the case selection have unit coverage without a DOM.
+ *
+ * The model chip and the report's second line are story 011 D4: `node.model` stands in for
+ * `buildMetricParts`'s old `model` part (that function no longer produces one at all) so a
+ * declared-but-not-yet-run alias can show too, and `node.finalText` gets its own line below
+ * the row. Both the chip's provenance title and the report's title are copied verbatim from
+ * `SubagentTree.tsx`'s `Metrics()` / report line so the popover and the main window cannot
+ * describe the same run differently.
+ *
+ * A failed run keeps `errorText` visible (unchanged since story 010) *and* still shows the
+ * model chip / report line when `node.model` / `node.finalText` happen to be non-null (e.g. a
+ * model that had already resolved, or a report that had already arrived, before the run died)
+ * — the story requires the new fields to coexist with `errorText`, never be displaced by it,
+ * matching `SubagentTree.tsx`, which never gated these on status either.
  */
 function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
-  const parts = node.metrics ? buildMetricParts(node.metrics) : [];
-  const modelPart = parts.find((part) => part.key === 'model');
-  const ctxPart = parts.find((part) => part.key === 'ctx');
-  const tooltipParts = parts.filter((part) => part.key !== 'model' && part.key !== 'ctx');
+  const metricParts = node.metrics ? buildMetricParts(node.metrics) : [];
+  const ctxPart = metricParts.find((part) => part.key === 'ctx');
+  const tooltipParts = metricParts.filter((part) => part.key !== 'ctx');
+  const modelPart: MetricPart | null = node.model
+    ? {
+        key: 'model',
+        text: modelDisplayName(node.model) ?? node.model,
+        // `node.metrics.model` is `result.model` specifically (see subagents.ts's `toNode`) —
+        // `node.metrics` alone is not enough, since a finished result can carry numbers
+        // (tokens, tool uses) without a resolved model, which would still leave `node.model`
+        // sourced from the declared alias.
+        title: node.metrics?.model != null
+          ? 'Model the run actually resolved to'
+          : 'Declared in the Agent call, not yet confirmed by the run',
+      }
+    : null;
   const durationTitle =
     tooltipParts.length > 0
       ? tooltipParts.map((part) => `${part.text} — ${part.title}`).join(' · ')
       : undefined;
   const context = node.metrics?.context ?? null;
   const message = subagentMessage(node.status, node.metrics, node.errorText);
-  // A failed run's error text takes the row over: any model/context numbers left from before
-  // it died would read as a contradiction next to "this run failed", so they stay hidden.
-  const showMetricChips = message.kind !== 'error';
 
   return (
     <div
@@ -219,44 +241,55 @@ function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
       tabIndex={0}
       data-nav-key={`a:${node.id}`}
     >
-      <span
-        className="dot sm"
-        style={{ background: `var(${SUBAGENT_STATUS_COLOR_VAR[node.status]})` }}
-        title={node.status}
-      />
-      <span className="label" title={node.label}>
-        {node.label}
-      </span>
-      {node.agentType && <span className="type">{node.agentType}</span>}
-      {showMetricChips && modelPart && (
-        <span className="model" title={modelPart.title}>
-          {modelPart.text}
+      <span className="popover-subagent-main">
+        <span
+          className="dot sm"
+          style={{ background: `var(${SUBAGENT_STATUS_COLOR_VAR[node.status]})` }}
+          title={node.status}
+        />
+        <span className="label" title={node.label}>
+          {node.label}
         </span>
-      )}
-      {showMetricChips && context && ctxPart && (
-        <span className="ctx-mini" title={ctxPart.title}>
-          <span className="ctx-mini-bar">
-            <span
-              className="ctx-mini-fill"
-              style={{
-                width: `${Math.min(100, Math.round(context.ratio * 100))}%`,
-                background: `var(${BAND_COLOR_VAR[context.band]})`,
-              }}
-            />
+        {node.agentType && <span className="type">{node.agentType}</span>}
+        {modelPart && (
+          <span className="model" title={modelPart.title}>
+            {modelPart.text}
           </span>
-          <span className="ctx-mini-val">{ctxPart.text}</span>
+        )}
+        {context && ctxPart && (
+          <span className="ctx-mini" title={ctxPart.title}>
+            <span className="ctx-mini-bar">
+              <span
+                className="ctx-mini-fill"
+                style={{
+                  width: `${Math.min(100, Math.round(context.ratio * 100))}%`,
+                  background: `var(${BAND_COLOR_VAR[context.band]})`,
+                }}
+              />
+            </span>
+            <span className="ctx-mini-val">{ctxPart.text}</span>
+          </span>
+        )}
+        <span className="spacer" />
+        {message.kind === 'error' && (
+          <span className="error" title={message.text ?? undefined}>
+            {message.text}
+          </span>
+        )}
+        {message.kind === 'absent' && <span className="faint">{message.text}</span>}
+        <span className="duration" title={durationTitle}>
+          {formatDuration(node.durationMs)}
         </span>
-      )}
-      <span className="spacer" />
-      {message.kind === 'error' && (
-        <span className="error" title={message.text ?? undefined}>
-          {message.text}
-        </span>
-      )}
-      {message.kind === 'absent' && <span className="faint">{message.text}</span>}
-      <span className="duration" title={durationTitle}>
-        {formatDuration(node.durationMs)}
       </span>
+      {/* The subagent's own final report (story 011 D1/D4) — never the parent session's
+          `lastAssistantText`. Absent while running/launched (D1 leaves `finalText` `null`
+          until the result arrives); `subagentMessage()`'s `absent` case above already states
+          that plainly, so this line renders nothing rather than a second, redundant notice. */}
+      {node.finalText && (
+        <span className="popover-subagent-report" title="What the subagent reported back, clipped">
+          {node.finalText}
+        </span>
+      )}
     </div>
   );
 }

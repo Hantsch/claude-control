@@ -26,17 +26,10 @@ describe('buildMetricParts', () => {
     expect(buildMetricParts(metrics())).toEqual([]);
   });
 
-  it('adds a model part when model is present', () => {
-    const parts = buildMetricParts(metrics({ model: 'claude-opus-5' }));
-    expect(parts).toEqual([
-      { key: 'model', text: 'claude-opus-5', title: 'Model the run actually resolved to' },
-    ]);
-  });
-
-  it('omits the model part when model is null', () => {
-    expect(buildMetricParts(metrics({ model: null })).some((part) => part.key === 'model')).toBe(
-      false,
-    );
+  it('never produces a model part — the model chip is built by the callers from node.model', () => {
+    expect(
+      buildMetricParts(metrics({ model: 'claude-opus-5' })).some((part) => part.key === 'model'),
+    ).toBe(false);
   });
 
   it('formats totalTokens and labels the title as cumulative spend, not context size', () => {
@@ -121,7 +114,7 @@ describe('buildMetricParts', () => {
     ).toBe(false);
   });
 
-  it('orders parts model, tokens, context, tools, lines regardless of which are present', () => {
+  it('orders parts tokens, context, tools, lines regardless of which are present', () => {
     const parts = buildMetricParts(
       metrics({
         model: 'claude-opus-5',
@@ -132,6 +125,6 @@ describe('buildMetricParts', () => {
         linesRemoved: 1,
       }),
     );
-    expect(parts.map((part) => part.key)).toEqual(['model', 'tokens', 'ctx', 'tools', 'lines']);
+    expect(parts.map((part) => part.key)).toEqual(['tokens', 'ctx', 'tools', 'lines']);
   });
 });

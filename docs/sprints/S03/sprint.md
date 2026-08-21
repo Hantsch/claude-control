@@ -17,7 +17,7 @@ surface is checked in the light Windows scheme, and the four points S02 left ope
 ## Stories (in build order)
 
 - [x] 010 — Popover drill-down — branch, context, model, subagents (built, live acceptance pending — no live Electron env in this session)
-- [ ] 011 — Subagent detail — final message and declared model
+- [x] 011 — Subagent detail — final message and declared model (built, live acceptance pending — no live Electron env in this session)
 - [ ] 007 — Light theme
 - [ ] 012 — S02 residuals — never hide a live session, never steal the focus
 

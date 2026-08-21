@@ -10,9 +10,14 @@
  */
 
 import { Fragment } from 'react';
-import type { SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
+import type { SubagentNode } from '../../shared/ipc.ts';
 import { formatDuration } from '../lib/format.ts';
-import { buildMetricParts } from '../lib/subagentParts.ts';
+import {
+  SUBAGENT_NO_INTERIM_STATE,
+  buildMetricParts,
+  type MetricPart,
+} from '../lib/subagentParts.ts';
+import { modelDisplayName } from '../../shared/presentation.ts';
 
 const STATUS_MARK: Record<SubagentNode['status'], string> = {
   running: '◐',
@@ -55,13 +60,15 @@ export function SubagentTree({ nodes }: { nodes: SubagentNode[] }): React.JSX.El
               {node.errorText}
             </span>
           )}
-          {node.metrics ? (
-            <Metrics metrics={node.metrics} />
-          ) : (
-            node.status === 'running' && (
-              <span className="meta">tokens and context arrive when the run finishes</span>
-            )
+          {node.finalText && (
+            <span className="meta" title="What the subagent reported back, clipped">
+              {node.finalText}
+            </span>
           )}
+          {(node.status === 'running' || node.status === 'launched') && (
+            <span className="meta">{SUBAGENT_NO_INTERIM_STATE}</span>
+          )}
+          <Metrics node={node} />
           {node.children.length > 0 && <SubagentTree nodes={node.children} />}
         </li>
       ))}
@@ -69,10 +76,27 @@ export function SubagentTree({ nodes }: { nodes: SubagentNode[] }): React.JSX.El
   );
 }
 
-function Metrics({ metrics }: { metrics: SubagentMetrics }): React.JSX.Element {
+function Metrics({ node }: { node: SubagentNode }): React.JSX.Element {
   // Part-building rules live in `subagentParts.ts` (story 010 D5), shared with the tray
   // popover's subagent rows, so wording and tooltips cannot drift between the two surfaces.
-  const parts = buildMetricParts(metrics);
+  // `buildMetricParts` no longer produces a `model` part at all (story 011): the model chip
+  // below is built from `node.model` instead, which also carries a declared alias while the
+  // run is still going, so a subagent with no numbers yet can still show one.
+  const metricParts = node.metrics ? buildMetricParts(node.metrics) : [];
+  const modelPart: MetricPart | null = node.model
+    ? {
+        key: 'model',
+        text: modelDisplayName(node.model) ?? node.model,
+        // `node.metrics.model` is `result.model` specifically (see subagents.ts's `toNode`) —
+        // `node.metrics` alone is not enough, since a finished result can carry numbers
+        // (tokens, tool uses) without a resolved model, which would still leave `node.model`
+        // sourced from the declared alias.
+        title: node.metrics?.model != null
+          ? 'Model the run actually resolved to'
+          : 'Declared in the Agent call, not yet confirmed by the run',
+      }
+    : null;
+  const parts = modelPart ? [modelPart, ...metricParts] : metricParts;
 
   if (parts.length === 0) return <></>;
   return (

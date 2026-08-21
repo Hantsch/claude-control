@@ -116,10 +116,23 @@ export function clampLabel(text: string, max: number): string {
 }
 
 /**
+ * A declared model on an `Agent` tool call (story 011 D2's `declaredModelOf`) is one of these
+ * four tier aliases, never a resolved model id — `subagent_type`'s sibling `model` key takes
+ * only this vocabulary. Kept as its own set so `modelDisplayName` can special-case it before
+ * falling into the `claude-…` id parsing below, which would otherwise leave it untouched (it
+ * does not start with `claude-`) and print the raw lowercase alias next to a resolved model's
+ * full display name, e.g. `opus` beside `Opus 5 · 1M` (011 Decisions (Sprint)).
+ */
+const TIER_ALIASES = new Set(['opus', 'sonnet', 'haiku', 'fable']);
+
+/**
  * How a raw model id (`us.anthropic.claude-opus-5`, `claude-opus-5[1m]`, …) reads on the
  * tray and popover, instead of the API's dotted/bracketed wire form.
  *
  * Steps:
+ *  0. A bare tier alias (`opus`, `sonnet`, `haiku`, `fable`) — the vocabulary a declared
+ *     `model` on an `Agent` call uses — is title-cased directly (`opus` → `Opus`) and
+ *     returned; it never reaches the `claude-…` id parsing below (story 011 D4).
  *  1. Strip everything up to and including the *last* `.` (drops a vendor/region prefix
  *     such as `us.anthropic.`).
  *  2. Split off a trailing `[...]` suffix (e.g. `[1m]`), if present.
@@ -133,7 +146,9 @@ export function clampLabel(text: string, max: number): string {
  */
 export function modelDisplayName(modelId: string | null | undefined): string | null {
   if (modelId == null) return null;
-  if (modelId.trim() === '') return null;
+  const trimmed = modelId.trim();
+  if (trimmed === '') return null;
+  if (TIER_ALIASES.has(trimmed)) return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 
   const lastDot = modelId.lastIndexOf('.');
   const afterDot = lastDot >= 0 ? modelId.slice(lastDot + 1) : modelId;

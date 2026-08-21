@@ -97,8 +97,11 @@ export type SubagentStatus = 'running' | 'launched' | 'completed' | 'failed' | '
  * the honest ceiling here, not an omission. `totalDurationMs` was checked against the record
  * timestamps and agrees to within a few seconds, so the two never contradict each other.
  *
- * **Privacy (§4):** the result also carries the subagent's full `prompt` and `content`.
- * Neither is read here; only these numbers are.
+ * **Privacy (§4):** the result also carries the subagent's full `prompt` and `content`. The
+ * `prompt` is still never read — not here, not anywhere. The `content` is read, but only to
+ * fill `finalText` with a single row's worth of it; that excerpt lives in memory for display
+ * and is never logged and never written to disk (CONCEPT §4 allows exactly that: response
+ * text is read because the UI needs it, and never leaves the process).
  */
 export interface SubagentRunResult {
   status: string | null;
@@ -120,6 +123,13 @@ export interface SubagentRunResult {
    * is the one case where the *reason* is the only thing the result has to offer.
    */
   errorText: string | null;
+  /**
+   * What the run reported back, clipped to one row at the adapter boundary: the last `text`
+   * block of the result's `content`, or a plain-string `content`. Null when there is no
+   * report — including for a *failed* run, whose plain-string result is the error reason and
+   * belongs in `errorText` alone.
+   */
+  finalText: string | null;
 }
 
 /** Per-run numbers of a *finished* subagent, ready for display. */
@@ -153,6 +163,18 @@ export interface SubagentNode {
   metrics: SubagentMetrics | null;
   /** Why the run failed, when the result said so. */
   errorText: string | null;
+  /**
+   * The run's final message, already clipped to one row (§4). Null while it runs and for a
+   * `launched` run — neither has a report yet, and no interim state exists — and for a failed
+   * one, which has `errorText` instead.
+   */
+  finalText: string | null;
+  /**
+   * `resolvedModel` once the run has finished, else the model declared on the `Agent` call,
+   * else null. No third, inherited-from-session source — a declared alias is exact where
+   * present and an empty cell is preferred over a guess (Decisions (Sprint), story 011).
+   */
+  model: string | null;
   children: SubagentNode[];
 }
 
@@ -175,6 +197,8 @@ export interface ToolCallEvent {
   /** True when this tool is the agent's subagent-spawning tool (`Agent`). */
   isSubagent: boolean;
   agentType: string | null;
+  /** `model` on an `Agent` call, when the call declared one explicitly (a tier alias, not a model id). */
+  declaredModel: string | null;
   endedAt: number | null;
   errored: boolean;
   /** Filled from the paired result for subagent calls only (see `SubagentRunResult`). */

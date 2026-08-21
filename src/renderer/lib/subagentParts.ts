@@ -19,21 +19,27 @@ export interface MetricPart {
 }
 
 /**
- * One part per fact `metrics` actually carries, in a fixed order: model, cumulative tokens,
- * context, tool uses, lines touched. Absent facts (`null`, or both line counts falsy) produce
- * no part at all — never a placeholder — so a caller can render `parts.length === 0` as
- * "nothing to show" without a special case.
+ * The wording for "this subagent is running/launched and has not reported anything yet"
+ * (story 010 D6, reconciled with story 011 D4). Shared between `popoverModel.ts` and
+ * `SubagentTree.tsx` so the two surfaces cannot describe the same run with two different
+ * strings — both import this constant rather than hand-typing their own copy.
+ */
+export const SUBAGENT_NO_INTERIM_STATE =
+  "No report yet — a subagent's progress isn't observable until it finishes.";
+
+/**
+ * One part per fact `metrics` actually carries, in a fixed order: cumulative tokens, context,
+ * tool uses, lines touched. Absent facts (`null`, or both line counts falsy) produce no part
+ * at all — never a placeholder — so a caller can render `parts.length === 0` as "nothing to
+ * show" without a special case.
+ *
+ * Does not build a `model` part: that used to read `metrics.model` (`resolvedModel` only), but
+ * both callers now build their own model chip from `node.model` directly, since that also
+ * covers a declared-but-not-yet-run alias that `metrics.model` alone cannot represent.
  */
 export function buildMetricParts(metrics: SubagentMetrics): MetricPart[] {
   const parts: MetricPart[] = [];
 
-  if (metrics.model) {
-    parts.push({
-      key: 'model',
-      text: metrics.model,
-      title: 'Model the run actually resolved to',
-    });
-  }
   if (metrics.totalTokens !== null) {
     parts.push({
       key: 'tokens',

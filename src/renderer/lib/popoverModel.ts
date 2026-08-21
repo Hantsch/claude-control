@@ -10,6 +10,7 @@
 import { STATUS_SORT_RANK } from '../../core/state/aggregate.ts';
 import type { SessionView } from '../../core/model/types.ts';
 import type { SessionStatus, SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
+import { SUBAGENT_NO_INTERIM_STATE } from './subagentParts.ts';
 
 export type SubagentStatus = SubagentNode['status'];
 
@@ -90,11 +91,12 @@ export function groupStatusRollup(sessions: readonly SessionView[]): GroupStatus
 
 /**
  * The exact wording for "this subagent is running/launched and has not reported anything
- * yet" (story 010 D6). Never a `0`, never a placeholder bar — a plain statement that no
- * interim state exists, because `SubagentNode.metrics` really is `null` until the run's
- * result arrives (see `hasNumbers` in `core/state/subagents.ts`).
+ * yet" (story 010 D6, reconciled with story 011 D4 so the popover and `SubagentTree.tsx`
+ * cannot drift back apart). Defined once in `subagentParts.ts` — the module already shared
+ * between the two rendering surfaces — and re-exported here so existing importers of this
+ * module keep working.
  */
-export const SUBAGENT_NO_INTERIM_STATE = 'no interim state available';
+export { SUBAGENT_NO_INTERIM_STATE };
 
 /**
  * The disclaimer that belongs once below a session's flat subagent list, not on any one row
@@ -119,12 +121,17 @@ export interface SubagentMessage {
  * provoked on demand in the running app) still has standing unit coverage.
  *
  * - `failed` with `errorText` set → `'error'`, the error text itself (band-red on the row).
- * - `running`/`launched` with `metrics === null` → `'absent'`, `SUBAGENT_NO_INTERIM_STATE`.
+ * - `running`/`launched` → `'absent'`, `SUBAGENT_NO_INTERIM_STATE`, regardless of whether
+ *   `metrics` happens to be non-`null`: a `launched` result already carries `agentId` and
+ *   `resolvedModel` (so `metrics` is non-`null`) while the run itself is still going in the
+ *   background with no interim report — verified as the *common* case against real agent
+ *   results, not an edge case, so this must key off `status` and never off `metrics`.
  * - anything else (completed, or a status this transcript could not interpret) → `'none'`.
  *
- * A `'error'` result also tells the caller to suppress the row's model/context chip: those
- * numbers, if present at all, are stale leftovers from before the run died and would read as
- * a contradiction next to the error text.
+ * A `'error'` result does *not* suppress the row's model/context chips: story 011 requires
+ * `errorText` to coexist with, not replace, a model or report the run had already produced
+ * before it died (D4's acceptance criterion) — the caller renders those alongside the error
+ * text rather than hiding them.
  */
 export function subagentMessage(
   status: SubagentStatus,
@@ -132,7 +139,7 @@ export function subagentMessage(
   errorText: string | null,
 ): SubagentMessage {
   if (status === 'failed' && errorText) return { kind: 'error', text: errorText };
-  if ((status === 'running' || status === 'launched') && metrics === null) {
+  if (status === 'running' || status === 'launched') {
     return { kind: 'absent', text: SUBAGENT_NO_INTERIM_STATE };
   }
   return { kind: 'none', text: null };

@@ -23,6 +23,7 @@ import { epochMsToFileTime } from '../../src/core/registry/liveness.ts';
 import type { StatusTransition } from '../../src/core/model/types.ts';
 import {
   T0,
+  agentResult,
   assistant,
   aiTitle,
   fileHistorySnapshot,
@@ -609,6 +610,11 @@ describe('engine', () => {
       await tree.writeTranscript(slug, `history-${i}`, bulk + tail);
     }
 
+    // A multi-kilobyte subagent report, as D1's `finalTextOf` now reads out of every agent
+    // result's `content` — worst case, every live tail carries one, so the extra reading work
+    // is inside this budget too, not just the byte count of the transcript.
+    const longReport = 'report line filling out a multi-kilobyte final message. '.repeat(80);
+
     // Six live sessions, as measured, each with its own big transcript.
     const liveIds = ['live-0', 'live-1', 'live-2', 'live-3', 'live-4', 'live-5'];
     for (const [index, sessionId] of liveIds.entries()) {
@@ -622,7 +628,17 @@ describe('engine', () => {
         sessionId,
         bulk +
           toJsonl([
-            assistant({ uuid: `x${index}`, at: 0, tools: [{ id: 't1', name: 'Bash' }], cwd }),
+            assistant({
+              uuid: `x${index}`,
+              at: 0,
+              tools: [{ id: 't1', name: 'Bash' }, { id: `agent-${index}`, name: 'Agent' }],
+              cwd,
+            }),
+            agentResult(`ar${index}`, 1, {
+              assistantUuid: `x${index}`,
+              toolUseId: `agent-${index}`,
+              content: [{ type: 'text', text: longReport }],
+            }),
             lastPrompt(`x${index}`),
           ]),
       );
@@ -651,6 +667,23 @@ describe('engine', () => {
     // Only the live sessions with an alive PID resolve; readStatus verifies with signal 0,
     // so sessions whose fabricated PID is not running are reported as ended.
     expect(snapshot.sessions.length).toBe(liveIds.length);
+
+    // Guard the premise of the multi-KB `longReport` above: at least one session's subagent
+    // tree node must actually have extracted a `finalText` from it, clipped to `ROW_TEXT_CHARS`
+    // (120) with the `…` marker — otherwise this timing measurement would silently go vacuous
+    // if the extraction path (`finalTextOf`) broke or stopped being reached.
+    const finalTexts = snapshot.sessions.flatMap((session) =>
+      session.subagents.map((node) => node.finalText),
+    );
+    const extracted = finalTexts.find((text): text is string => text !== null);
+    expect(extracted).toBeDefined();
+    expect(extracted).toMatch(/…$/);
+    expect(extracted?.length).toBeLessThanOrEqual(120);
+    expect(extracted?.length).toBeGreaterThan(100);
+
+    // eslint-disable-next-line no-console -- N5 budget is measured, not just asserted; the
+    // number needs to be readable from test output for the story's Done section.
+    console.log(`[N5] cold start with multi-KB subagent reports: ${elapsed}ms`);
     expect(elapsed).toBeLessThan(2_000);
     await engine.stop();
   }, 180_000);

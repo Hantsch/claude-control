@@ -120,8 +120,12 @@ export function toolResult(
 /**
  * Result of a finished subagent: an ordinary tool result whose `toolUseResult` carries the
  * run's own numbers. Shape measured on Claude Code 2.1.222 — including the `prompt` and
- * `content` fields that must never be retained (§4), so the privacy test has something real
- * to check against.
+ * `content` fields, so the privacy test has something real to check against.
+ *
+ * The two markers are deliberately distinct: `prompt` must never appear anywhere downstream,
+ * while `content` may appear as a clipped `finalText` and nowhere else. A single `/PRIVATE/`
+ * marker could not tell those two apart. Pass `content` to override the report — including
+ * `content: undefined`, which builds a result that carries none at all.
  */
 export function agentResult(
   uuid: string,
@@ -139,6 +143,8 @@ export function agentResult(
     usage?: { input?: number; cacheRead?: number; cacheCreation?: number; output?: number };
     linesAdded?: number;
     linesRemoved?: number;
+    /** The report, in either observed shape (block array or plain string). */
+    content?: unknown;
   },
 ): Record<string, unknown> {
   const record = toolResult(uuid, at, {
@@ -151,7 +157,9 @@ export function agentResult(
     prompt: 'PRIVATE PROMPT — must not be retained',
     agentId: options.agentId ?? 'agent-1',
     agentType: options.agentType ?? 'general-purpose',
-    content: [{ type: 'text', text: 'PRIVATE OUTPUT — must not be retained' }],
+    content: 'content' in options
+      ? options.content
+      : [{ type: 'text', text: 'PRIVATE REPORT — only a clipped row of this may be kept' }],
     resolvedModel: options.model ?? 'claude-opus-5[1m]',
     totalDurationMs: options.durationMs ?? 900_106,
     totalTokens: options.totalTokens ?? 67_430,

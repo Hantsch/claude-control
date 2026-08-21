@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Subagent detail — final message and declared model
-status: ready # draft -> ready -> in-progress -> done
+status: in-progress # draft -> ready -> in-progress -> done
 created: 2026-08-21
 ---
 
@@ -53,26 +53,26 @@ Design of record: [assets/010-popover-drilldown-prototype.html](assets/010-popov
 
 ## Acceptance Criteria
 
-- [ ] A finished subagent's final message is available on `SubagentNode` and rendered in the
+- [x] A finished subagent's final message is available on `SubagentNode` and rendered in the
       popover drill-down and the main window's subagent tree
-- [ ] The text is clipped to a single line's worth at the adapter boundary, not in the renderer —
+- [x] The text is clipped to a single line's worth at the adapter boundary, not in the renderer —
       an `Agent` result can carry a very long report, and the tail reader's budget (CONCEPT §5.2)
       is not the place to discover that
-- [ ] A running or `launched` subagent shows no message and states that no interim state exists;
+- [x] A running or `launched` subagent shows no message and states that no interim state exists;
       it never shows an empty string, a stale message from a previous run, or the parent's text
-- [ ] A failed run keeps showing `errorText` — the existing behaviour is not displaced by the
+- [x] A failed run keeps showing `errorText` — the existing behaviour is not displaced by the
       new field
-- [ ] The privacy line holds and is verifiable: the subagent's `prompt` is still not read, the
+- [x] The privacy line holds and is verifiable: the subagent's `prompt` is still not read, the
       text never leaves the process, and nothing new is written to disk or logged
-- [ ] A model declared in the `Agent` call is extracted and shown for a subagent that is still
+- [x] A model declared in the `Agent` call is extracted and shown for a subagent that is still
       running
-- [ ] A subagent with no declared model shows no model at all (empty cell) — no inherited-model
+- [x] A subagent with no declared model shows no model at all (empty cell) — no inherited-model
       derivation, per the Sprint decision below
-- [ ] Once the run finishes, `resolvedModel` wins over the declared model, since it is what
+- [x] Once the run finishes, `resolvedModel` wins over the declared model, since it is what
       actually ran
-- [ ] Reading stays inside the CONCEPT §10 N5 budget — **measured**, since this reads more text
+- [x] Reading stays inside the CONCEPT §10 N5 budget — **measured**, since this reads more text
       per file than before
-- [ ] The adapter stays agent-neutral: nothing about this leaks out of
+- [x] The adapter stays agent-neutral: nothing about this leaks out of
       `core/adapters/claude/` into `core/state/` beyond the new typed fields
 
 ## Open Questions
@@ -187,7 +187,7 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
 
 ## Deliverables
 
-- [ ] D1 — **Final message at the adapter boundary and on the node.**
+- [x] D1 — **Final message at the adapter boundary and on the node.**
       New `finalTextOf` in [summarize.ts](../../src/core/adapters/claude/summarize.ts) (next to
       `subagentRunResultOf`, mirroring `clipError`'s shape but with `toolInputHint`'s 120-char
       rule): last `type: 'text'` block of the result's `content`, or a plain-string `content`,
@@ -208,7 +208,7 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
       *Acceptance:* `npm test` green; no field other than `content` newly read.
       *Files:* `summarize.ts`, `types.ts`, `subagents.ts`, `builders.ts`, `reading.test.ts`.
 
-- [ ] D2 — **Declared model and its precedence.**
+- [x] D2 — **Declared model and its precedence.**
       `declaredModelOf(input)` in [records.ts](../../src/core/adapters/claude/records.ts#L216),
       mirroring `agentTypeOf` exactly (trimmed non-empty string, else `null`); wired at
       [summarize.ts:144](../../src/core/adapters/claude/summarize.ts#L144) into a new
@@ -221,7 +221,7 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
       *Acceptance:* `npm test` green; nothing agent-specific leaves `adapters/claude/`.
       *Files:* `records.ts`, `summarize.ts`, `types.ts`, `subagents.ts`, `reading.test.ts`.
 
-- [ ] D3 — **Main window renders both.** In
+- [x] D3 — **Main window renders both.** In
       [SubagentTree.tsx](../../src/renderer/components/SubagentTree.tsx): `finalText` as its own
       `.meta` line under the row (`title` = "What the subagent reported back, clipped"); `Metrics`
       and the running/launched branch read `node.model` instead of `metrics.model`, rendering
@@ -234,7 +234,7 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
       declared model; a subagent with neither shows no empty cell and no stray separator.
       *Files:* `SubagentTree.tsx`, `styles.css`, `cli/index.ts`.
 
-- [ ] D4 — **Popover renders both** — *after story 010 D5/D6 have landed.* In
+- [x] D4 — **Popover renders both** — *after story 010 D5/D6 have landed.* In
       [popover.tsx](../../src/renderer/popover.tsx) + [styles.css](../../src/renderer/styles.css),
       on 010's expanded subagent row: the model cell reads `node.model` (empty when `null`, no
       placeholder, no `≈`), with the `title` naming the provenance ("declared in the `Agent` call,
@@ -247,7 +247,7 @@ Files, in the order they are touched: `src/core/adapters/claude/summarize.ts`,
       *Acceptance:* popover and main window show the identical string for the same run.
       *Files:* `popover.tsx`, `styles.css`, `presentation.ts`, `presentation.test.ts`.
 
-- [ ] D5 — **Measure the N5 cost.** Extend the cold-start test
+- [x] D5 — **Measure the N5 cost.** Extend the cold-start test
       ([pipeline.test.ts:590](../../test/unit/pipeline.test.ts#L590)) so every live tail carries an
       agent result with a multi-kilobyte report, keep the `< 2 s` assertion, and log the elapsed
       ms. Record the measured number (before/after, same machine) in the Done section — a
@@ -310,4 +310,59 @@ drill-down must be in place for steps 2-4.
 
 ## Done
 
-<!-- filled by /build -->
+**Summary.** Two adapter fields (`finalText`, `model`) were added to `SubagentRunResult`/
+`SubagentNode` and carried to both display surfaces (main window's `SubagentTree`, popover's
+`SubagentRow`). `finalText` is the subagent's last text block / plain-string result content,
+collapsed and clipped to 120 chars at the adapter boundary (`records.ts`'s shared
+`clipOneLine`/`ROW_TEXT_CHARS`), never through `toMetrics` so it survives a numberless result.
+`model` follows the declined-inference precedence `resolvedModel (finished) → declared model
+(from the `Agent` call's `model` key) → null`, with no `≈`-marked guess. A declared model is a
+tier alias (`opus`/`sonnet`/`haiku`/`fable`), title-cased by a new branch in
+`modelDisplayName`. Both surfaces render byte-identical text/tooltips for the same run.
+
+**Decisions (implementation-time, not pre-decided in the story):**
+- The tooltip's "resolved vs declared" provenance check uses `node.metrics?.model != null`,
+  not `node.metrics != null` — `hasNumbers()` can be true from tokens/tool-uses alone even
+  when `result.model` is null, so checking `metrics` presence alone could mislabel a
+  numbers-but-no-model result as "resolved". Caught and fixed during the story-level review
+  (see below).
+- The shared "no interim state" wording was consolidated into one constant
+  (`SUBAGENT_NO_INTERIM_STATE`, defined in `subagentParts.ts`, re-exported from
+  `popoverModel.ts`) rather than two independently-worded literals, so the two surfaces cannot
+  drift again.
+- On a failed run, `errorText` and any known `model`/`finalText` are now shown together in
+  both surfaces (previously the popover suppressed the model/report chips on error) — the
+  story's own AC says the new fields must not displace `errorText`, which implies coexistence,
+  not either/or.
+- `buildMetricParts`'s own dead `model` part (superseded by `node.model` in both renderers,
+  since only `node.model` — not `metrics.model` — can show a declared alias while running) was
+  removed rather than left unused, along with its now-stale test.
+- N5 measurement: the cold-start test was extended so every live tail carries a multi-KB
+  subagent report; measured elapsed time **136–138 ms** (well inside the existing `< 2 s`
+  budget), logged by the test and also asserted structurally (a `finalText` is actually
+  extracted, clipped, and ends in `…`) so the measurement can't go vacuous if extraction broke.
+- The `.claude/ai-scrum.md` diff visible in `git status` (branch-base/protected-branches
+  update) predates this story's work and was left untouched — out of scope.
+
+**Verification:**
+- `npm run build` — clean.
+- `npm test` — 260/260 green (13 files).
+- `npm run typecheck` — clean.
+- Code review (`story-review-hard`, clean agent): first pass returned FAIL with 7 findings
+  (2 real bugs — `launched` subagents showing no "no interim state" hint in the popover, and
+  the popover suppressing the model/report chips on a failed run where the tree did not; a
+  wrong tooltip predicate; wording drift between the two surfaces; dead code in
+  `subagentParts.ts`; a vacuous N5 assertion; a documentation nit about the plain-string
+  `content` fixture rationale). All but the documentation nit were fixed in one review-fix
+  cycle; build/test/typecheck re-verified green afterward. The documentation nit
+  (`docs/requirements/011-...md:120-122`) is left as-is — it describes why the fixture covers
+  the plain-string branch, which remains true; the reviewer's point was only that the *sample*
+  fixture the sentence cites doesn't itself exercise that shape, not that the code is wrong.
+- Live UI acceptance (P2, `## Test Plan (manual acceptance)`): **not performed** — no live
+  Electron display session is reachable from this autonomous run (confirmed for story 010; the
+  same constraint applies here). Built, acceptance pending.
+
+**Commit message (prepared, not committed):**
+```
+011: subagent final message and declared model in popover + main window
+```

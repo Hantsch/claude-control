@@ -50,6 +50,18 @@ describe('modelDisplayName', () => {
   it('returns the original string unchanged when the vendor-stripped id has no claude- prefix', () => {
     expect(modelDisplayName('us.anthropic.something-else')).toBe('us.anthropic.something-else');
   });
+
+  it('title-cases a declared tier alias instead of falling into the claude- id parsing', () => {
+    expect(modelDisplayName('opus')).toBe('Opus');
+    expect(modelDisplayName('sonnet')).toBe('Sonnet');
+    expect(modelDisplayName('haiku')).toBe('Haiku');
+    expect(modelDisplayName('fable')).toBe('Fable');
+  });
+
+  it('does not treat an uppercase or partial match as a tier alias', () => {
+    expect(modelDisplayName('Opus')).toBe('Opus');
+    expect(modelDisplayName('opus-5')).toBe('opus-5');
+  });
 });
 
 describe('formatAge', () => {

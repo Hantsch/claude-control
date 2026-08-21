@@ -55,6 +55,12 @@ function toNode(call: ToolCallEvent, now: number): SubagentNode {
     status,
     metrics: result && hasNumbers(result) ? toMetrics(result) : null,
     errorText: result?.errorText ?? null,
+    // Deliberately not routed through `toMetrics`: `metrics` is nulled whenever the result
+    // carries no numbers, which would swallow the report of a run that only wrote prose.
+    finalText: result?.finalText ?? null,
+    // `resolvedModel` (finished) wins over the declared alias from the call; no inherited
+    // third source, per the Sprint decision — `metrics.model` stays `resolvedModel` only.
+    model: result?.model ?? call.declaredModel ?? null,
     children: [],
   };
 }

@@ -316,6 +316,11 @@ export class ClaudeAdapter implements AgentAdapter {
       endedAt,
       finalStatus: deriveHistoricalStatus(facts, this.options.thresholds),
       messageCountEstimate: estimateRecordCount(info.size, head),
+      usage: sumUsage(tail.records),
+      // `startOffset === 0` is the only signal that the window reached the start of the
+      // file, so the sum above is the whole transcript. Not `tail.exhausted` — that says
+      // whether the *semantic* predicate ever matched and is silent about coverage.
+      usageComplete: tail.startOffset === 0,
       fileSize: info.size,
       mtimeMs: info.mtimeMs,
     };
@@ -338,6 +343,7 @@ export class ClaudeAdapter implements AgentAdapter {
       cacheCreationTokens: 0,
       outputTokens: 0,
     };
+    let usageFound = false;
     let title: string | null = null;
     let startedAt: number | null = null;
     let endedAt: number | null = null;
@@ -370,6 +376,7 @@ export class ClaudeAdapter implements AgentAdapter {
           if (typeof model === 'string' && model) models.add(model);
           const recordUsage = usageOf(record);
           if (recordUsage) {
+            usageFound = true;
             usage.inputTokens += recordUsage.inputTokens;
             usage.cacheReadTokens += recordUsage.cacheReadTokens;
             usage.cacheCreationTokens += recordUsage.cacheCreationTokens;
@@ -406,7 +413,8 @@ export class ClaudeAdapter implements AgentAdapter {
       models: [...models],
       startedAt,
       endedAt,
-      usage,
+      // `null` rather than a zeroed total when nothing reported usage — see `sumUsage`.
+      usage: usageFound ? usage : null,
       events,
       subagents: buildSubagentTree(collectToolCalls(records), this.now()),
       truncated,
@@ -538,6 +546,34 @@ function headModel(records: readonly TranscriptRecord[]): string | null {
     if (typeof model === 'string' && model && model !== '<synthetic>') return model;
   }
   return null;
+}
+
+/**
+ * Token usage over records the caller already holds — no read of its own, because this runs
+ * inside the history index's hot path (N5).
+ *
+ * Returns `null` rather than a zeroed total when nothing reported usage: "we saw no usage
+ * records" and "the model burned zero tokens" must not look alike in the UI.
+ */
+function sumUsage(records: readonly TranscriptRecord[]): UsageTotals | null {
+  const totals: UsageTotals = {
+    inputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    outputTokens: 0,
+  };
+  let found = false;
+  for (const record of records) {
+    if (!isAssistantRecord(record)) continue;
+    const usage = usageOf(record);
+    if (!usage) continue;
+    found = true;
+    totals.inputTokens += usage.inputTokens;
+    totals.cacheReadTokens += usage.cacheReadTokens;
+    totals.cacheCreationTokens += usage.cacheCreationTokens;
+    totals.outputTokens += usage.outputTokens;
+  }
+  return found ? totals : null;
 }
 
 /** Records ≈ file size / average record size in the head chunk. Explicitly an estimate. */

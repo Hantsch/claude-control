@@ -1,7 +1,7 @@
 ---
 sprint: S04
-status: planned # planned | in-progress | done
-branch: # set by /sprint
+status: in-progress # planned | in-progress | done
+branch: sprint/S04
 milestone: M6 — Attribution
 ---
 
@@ -16,7 +16,7 @@ per-group totals. Alongside it, the four points S01–S03 left open are closed.
 
 ## Stories (in build order)
 
-- [ ] 006 — Activity matrix and history attribution
+- [x] 006 — Activity matrix and history attribution (built, live acceptance pending — P2)
 - [ ] 013 — S03 residuals — report what was registered, rank what is unseen
 
 ## Notes

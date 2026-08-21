@@ -7,9 +7,7 @@
  * what these return and adds no rules of its own.
  */
 
-import { STATUS_SORT_RANK } from '../../core/state/aggregate.ts';
-import type { SessionView } from '../../core/model/types.ts';
-import type { SessionStatus, SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
+import type { SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
 import { SUBAGENT_NO_INTERIM_STATE } from './subagentParts.ts';
 
 export type SubagentStatus = SubagentNode['status'];
@@ -64,29 +62,6 @@ export function subagentSummary(subagents: SubagentNode[]): SubagentSummary | nu
     (failed > 0 ? `, ${failed} failed` : '');
 
   return { done, total, pipClasses, title };
-}
-
-export interface GroupStatusCount {
-  status: SessionStatus;
-  count: number;
-}
-
-/**
- * One entry per distinct `SessionStatus` present in `sessions`, zero-count statuses omitted,
- * for the collapsible group head's rollup (story 010 D3) — mirrors the design prototype's
- * `rollup()`. Ordered by `STATUS_SORT_RANK` rather than first-seen order, so the rollup reads
- * left-to-right in the same urgency order the rows themselves are already sorted by.
- */
-export function groupStatusRollup(sessions: readonly SessionView[]): GroupStatusCount[] {
-  const counts = new Map<SessionStatus, number>();
-  for (const session of sessions) {
-    counts.set(session.status, (counts.get(session.status) ?? 0) + 1);
-  }
-
-  return (Object.keys(STATUS_SORT_RANK) as SessionStatus[])
-    .sort((a, b) => STATUS_SORT_RANK[a] - STATUS_SORT_RANK[b])
-    .filter((status) => (counts.get(status) ?? 0) > 0)
-    .map((status) => ({ status, count: counts.get(status)! }));
 }
 
 /**

@@ -1,0 +1,17 @@
+- 2026-08-21 19:30 · 006 · D1 ProjectGroup.statusCounts in core · started
+- 2026-08-21 19:30 · 006 · D1 ProjectGroup.statusCounts in core · done
+- 2026-08-21 19:32 · 006 · D2 StatusRollup component, popover switched over · started
+- 2026-08-21 19:32 · 006 · D2 StatusRollup component, popover switched over · done
+- 2026-08-21 19:35 · 006 · D3 Main window group header shows same counts · started
+- 2026-08-21 19:35 · 006 · D3 Main window group header shows same counts · done
+- 2026-08-21 19:37 · 006 · D4 Per-entry usage in the history index · started
+- 2026-08-21 19:37 · 006 · D4 Per-entry usage in the history index · done
+- 2026-08-21 19:41 · 006 · D5 Lazy fill-in on detail read · started
+- 2026-08-21 19:41 · 006 · D5 Lazy fill-in on detail read · done
+- 2026-08-21 19:43 · 006 · D6 groupHistory() in core · started
+- 2026-08-21 19:43 · 006 · D6 groupHistory() in core · done
+- 2026-08-21 19:45 · 006 · D7 Grouping in the history view · started
+- 2026-08-21 19:45 · 006 · D7 Grouping in the history view · done
+- 2026-08-21 19:48 · 006 · D8 N5 measurement · started
+- 2026-08-21 19:48 · 006 · D8 N5 measurement · done
+- 2026-08-21 20:05 · 006 · Story review + fixes + Done section · done (in-progress: live smoke pending)

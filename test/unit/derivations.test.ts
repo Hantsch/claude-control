@@ -259,6 +259,34 @@ describe('tray aggregation', () => {
     const proj = groups.find((group) => group.project.name === 'proj')!;
     expect(proj.branches.map((branch) => branch.branch).sort()).toEqual(['feature/x', 'main']);
   });
+
+  it('rolls each group up into per-status counts, ordered by urgency and zero counts omitted', () => {
+    const groups = groupSessions([
+      view({ sessionId: 'a', status: 'working' }),
+      view({ sessionId: 'b', status: 'waiting' }),
+      view({ sessionId: 'c', status: 'waiting' }),
+      view({ sessionId: 'd', status: 'done' }),
+    ]);
+    const proj = groups.find((group) => group.project.name === 'proj')!;
+    // Insertion order was working, waiting, waiting, done — the rollup must reorder to the
+    // STATUS_SORT_RANK urgency order (waiting, done, working), not first-seen order.
+    expect(proj.statusCounts).toEqual([
+      { status: 'waiting', count: 2 },
+      { status: 'done', count: 1 },
+      { status: 'working', count: 1 },
+    ]);
+    // Statuses absent from the group (stale, queued, starting, unknown, ended) are omitted
+    // entirely rather than reported with a zero count.
+    expect(proj.statusCounts.some((entry) => entry.status === 'stale')).toBe(false);
+  });
+
+  it('gives a single-status group a single-entry rollup', () => {
+    const groups = groupSessions([
+      view({ sessionId: 'a', status: 'done' }),
+      view({ sessionId: 'b', status: 'done' }),
+    ]);
+    expect(groups[0]!.statusCounts).toEqual([{ status: 'done', count: 2 }]);
+  });
 });
 
 describe('notification discipline', () => {
@@ -502,6 +530,8 @@ describe('session store', () => {
         endedAt: T0,
         finalStatus: 'done',
         messageCountEstimate: 42,
+        usage: { inputTokens: 2, cacheReadTokens: 100, cacheCreationTokens: 50, outputTokens: 9 },
+        usageComplete: true,
         fileSize: 1024,
         mtimeMs: T0,
       },
@@ -516,6 +546,8 @@ describe('session store', () => {
         endedAt: T0 - 90_000,
         finalStatus: 'unknown',
         messageCountEstimate: 3,
+        usage: null,
+        usageComplete: false,
         fileSize: 256,
         mtimeMs: T0 - 90_000,
       },

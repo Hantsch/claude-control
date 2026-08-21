@@ -95,6 +95,30 @@ export interface ProjectGroup {
   /** Most urgent state inside the group, for the group header. */
   trayState: TrayState;
   attention: number;
+  statusCounts: GroupStatusCount[];
+}
+
+export interface GroupStatusCount {
+  status: SessionStatus;
+  count: number;
+}
+
+/**
+ * One entry per distinct `SessionStatus` present in `sessions`, zero-count statuses omitted,
+ * for the collapsible group head's rollup (story 010 D3). Ordered by `STATUS_SORT_RANK` rather
+ * than first-seen order, so the rollup reads left-to-right in the same urgency order the rows
+ * themselves are already sorted by.
+ */
+export function statusCounts(sessions: readonly SessionView[]): GroupStatusCount[] {
+  const counts = new Map<SessionStatus, number>();
+  for (const session of sessions) {
+    counts.set(session.status, (counts.get(session.status) ?? 0) + 1);
+  }
+
+  return (Object.keys(STATUS_SORT_RANK) as SessionStatus[])
+    .sort((a, b) => STATUS_SORT_RANK[a] - STATUS_SORT_RANK[b])
+    .filter((status) => (counts.get(status) ?? 0) > 0)
+    .map((status) => ({ status, count: counts.get(status)! }));
 }
 
 /** Sessions grouped by project → branch/worktree (F10, §8 "Sessions"). */
@@ -110,6 +134,7 @@ export function groupSessions(sessions: readonly SessionView[]): ProjectGroup[] 
         sessions: [],
         trayState: 'none',
         attention: 0,
+        statusCounts: [],
       };
       byProject.set(session.project.key, group);
     }
@@ -128,6 +153,7 @@ export function groupSessions(sessions: readonly SessionView[]): ProjectGroup[] 
   for (const group of groups) {
     group.trayState = trayStateFor(group.sessions);
     group.attention = attentionCount(group.sessions);
+    group.statusCounts = statusCounts(group.sessions);
     group.sessions.sort(compareSessions);
     group.branches.sort((a, b) => (a.branch ?? '').localeCompare(b.branch ?? ''));
     for (const branch of group.branches) branch.sessions.sort(compareSessions);

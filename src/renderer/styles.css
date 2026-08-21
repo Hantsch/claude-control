@@ -239,22 +239,14 @@ code,
   flex: none;
 }
 
-.project-header .path,
-.project-header .count {
+.project-header .path {
   color: var(--text-faint);
   font-size: 11px;
-}
-
-.project-header .path {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.project-header .count {
-  flex: none;
 }
 
 .branch-group {
@@ -655,6 +647,84 @@ code,
   align-items: center;
 }
 
+/* Segmented control (D7) — None/Project/Branch/Model. Reuses `.tabs button.active`'s
+   look (background + border on the active option) rather than inventing a new style. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.segmented button {
+  border-color: transparent;
+}
+
+.segmented button.active {
+  background: var(--bg-active);
+  border-color: var(--border);
+}
+
+.history-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Collapsible group header (D7) — same chevron/name/count/spacer idiom as
+   `.popover-group-head`, scoped separately since this sits in the main window, not the
+   popover, and carries a per-group token total the popover header does not have. */
+.history-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.history-group-head:hover {
+  background: var(--bg-hover);
+}
+
+.history-group-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.history-group-head .name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.history-group-head .count,
+.history-group-head .not-counted {
+  color: var(--text-faint);
+}
+
+.history-group-head .chev {
+  display: inline-block;
+  width: 9px;
+  flex: none;
+  color: var(--text-faint);
+  font-size: 8px;
+  text-align: center;
+  transition: transform 0.12s ease;
+}
+
+.history-group-head .chev.open {
+  transform: rotate(90deg);
+}
+
+.history-group-head .spacer {
+  flex: 1;
+}
+
+.history-group-head .total {
+  font-weight: 500;
+}
+
 table.history {
   width: 100%;
   border-collapse: collapse;
@@ -922,9 +992,7 @@ table.history .title {
 }
 
 /* Story 010 D3 — collapsible group headers. The chevron mirrors `.popover-row .chev`'s
-   idiom (a static glyph that rotates open); the rollup mirrors the design prototype's
-   `rollup()` (one coloured dot + count per distinct status present, in `STATUS_SORT_RANK`
-   order, zero-count statuses omitted). */
+   idiom (a static glyph that rotates open). */
 .popover-group-head .chev {
   display: inline-block;
   width: 9px;
@@ -948,19 +1016,27 @@ table.history .title {
   flex: 1;
 }
 
-.popover-group-head .rollup {
+/* `StatusRollup` (story 006 D2) — one coloured dot + count per distinct status present in a
+   project group, in `STATUS_SORT_RANK` order, zero-count statuses omitted (mirrors the design
+   prototype's `rollup()`). Unscoped on purpose: the popover group head and the main window's
+   group header render the same component, so the rules must not hang off either surface. */
+.rollup {
   display: inline-flex;
   gap: 7px;
   align-items: center;
+  /* Prevents the main window's `.project-header` (a flex row with a `.path` that grows via
+     `flex: 1 1 auto`) from squeezing the rollup as its siblings compete for space. Harmless in
+     the popover, where the rollup already sits after a `.spacer { flex: 1 }` that isolates it. */
+  flex: none;
 }
 
-.popover-group-head .rollup > span {
+.rollup > span {
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 
-.popover-group-head .rollup .n {
+.rollup .n {
   font-size: 10.5px;
   color: var(--text-faint);
 }

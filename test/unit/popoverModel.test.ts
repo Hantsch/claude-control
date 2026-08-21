@@ -5,15 +5,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { SessionStatus, SubagentNode } from '../../src/shared/ipc.ts';
+import type { SubagentNode } from '../../src/shared/ipc.ts';
 import {
   SUBAGENT_FLAT_LIST_NOTE,
   SUBAGENT_NO_INTERIM_STATE,
-  groupStatusRollup,
   subagentMessage,
   subagentSummary,
 } from '../../src/renderer/lib/popoverModel.ts';
-import type { SessionView } from '../../src/core/model/types.ts';
 
 /** A subagent node reduced to what the summary reads: its status. */
 function node(status: SubagentNode['status'], id: string = status): SubagentNode {
@@ -97,48 +95,6 @@ describe('subagentSummary', () => {
     const summary = subagentSummary([{ ...parent, children: [node('running', 'child')] }]);
     expect(summary?.total).toBe(1);
     expect(summary?.done).toBe(1);
-  });
-});
-
-/** `groupStatusRollup` only reads `.status`, so a bare cast stands in for a full `SessionView`. */
-function session(status: SessionStatus): SessionView {
-  return { status } as SessionView;
-}
-
-describe('groupStatusRollup', () => {
-  it('returns an empty list for an empty group', () => {
-    expect(groupStatusRollup([])).toEqual([]);
-  });
-
-  it('returns a single entry for a group of one status', () => {
-    expect(groupStatusRollup([session('working'), session('working')])).toEqual([
-      { status: 'working', count: 2 },
-    ]);
-  });
-
-  it('counts each distinct status present and omits statuses with zero sessions', () => {
-    const rollup = groupStatusRollup([
-      session('done'),
-      session('working'),
-      session('working'),
-      session('working'),
-    ]);
-    expect(rollup).toEqual([
-      { status: 'done', count: 1 },
-      { status: 'working', count: 3 },
-    ]);
-  });
-
-  it('orders entries by STATUS_SORT_RANK, not by first-seen order', () => {
-    // `working` appears before `waiting` and `done` in the input, but the sort rank order
-    // (waiting, done, stale, working, …) puts them first regardless.
-    const rollup = groupStatusRollup([
-      session('working'),
-      session('waiting'),
-      session('done'),
-      session('stale'),
-    ]);
-    expect(rollup.map((entry) => entry.status)).toEqual(['waiting', 'done', 'stale', 'working']);
   });
 });
 

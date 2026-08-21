@@ -263,8 +263,152 @@ describe('discovery and status through the adapter', () => {
     expect(detail.events).toHaveLength(4);
     expect(detail.subagents).toHaveLength(1);
     expect(detail.subagents[0]!.status).toBe('completed');
-    expect(detail.usage.cacheReadTokens).toBeGreaterThan(0);
+    expect(detail.usage!.cacheReadTokens).toBeGreaterThan(0);
     expect(detail.title).toBe('Past session');
+  });
+
+  it('sums per-entry usage from the tail records and marks it complete (D4)', async () => {
+    const tree = await makeFixtureTree();
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-usage',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a1', at: 1_000, usage: { input: 1, cacheRead: 2, cacheCreation: 3, output: 4 } }),
+        assistant({
+          uuid: 'a2',
+          at: 2_000,
+          stopReason: 'end_turn',
+          text: 'done',
+          usage: { input: 10, cacheRead: 20, cacheCreation: 30, output: 40 },
+        }),
+      ]),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const entry = await adapter.readHistoryEntry(path);
+
+    expect(entry!.usage).toEqual({
+      inputTokens: 11,
+      cacheReadTokens: 22,
+      cacheCreationTokens: 33,
+      outputTokens: 44,
+    });
+    // The whole file fits the tail window, so the sum is a total, not a lower bound.
+    expect(entry!.usageComplete).toBe(true);
+  });
+
+  it('flags usage as incomplete when the tail window misses the start of the file (D4)', async () => {
+    const tree = await makeFixtureTree();
+    // Filler between the two assistant records, wide enough that the 64 KB tail window
+    // cannot reach the first one — the boundary `usageComplete` is supposed to detect.
+    const filler = `${JSON.stringify(fileHistorySnapshot(0))}
+`.repeat(1_200);
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-usage-partial',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a-old', at: 1_000, usage: { input: 900_000, cacheRead: 0, cacheCreation: 0, output: 900_000 } }),
+      ]) +
+        filler +
+        toJsonl([
+          assistant({
+            uuid: 'a-new',
+            at: 2_000,
+            stopReason: 'end_turn',
+            text: 'done',
+            usage: { input: 7, cacheRead: 0, cacheCreation: 0, output: 5 },
+          }),
+        ]),
+    );
+
+    expect((await stat(path)).size).toBeGreaterThan(64 * 1024);
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const entry = await adapter.readHistoryEntry(path);
+
+    expect(entry!.usageComplete).toBe(false);
+    // Only the records inside the window are counted; the old one is out of reach.
+    expect(entry!.usage).toEqual({
+      inputTokens: 7,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      outputTokens: 5,
+    });
+  });
+
+  it('fills in exact usage on the stored history entry after a detail read (D5)', async () => {
+    const tree = await makeFixtureTree();
+    // Same shape as the "flags usage as incomplete" fixture above: the tail window can't
+    // reach the old record, so the index only sees a partial sum until a full read happens.
+    const filler = `${JSON.stringify(fileHistorySnapshot(0))}
+`.repeat(1_200);
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-usage-lazy',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a-old', at: 1_000, usage: { input: 900_000, cacheRead: 0, cacheCreation: 0, output: 900_000 } }),
+      ]) +
+        filler +
+        toJsonl([
+          assistant({
+            uuid: 'a-new',
+            at: 2_000,
+            stopReason: 'end_turn',
+            text: 'done',
+            usage: { input: 7, cacheRead: 0, cacheCreation: 0, output: 5 },
+          }),
+        ]),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const engine = new ControlEngine({
+      adapter,
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
+    });
+
+    await engine.start();
+    await new Promise<void>((resolve) => {
+      engine.on('history', (info) => {
+        if (info.done) resolve();
+      });
+    });
+
+    const indexed = engine.listHistory().entries.find((entry) => entry.sessionId === 'sess-usage-lazy');
+    expect(indexed!.usageComplete).toBe(false);
+
+    const historyEvents: { count: number; done: boolean }[] = [];
+    engine.on('history', (info) => historyEvents.push(info));
+
+    const detail = await engine.getDetail('sess-usage-lazy');
+
+    // The full parse behind `getDetail` knows the exact totals — including the old record
+    // the tail-only index couldn't reach — so the stored entry is upgraded in place.
+    const upgraded = engine.listHistory().entries.find((entry) => entry.sessionId === 'sess-usage-lazy');
+    expect(upgraded!.usage).toEqual(detail.usage);
+    expect(upgraded!.usageComplete).toBe(true);
+    // Consumers (the history view) learn about the upgrade the same way they learn about
+    // fresh indexing: a `history-changed` broadcast, not a silent in-place mutation.
+    expect(historyEvents).toContainEqual({ count: engine.listHistory().total, done: true });
+
+    await engine.stop();
+  });
+
+  it('reports null usage for a transcript that carries no usage records (D4)', async () => {
+    const tree = await makeFixtureTree();
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-no-usage',
+      toJsonl([prompt('u1', 0), prompt('u2', 1_000), lastPrompt('u2')]),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const entry = await adapter.readHistoryEntry(path);
+
+    // Null, not a zeroed total: "nothing reported" must not read as "zero tokens".
+    expect(entry!.usage).toBeNull();
   });
 
   it('honours the abort signal while indexing', async () => {
@@ -652,7 +796,10 @@ describe('engine', () => {
         tree,
         new FakeProbe(new Set(liveIds.map((_, index) => LIVE_PID + index))),
       ),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      // D8: history indexing (and its usage summation over each tail's assistant
+      // records — see `readHistoryEntry` in the Claude adapter) now runs inside the
+      // cold-start budget too, not just live-tier resolution.
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
     });
 
     // Guard the premise of the test: the tree really is of the measured order of magnitude.
@@ -661,6 +808,14 @@ describe('engine', () => {
 
     const started = Date.now();
     await engine.start();
+    // `start()` fires history indexing in the background without awaiting it, so the
+    // budget has to wait for the 'history' done event too, or it would only measure
+    // live-tier resolution and never touch the usage-summation path at all.
+    await new Promise<void>((resolve) => {
+      engine.on('history', (info) => {
+        if (info.done) resolve();
+      });
+    });
     const elapsed = Date.now() - started;
     const snapshot = engine.getSnapshot();
 
@@ -681,9 +836,20 @@ describe('engine', () => {
     expect(extracted?.length).toBeLessThanOrEqual(120);
     expect(extracted?.length).toBeGreaterThan(100);
 
+    // Guard the premise of the D8 usage-summation timing: at least one indexed history
+    // entry must actually carry non-null usage summed from its tail's assistant records
+    // (default `assistant()` fixture usage, see builders.ts) — otherwise this measurement
+    // would silently go vacuous if `readHistoryEntry`'s summation broke or was skipped.
+    const historyUsages = engine
+      .listHistory()
+      .entries.map((entry) => entry.usage)
+      .filter((usage): usage is NonNullable<typeof usage> => usage !== null);
+    expect(historyUsages.length).toBeGreaterThan(0);
+    expect(historyUsages[0]!.inputTokens).toBeGreaterThan(0);
+
     // eslint-disable-next-line no-console -- N5 budget is measured, not just asserted; the
     // number needs to be readable from test output for the story's Done section.
-    console.log(`[N5] cold start with multi-KB subagent reports: ${elapsed}ms`);
+    console.log(`[N5] cold start with history indexing and usage summation: ${elapsed}ms`);
     expect(elapsed).toBeLessThan(2_000);
     await engine.stop();
   }, 180_000);

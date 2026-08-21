@@ -361,6 +361,18 @@ export interface HistoryEntry {
   /** Status the transcript ended in, as far as the tail allows. */
   finalStatus: SessionStatus;
   messageCountEstimate: number;
+  /**
+   * Token usage summed over the records the index's tail window happened to cover, or
+   * `null` when none of them reported usage. Deliberately partial: the index never parses
+   * a whole transcript (N5), so this is what the tail read already had in hand — no extra
+   * I/O. `readDetail` is the place that returns exact totals.
+   */
+  usage: UsageTotals | null;
+  /**
+   * True only when the tail window reached byte 0, i.e. `usage` covers the entire
+   * transcript and may be shown as a total rather than a lower bound.
+   */
+  usageComplete: boolean;
   fileSize: number;
   mtimeMs: number;
 }
@@ -396,7 +408,8 @@ export interface SessionDetail {
   models: string[];
   startedAt: number | null;
   endedAt: number | null;
-  usage: UsageTotals;
+  /** `null` when the transcript reported no usage records — distinct from a real zero total. */
+  usage: UsageTotals | null;
   events: TimelineEvent[];
   subagents: SubagentNode[];
   truncated: boolean;

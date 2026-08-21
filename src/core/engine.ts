@@ -290,7 +290,16 @@ export class ControlEngine {
     const live = this.store.getLive(id);
     const fromHistory = this.store.listHistory().find((entry) => entry.sessionId === id);
     const path = live?.transcriptPath ?? fromHistory?.transcriptPath ?? null;
-    return this.adapter.readDetail(id, path);
+    const detail = await this.adapter.readDetail(id, path);
+    // Lazy fill-in: the history index only tail-reads, so a long transcript may have
+    // left `usageComplete: false`. A full detail read already parsed the whole file,
+    // so fold its exact totals back into the stored entry — cheap, and it upgrades
+    // the entry for every future history view without a background recompute pass.
+    if (fromHistory) {
+      this.store.putHistory([{ ...fromHistory, usage: detail.usage, usageComplete: true }]);
+      this.emitter.emit('history', { count: this.store.historyCount(), done: !this.indexingHistory });
+    }
+    return detail;
   }
 
   /** IDE windows for the focus feature (§7). Refreshed on lock-file changes. */

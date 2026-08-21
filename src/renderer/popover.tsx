@@ -42,11 +42,11 @@ import {
 import { EMPTY_STATE, api } from './api.ts';
 import { ContextBar } from './components/ContextBar.tsx';
 import { StatusDot } from './components/StatusDot.tsx';
+import { StatusRollup } from './components/StatusRollup.tsx';
 import { formatAge, formatDuration } from './lib/format.ts';
 import { shouldFocusTopRow } from './lib/popoverFocus.ts';
 import {
   SUBAGENT_FLAT_LIST_NOTE,
-  groupStatusRollup,
   subagentMessage,
   subagentSummary,
 } from './lib/popoverModel.ts';
@@ -680,14 +680,7 @@ function Popover(): React.JSX.Element {
                     </span>
                   )}
                   <span className="spacer" />
-                  <span className="rollup">
-                    {groupStatusRollup(group.sessions).map((entry) => (
-                      <span key={entry.status} title={`${entry.count}× ${STATUS_LABEL[entry.status]}`}>
-                        <StatusDot status={entry.status} size="sm" />
-                        <span className="n">{entry.count}</span>
-                      </span>
-                    ))}
-                  </span>
+                  <StatusRollup counts={group.statusCounts} />
                   <span className="count">
                     {group.sessions.length === 1 ? '1 session' : `${group.sessions.length} sessions`}
                   </span>

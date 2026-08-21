@@ -8,6 +8,7 @@ import { api } from '../api.ts';
 import { formatAge } from '../lib/format.ts';
 import { ContextBar } from './ContextBar.tsx';
 import { StatusDot } from './StatusDot.tsx';
+import { StatusRollup } from './StatusRollup.tsx';
 
 export interface SessionsViewProps {
   state: AppState;
@@ -75,10 +76,7 @@ function ProjectGroupBlock({
         <span className="path" title={group.project.path}>
           {group.project.path}
         </span>
-        <span className="count">
-          {group.sessions.length} session{group.sessions.length === 1 ? '' : 's'}
-          {group.attention > 0 ? ` · ${group.attention} need attention` : ''}
-        </span>
+        <StatusRollup counts={group.statusCounts} />
       </div>
       {group.branches.map((branch) => (
         <div className="branch-group" key={branch.branch ?? '(none)'}>

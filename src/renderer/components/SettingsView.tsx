@@ -5,12 +5,14 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { AppSettings, DiagnosticsInfo } from '../../shared/ipc.ts';
+import type { AppSettings, DiagnosticsInfo, ShortcutStatus } from '../../shared/ipc.ts';
+import { acceleratorFromChord, formatAccelerator } from '../../shared/accelerator.ts';
 import { api } from '../api.ts';
 
 export function SettingsView(): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
+  const [shortcutStatus, setShortcutStatus] = useState<ShortcutStatus | null>(null);
   const [saved, setSaved] = useState(false);
   /**
    * The data directory is committed on blur or Enter, not on every keystroke: changing it
@@ -23,6 +25,11 @@ export function SettingsView(): React.JSX.Element {
     void api.getSettings().then(setSettings);
     void api.diagnostics().then(setDiagnostics);
     return api.onSettingsChanged(setSettings);
+  }, []);
+
+  useEffect(() => {
+    void api.getShortcutStatus().then(setShortcutStatus);
+    return api.onShortcutStatusChanged(setShortcutStatus);
   }, []);
 
   if (!settings) return <div className="empty">Loading settings…</div>;
@@ -273,6 +280,68 @@ export function SettingsView(): React.JSX.Element {
           checked={settings.indexHistoryOnStart}
           onChange={(event) => void apply({ ...settings, indexHistoryOnStart: event.target.checked })}
         />
+      </div>
+      <div className="field">
+        <span>Start with Windows</span>
+        <input
+          type="checkbox"
+          checked={settings.ui.autostart}
+          onChange={(event) =>
+            void apply({ ...settings, ui: { ...settings.ui, autostart: event.target.checked } })
+          }
+        />
+        <span className="hint">
+          The entry points at where the EXE is now; if you move it, it is repaired the next time
+          the app starts.
+        </span>
+      </div>
+      <div className="field">
+        <span>Global shortcut</span>
+        <span>
+          <button
+            type="button"
+            onKeyDown={(event) => {
+              if (event.key === 'Tab') return;
+              const result = acceleratorFromChord({
+                key: event.key,
+                ctrlKey: event.ctrlKey,
+                altKey: event.altKey,
+                shiftKey: event.shiftKey,
+                metaKey: event.metaKey,
+              });
+              event.preventDefault();
+              if (result !== null) {
+                void apply({ ...settings, ui: { ...settings.ui, globalShortcut: result } });
+              }
+            }}
+          >
+            {formatAccelerator(settings.ui.globalShortcut)}
+          </button>{' '}
+          <button
+            type="button"
+            onClick={() =>
+              void apply({ ...settings, ui: { ...settings.ui, globalShortcut: 'Ctrl+Alt+C' } })
+            }
+          >
+            Reset
+          </button>{' '}
+          <button
+            type="button"
+            onClick={() => void apply({ ...settings, ui: { ...settings.ui, globalShortcut: '' } })}
+          >
+            Off
+          </button>
+        </span>
+        <span className="hint">
+          Click the combination and press the keys you want to use, e.g. Ctrl+Alt+C. Toggles the
+          popover from anywhere.
+        </span>
+        {shortcutStatus && !shortcutStatus.registered && (
+          <span className="hint warning">
+            {formatAccelerator(shortcutStatus.accelerator)} is already taken by another
+            application — pick a different combination.
+          </span>
+        )}
       </div>
 
       <div className="row-actions">

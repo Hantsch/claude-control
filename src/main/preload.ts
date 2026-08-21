@@ -4,7 +4,14 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC, type AppSettings, type AppState, type HistoryQuery, type RendererApi } from '../shared/ipc.ts';
+import {
+  IPC,
+  type AppSettings,
+  type AppState,
+  type HistoryQuery,
+  type RendererApi,
+  type ShortcutStatus,
+} from '../shared/ipc.ts';
 
 /** `payload` is typed by the `RendererApi` signature that calls this. */
 function subscribe(channel: string, listener: (payload: never) => void): () => void {
@@ -29,6 +36,7 @@ const api: RendererApi & {
   getSettings: () => ipcRenderer.invoke(IPC.getSettings) as Promise<AppSettings>,
   setSettings: (settings) => ipcRenderer.invoke(IPC.setSettings, settings),
   resetSettings: () => ipcRenderer.invoke(IPC.resetSettings),
+  getShortcutStatus: () => ipcRenderer.invoke(IPC.getShortcutStatus) as Promise<ShortcutStatus>,
   refresh: () => ipcRenderer.invoke(IPC.refresh) as Promise<void>,
   reindexHistory: () => ipcRenderer.invoke(IPC.reindexHistory) as Promise<void>,
   copyText: (text) => ipcRenderer.invoke(IPC.copyText, text) as Promise<void>,
@@ -40,6 +48,8 @@ const api: RendererApi & {
   onStateChanged: (listener) => subscribe(IPC.stateChanged, listener as (payload: never) => void),
   onHistoryChanged: (listener) => subscribe(IPC.historyChanged, listener as (payload: never) => void),
   onSettingsChanged: (listener) => subscribe(IPC.settingsChanged, listener as (payload: never) => void),
+  onShortcutStatusChanged: (listener) =>
+    subscribe(IPC.shortcutStatusChanged, listener as (payload: never) => void),
   onNavigate: (listener) => subscribe('cc:navigate', listener as (payload: never) => void),
   setPopoverHeight: (height) => ipcRenderer.invoke('cc:popover-height', height) as Promise<void>,
   getPopoverPinned: () => ipcRenderer.invoke('cc:popover-pinned') as Promise<boolean>,

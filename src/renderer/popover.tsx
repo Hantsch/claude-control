@@ -93,7 +93,10 @@ function NotifySwitch(): React.JSX.Element {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+      }
     };
     // Anywhere else *inside the popover* closes it. Nothing here leaves the renderer, so no
     // `blur` is raised and the popover itself stays open (the acceptance criterion for D11).
@@ -102,10 +105,14 @@ function NotifySwitch(): React.JSX.Element {
       if (button.current?.contains(target) || menu.current?.contains(target)) return;
       setOpen(false);
     };
-    window.addEventListener('keydown', onKeyDown);
+    // Capture phase: capture always precedes bubble, so this fires before `Popover`'s
+    // `document`-level bubble-phase listener — otherwise that listener (which bubbles from
+    // target through `document` before reaching `window`) would close the whole popover
+    // before `preventDefault()` below ever got a chance to run.
+    window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('mousedown', onPointerDown, true);
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('mousedown', onPointerDown, true);
     };
   }, [open]);
@@ -210,6 +217,90 @@ function Popover(): React.JSX.Element {
     return () => observer.disconnect();
   }, [report]);
 
+  // Which row (by sessionId) currently holds keyboard focus, if any — tracked explicitly
+  // rather than inferred from `document.activeElement`, since the popover window is reused
+  // (hidden/shown, never recreated) and the previous session's focused element can still be
+  // `document.activeElement` on reopen.
+  const focusedRowId = useRef<string | null>(null);
+
+  // Whether a row has been successfully focused since the popover was last "opened" (i.e. since
+  // the last real `window` `'focus'` event). Lets the `[state]` effect below keep retrying the
+  // initial focus across the very first popover open of an app run, where the window is already
+  // OS-focused (so no `'focus'` event fires again) and the mount-time `focusTopRow()` call finds
+  // zero rows because `state` is still `EMPTY_STATE` while `api.getState()` resolves.
+  const focusedYet = useRef(false);
+
+  // Focuses the most urgent row (rows are already sorted by urgency, so the first one always
+  // is). Unconditional: the window is reused rather than recreated, so `document.activeElement`
+  // can still point at a row from the previous session — a "focus already inside the list"
+  // guard would then skip refocusing on reopen, breaking the "opening the popover focuses the
+  // most urgent row" acceptance criterion for every open after the first.
+  const focusTopRow = useCallback(() => {
+    const container = rows.current;
+    if (!container) return;
+    const row = container.querySelector<HTMLButtonElement>('button.popover-row');
+    if (!row) return;
+    row.focus();
+    focusedYet.current = true;
+  }, []);
+
+  // Initial focus, and again every time the (reused, shown/hidden rather than recreated)
+  // popover window regains OS focus — that is how "opening the popover focuses the most
+  // urgent row" is detected, since there is no extra IPC event for it. Resetting `focusedYet`
+  // here (rather than only inside `focusTopRow`) marks the start of a new "not yet focused this
+  // session" window, which the `[state]` effect below uses to retry once real rows show up.
+  useEffect(() => {
+    const onFocus = () => {
+      focusedYet.current = false;
+      focusTopRow();
+    };
+    focusedYet.current = false;
+    focusTopRow();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [focusTopRow]);
+
+  // If nothing has been focused yet this session, retry now that `state` may finally hold real
+  // rows (covers the first-open race described above). Otherwise, fall back to the previous
+  // behavior: if the session list changes and the row that had keyboard focus dropped out of
+  // `traySessions`, focus the first (most urgent) row again instead of leaving focus stranded on
+  // a detached element. Driven by `focusedRowId` (set by each row's `onFocus`) rather than "is
+  // focus anywhere in the container" — otherwise this would yank focus back into the row list on
+  // every new engine snapshot even when the user deliberately focused Pin, Close, or the
+  // notify-switch button instead.
+  useEffect(() => {
+    if (!focusedYet.current) {
+      focusTopRow();
+      return;
+    }
+    const id = focusedRowId.current;
+    if (id && !state.traySessions.some((session) => session.sessionId === id)) focusTopRow();
+  }, [state, focusTopRow]);
+
+  // Arrow-key row navigation and Escape-to-close, for the life of the component. Registered on
+  // `document` (not conditionally, unlike `NotifySwitch`'s menu-only listener) so it works
+  // whenever the popover has focus. Respects `event.defaultPrevented` so `NotifySwitch`'s own
+  // Escape handling (which closes its menu, not the popover) is not double-handled here.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const items = rows.current?.querySelectorAll<HTMLButtonElement>('button.popover-row');
+        if (!items || items.length === 0) return;
+        const list = Array.from(items);
+        const currentIndex = list.indexOf(document.activeElement as HTMLButtonElement);
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        const nextIndex = Math.min(Math.max(currentIndex + delta, 0), list.length - 1);
+        list[nextIndex]?.focus();
+      } else if (event.key === 'Escape') {
+        void api.closePopover();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const togglePin = (): void => {
     void api.setPopoverPinned(!pinned).then(setPinned);
   };
@@ -291,6 +382,9 @@ function Popover(): React.JSX.Element {
                   className="popover-row"
                   title={session.statusReason}
                   onClick={() => void api.focusSession(session.sessionId)}
+                  onFocus={() => {
+                    focusedRowId.current = session.sessionId;
+                  }}
                 >
                   <StatusDot status={session.status} />
                   <span className="name" title={sessionLabel(session)}>

@@ -15,7 +15,7 @@ standing noise sources — abandoned windowless sessions and un-actionable toast
 
 ## Stories (in build order)
 
-- [ ] 003 — Reach the popover without hunting for it
+- [x] 003 — Reach the popover without hunting for it (built, live acceptance pending)
 - [ ] 004 — Noise control — abandoned sessions and actionable toasts
 
 ## Notes

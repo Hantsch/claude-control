@@ -594,6 +594,10 @@ table.history .title {
   font-size: 11px;
 }
 
+.field .hint.warning {
+  color: var(--status-waiting);
+}
+
 .tool-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -806,6 +810,11 @@ table.history .title {
 }
 
 .popover-row:hover {
+  background: var(--bg-hover);
+}
+
+.popover-row:focus {
+  outline: 2px solid var(--accent);
   background: var(--bg-hover);
 }
 

@@ -590,4 +590,28 @@ describe('settings migration', () => {
     expect(merged).not.toHaveProperty('thresholds.tIdleMs');
     expect(merged.list.trayRecentMs).toBe(DEFAULT_SETTINGS.list.trayRecentMs);
   });
+
+  it('fills in autostart and globalShortcut when a settings file predates them', () => {
+    const merged = mergeSettings(v1File({}));
+    expect(merged.ui.autostart).toBe(DEFAULT_SETTINGS.ui.autostart);
+    expect(merged.ui.globalShortcut).toBe(DEFAULT_SETTINGS.ui.globalShortcut);
+  });
+
+  it('keeps a user-chosen autostart and globalShortcut, including an empty (disabled) shortcut', () => {
+    const merged = mergeSettings({
+      ...v1File({}),
+      ui: { autostart: true, globalShortcut: '' },
+    });
+    expect(merged.ui.autostart).toBe(true);
+    expect(merged.ui.globalShortcut).toBe('');
+  });
+
+  it('falls back to the defaults when autostart or globalShortcut are garbage', () => {
+    const merged = mergeSettings({
+      ...v1File({}),
+      ui: { autostart: 'yes', globalShortcut: 42 },
+    });
+    expect(merged.ui.autostart).toBe(DEFAULT_SETTINGS.ui.autostart);
+    expect(merged.ui.globalShortcut).toBe(DEFAULT_SETTINGS.ui.globalShortcut);
+  });
 });

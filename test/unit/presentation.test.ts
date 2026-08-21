@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { acceleratorFromChord, formatAccelerator } from '../../src/shared/accelerator.ts';
 import { modelDisplayName } from '../../src/shared/presentation.ts';
 import { formatAge } from '../../src/renderer/lib/format.ts';
 
@@ -58,5 +59,54 @@ describe('formatAge', () => {
 
   it('switches to normal "Ns ago" formatting at the 5s boundary (5000ms)', () => {
     expect(formatAge(5000)).toBe('5s ago');
+  });
+});
+
+describe('acceleratorFromChord', () => {
+  const base = { key: '', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false };
+
+  it('builds Ctrl+Alt+C from ctrl+alt and a lowercase letter', () => {
+    expect(acceleratorFromChord({ ...base, ctrlKey: true, altKey: true, key: 'c' })).toBe(
+      'Ctrl+Alt+C',
+    );
+  });
+
+  it('builds Ctrl+Shift+F1 from ctrl+shift and a function key', () => {
+    expect(acceleratorFromChord({ ...base, ctrlKey: true, shiftKey: true, key: 'F1' })).toBe(
+      'Ctrl+Shift+F1',
+    );
+  });
+
+  it('returns null for a plain key with no modifiers', () => {
+    expect(acceleratorFromChord({ ...base, key: 'c' })).toBeNull();
+  });
+
+  it('returns null for Shift alone (shift does not count as a qualifying modifier)', () => {
+    expect(acceleratorFromChord({ ...base, shiftKey: true, key: 'c' })).toBeNull();
+  });
+
+  it('returns null when key is itself the held modifier', () => {
+    expect(acceleratorFromChord({ ...base, ctrlKey: true, key: 'Control' })).toBeNull();
+  });
+
+  it('does not throw on empty/garbage input', () => {
+    expect(() => acceleratorFromChord({ ...base, key: '' })).not.toThrow();
+    expect(acceleratorFromChord({ ...base, key: '' })).toBeNull();
+  });
+
+  it('includes Meta in the fixed modifier order Ctrl, Alt, Shift, Meta', () => {
+    expect(
+      acceleratorFromChord({ ctrlKey: true, altKey: true, shiftKey: true, metaKey: true, key: 'x' }),
+    ).toBe('Ctrl+Alt+Shift+Meta+X');
+  });
+});
+
+describe('formatAccelerator', () => {
+  it('shows an empty accelerator as "None"', () => {
+    expect(formatAccelerator('')).toBe('None');
+  });
+
+  it('returns a non-empty accelerator unchanged', () => {
+    expect(formatAccelerator('Ctrl+Alt+C')).toBe('Ctrl+Alt+C');
   });
 });

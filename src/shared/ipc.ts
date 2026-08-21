@@ -77,6 +77,13 @@ export interface FocusResult {
   cwd: string;
 }
 
+/** Mirrors `ShortcutManager.status()`'s return shape (§main/shortcuts.ts). */
+export interface ShortcutStatus {
+  accelerator: string;
+  registered: boolean;
+  error: string | null;
+}
+
 export interface DiagnosticsInfo {
   claudeDir: string;
   adapterId: string;
@@ -98,6 +105,7 @@ export const IPC = {
   getSettings: 'cc:get-settings',
   setSettings: 'cc:set-settings',
   resetSettings: 'cc:reset-settings',
+  getShortcutStatus: 'cc:get-shortcut-status',
   refresh: 'cc:refresh',
   reindexHistory: 'cc:reindex-history',
   copyText: 'cc:copy-text',
@@ -111,6 +119,7 @@ export const IPC = {
   stateChanged: 'cc:state-changed',
   historyChanged: 'cc:history-changed',
   settingsChanged: 'cc:settings-changed',
+  shortcutStatusChanged: 'cc:shortcut-status',
 } as const;
 
 /** Shape exposed on `window.claudeControl` by the preload script. */
@@ -126,6 +135,7 @@ export interface RendererApi {
   getSettings(): Promise<AppSettings>;
   setSettings(settings: AppSettings): Promise<AppSettings>;
   resetSettings(): Promise<AppSettings>;
+  getShortcutStatus(): Promise<ShortcutStatus>;
   refresh(): Promise<void>;
   reindexHistory(): Promise<void>;
   copyText(text: string): Promise<void>;
@@ -137,4 +147,5 @@ export interface RendererApi {
   onStateChanged(listener: (state: AppState) => void): () => void;
   onHistoryChanged(listener: (info: { count: number; done: boolean }) => void): () => void;
   onSettingsChanged(listener: (settings: AppSettings) => void): () => void;
+  onShortcutStatusChanged(listener: (status: ShortcutStatus) => void): () => void;
 }

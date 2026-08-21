@@ -1,0 +1,16 @@
+- 2026-08-21 10:09 · 003 · D1 Settings schema · started
+- 2026-08-21 10:11 · 003 · D1 Settings schema · done
+- 2026-08-21 10:11 · 003 · D2 Autostart in main · started
+- 2026-08-21 10:13 · 003 · D2 Autostart in main · done
+- 2026-08-21 10:13 · 003 · D3 Autostart checkbox in Settings · started
+- 2026-08-21 10:14 · 003 · D3 Autostart checkbox in Settings · done
+- 2026-08-21 10:14 · 003 · D4 Accelerator helper · started
+- 2026-08-21 10:16 · 003 · D4 Accelerator helper · done
+- 2026-08-21 10:16 · 003 · D5 Shortcut manager in main · started
+- 2026-08-21 10:18 · 003 · D5 Shortcut manager in main · done
+- 2026-08-21 10:18 · 003 · D6 Shortcut status over IPC · started
+- 2026-08-21 10:20 · 003 · D6 Shortcut status over IPC · done
+- 2026-08-21 10:20 · 003 · D7 Shortcut field in Settings · started
+- 2026-08-21 10:22 · 003 · D7 Shortcut field in Settings · done
+- 2026-08-21 10:22 · 003 · D8 Keyboard navigation in popover · started
+- 2026-08-21 10:25 · 003 · D8 Keyboard navigation in popover · done

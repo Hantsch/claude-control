@@ -10,15 +10,17 @@
  * doubling notifications defeats the purpose of the app.
  */
 
-import { app, dialog } from 'electron';
+import { app, dialog, globalShortcut } from 'electron';
 import { join } from 'node:path';
 import { createEngine } from '../core/createEngine.ts';
 import type { SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type FocusResult } from '../shared/ipc.ts';
+import { applyAutostart, AUTOSTART_FLAG, healAutostartPath } from './autostart.ts';
 import { WindowFocuser } from './focus/focuser.ts';
 import { broadcast, registerIpc } from './ipc.ts';
 import { Notifier } from './notifier.ts';
 import { SettingsStore } from './settings.ts';
+import { ShortcutManager } from './shortcuts.ts';
 import { TrayPresenter } from './tray.ts';
 import { WindowManager, type MainTab } from './windows.ts';
 
@@ -38,6 +40,12 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   const settings = new SettingsStore(app.getPath('userData'));
+
+  // Heal first (a login item from an earlier install may point at an old EXE path), then
+  // apply — so the setting always wins over whatever is currently registered.
+  healAutostartPath();
+  applyAutostart(settings.get().ui.autostart);
+
   const { engine, adapter, paths } = createEngine({ settings: settings.get() });
 
   const windows = new WindowManager({
@@ -83,8 +91,18 @@ async function bootstrap(): Promise<void> {
     process.stderr.write(`[claude-control] ${error.message}\n`);
   });
 
+  const shortcutManager = new ShortcutManager({
+    onToggle: () => {
+      const bounds = tray.getBounds();
+      if (bounds) windows.togglePopover(bounds);
+    },
+  });
+
   settings.onChange((next) => {
     void engine.updateSettings(next);
+    applyAutostart(next.ui.autostart);
+    shortcutManager.apply(next.ui.globalShortcut);
+    broadcast(IPC.shortcutStatusChanged, shortcutManager.status());
     broadcast(IPC.settingsChanged, next);
   });
 
@@ -93,6 +111,7 @@ async function bootstrap(): Promise<void> {
     settings,
     focuser,
     windows,
+    shortcutManager,
     claudeDir: paths.root,
     adapterId: adapter.id,
     state: () => lastState,
@@ -106,7 +125,13 @@ async function bootstrap(): Promise<void> {
   tray.create();
   tray.update(lastState);
 
-  if (lastState.sessions.length === 0 && !hasClaudeData(paths.root)) {
+  shortcutManager.apply(settings.get().ui.globalShortcut);
+  broadcast(IPC.shortcutStatusChanged, shortcutManager.status());
+
+  // Started by the login item: a modal at logon would be pure noise, so it stays silent.
+  const startedByAutostart = process.argv.includes(AUTOSTART_FLAG);
+
+  if (!startedByAutostart && lastState.sessions.length === 0 && !hasClaudeData(paths.root)) {
     // Better a clear message than a permanently empty tray icon.
     dialog.showMessageBox({
       type: 'info',
@@ -140,6 +165,11 @@ async function bootstrap(): Promise<void> {
   app.on('before-quit', () => {
     void engine.stop();
     tray.destroy();
+  });
+
+  // Belt-and-suspenders: guarantees the registration is gone even if `before-quit` is cancelled.
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
   });
 
   async function focusSession(sessionId: SessionId): Promise<FocusResult> {

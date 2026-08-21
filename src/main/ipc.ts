@@ -10,6 +10,7 @@ import type { HistoryQuery, SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type DiagnosticsInfo, type FocusResult } from '../shared/ipc.ts';
 import type { WindowFocuser } from './focus/focuser.ts';
 import type { SettingsStore } from './settings.ts';
+import type { ShortcutManager } from './shortcuts.ts';
 import type { MainTab, WindowManager } from './windows.ts';
 
 export interface IpcDeps {
@@ -17,6 +18,7 @@ export interface IpcDeps {
   settings: SettingsStore;
   focuser: WindowFocuser;
   windows: WindowManager;
+  shortcutManager: ShortcutManager;
   claudeDir: string;
   adapterId: string;
   state: () => AppState;
@@ -46,6 +48,8 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC.setSettings, (_event, partial: unknown) => deps.settings.set(partial));
 
   ipcMain.handle(IPC.resetSettings, () => deps.settings.reset());
+
+  ipcMain.handle(IPC.getShortcutStatus, () => deps.shortcutManager.status());
 
   ipcMain.handle(IPC.refresh, async () => {
     await deps.engine.refreshNow();

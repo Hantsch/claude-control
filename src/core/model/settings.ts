@@ -76,6 +76,10 @@ export interface ReadingSettings {
 export interface UiSettings {
   /** Popover stays open on blur and keeps the position it was dragged to (§8). */
   popoverPinned: boolean;
+  /** Launch the app on OS login. */
+  autostart: boolean;
+  /** Global keyboard shortcut to open the popover; `''` disables it. */
+  globalShortcut: string;
 }
 
 export interface ListSettings {
@@ -183,6 +187,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   ui: {
     popoverPinned: false,
+    autostart: false,
+    globalShortcut: 'Ctrl+Alt+C',
   },
   indexHistoryOnStart: true,
 };
@@ -289,6 +295,8 @@ export function mergeSettings(partial: unknown): AppSettings {
   const u = p.ui as Record<string, unknown> | undefined;
   if (u && typeof u === 'object') {
     if (typeof u.popoverPinned === 'boolean') base.ui.popoverPinned = u.popoverPinned;
+    if (typeof u.autostart === 'boolean') base.ui.autostart = u.autostart;
+    if (typeof u.globalShortcut === 'string') base.ui.globalShortcut = u.globalShortcut;
   }
 
   if (base.reading.maxTailWindowBytes < base.reading.tailWindowBytes) {

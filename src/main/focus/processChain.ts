@@ -59,6 +59,49 @@ export async function findWindowUpChain(pid: number): Promise<ChainWindow | null
 }
 
 /**
+ * Batched form of `findWindowUpChain`: one PowerShell invocation walks the parent chain for
+ * every pid, instead of one child process per pid (§ decisions, D2). Same query, same loop,
+ * just fanned out over an array and re-joined with the originating pid so the results can be
+ * matched back up.
+ *
+ * Pids that resolve to no window (or fail entirely) are reported as `false`, not omitted —
+ * callers (the probe cache) need a definite negative to avoid re-probing every pass.
+ */
+export async function findWindowsUpChain(pids: readonly number[]): Promise<Map<number, boolean>> {
+  const valid = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+  const result = new Map<number, boolean>(valid.map((pid) => [pid, false]));
+  if (process.platform !== 'win32' || valid.length === 0) return result;
+
+  const script = [
+    `$targets = @(${valid.join(',')})`,
+    'foreach ($start in $targets) {',
+    '  $id = $start',
+    `  for ($i = 0; $i -lt ${MAX_HOPS}; $i++) {`,
+    '    $p = Get-Process -Id $id -ErrorAction SilentlyContinue',
+    '    if ($p -and $p.MainWindowHandle -ne 0) {',
+    '      "{0}|{1}|{2}|{3}|{4}" -f $start, $p.Id, [int64]$p.MainWindowHandle, $i, ($p.MainWindowTitle -replace "\\|", "/")',
+    '      break',
+    '    }',
+    '    $ci = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue',
+    '    if (-not $ci -or -not $ci.ParentProcessId) { break }',
+    '    $id = [int]$ci.ParentProcessId',
+    '    if ($id -le 4) { break }',
+    '  }',
+    '}',
+  ].join('\n');
+
+  const stdout = await run(script);
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!/^\d+\|\d+\|/.test(trimmed)) continue;
+    const [startText] = trimmed.split('|');
+    const start = Number(startText);
+    if (result.has(start)) result.set(start, true);
+  }
+  return result;
+}
+
+/**
  * Shell fallback activation for when `koffi` is unavailable. `AppActivate` is subject to
  * the same foreground restrictions, so a `false` result is reported honestly rather than
  * assumed to be success.

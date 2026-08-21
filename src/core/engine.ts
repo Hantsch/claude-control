@@ -80,6 +80,14 @@ export interface ControlEngineOptions {
     onChange: (changes: FileChange[]) => void;
     onError: (error: Error) => void;
   }) => { start(): Promise<void>; stop(): Promise<void> };
+  /**
+   * Synchronous cache read: "does this PID currently have a terminal window?" The real
+   * Win32 probe (main/, out of scope for `core/`) spawns PowerShell with an 8 s timeout, so
+   * it cannot run inline in `getSnapshot()`, which is synchronous and runs every tick — this
+   * seam is the cached, instant answer instead. `undefined` means "not known yet" and must
+   * never be treated as "no window": a slow/failed/absent probe can never hide a real session.
+   */
+  hasTerminalWindow?: (pid: number) => boolean | undefined;
 }
 
 interface CachedSnapshot {
@@ -95,6 +103,7 @@ export class ControlEngine {
   private readonly store: SessionRepository;
   private readonly context = new ContextWindowEstimator();
   private readonly now: () => number;
+  private readonly hasTerminalWindow?: (pid: number) => boolean | undefined;
   private settings: AppSettings;
 
   private watcher: { start(): Promise<void>; stop(): Promise<void> } | null = null;
@@ -103,6 +112,13 @@ export class ControlEngine {
   private indexingHistory = false;
 
   private snapshots = new Map<SessionId, CachedSnapshot>();
+  /**
+   * Sessions the user has silenced toasts for (§6.6, story 004 D4). In-memory only, by
+   * design (Decisions (Sprint)): a restart always comes back with nothing muted, and a
+   * reappearing session id (same folder, new process) starts unmuted too, since it is
+   * cleared the moment the old one transitions to `ended`.
+   */
+  private mutedSessions = new Set<SessionId>();
   private ideWindows: IdeWindowRef[] = [];
   private refreshChain: Promise<void> = Promise.resolve();
   private started = false;
@@ -114,6 +130,7 @@ export class ControlEngine {
     this.settings = options.settings;
     this.store = options.store ?? new InMemorySessionStore();
     this.now = options.now ?? (() => Date.now());
+    this.hasTerminalWindow = options.hasTerminalWindow;
     if (options.createWatcher) this.createWatcher = options.createWatcher;
   }
 
@@ -174,9 +191,19 @@ export class ControlEngine {
     // worth watching, so by default it does not reach any surface. The store still knows
     // about it — this is a presentation filter, not a hole in the state machine, and the
     // moment its first prompt lands it leaves `starting` and shows up.
+    const unstarting = this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all;
+    // A windowless session in the same folder as one that still has a window open is that
+    // session's orphan, not a second thing to watch (§4) — but only once the probe actually
+    // tells the two apart. `undefined`, from a missing probe or one that has not answered
+    // yet, is "not known" and must never read as "no window": that would hide a real session.
     const sessions = (
-      this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all
-    ).sort(compareSessions);
+      this.settings.list.hideOrphanSessions ? unstarting.filter((s) => !this.isOrphan(s, unstarting)) : unstarting
+    )
+      .sort(compareSessions)
+      // Mute is presentation only (§6.6 D4): decorated last, after status/sort/grouping have
+      // already been decided from the real, unmuted facts, so a mute can never move a
+      // session, change its status or hide it from anything but toasts.
+      .map((session) => ({ ...session, muted: this.mutedSessions.has(session.sessionId) }));
     const at = this.now();
     // The tray is the glance surface and gets the narrower list; the icon and the badge
     // follow it, so what the icon claims is always something the popover can show.
@@ -196,6 +223,29 @@ export class ControlEngine {
 
   getSession(id: SessionId): SessionView | null {
     return this.store.getLive(id);
+  }
+
+  /**
+   * Unfiltered live sessions (before the `hideUnusedSessions`/`hideOrphanSessions` presentation
+   * filters) — what the main-process window probe needs to pick its candidates, since a
+   * session hidden as an orphan is still a live process whose folder mate still needs its
+   * window checked (D2 of story 004).
+   */
+  getLiveSessions(): SessionView[] {
+    return this.store.listLive();
+  }
+
+  /**
+   * `session` is an orphan iff the probe says it has no window (`false`, not `undefined`)
+   * and some other live session in the same folder (`cwd`) does have one (`true`). Absent a
+   * probe, or an `undefined` answer for either side, nothing is ever dropped.
+   */
+  private isOrphan(session: SessionView, all: SessionView[]): boolean {
+    if (!this.hasTerminalWindow) return false;
+    if (this.hasTerminalWindow(session.pid) !== false) return false;
+    return all.some(
+      (other) => other !== session && other.cwd === session.cwd && this.hasTerminalWindow!(other.pid) === true,
+    );
   }
 
   /** Why the most recent refresh ran — surfaced in the CLI's verbose output. */
@@ -262,6 +312,23 @@ export class ControlEngine {
   /** "Mark all as seen" — the way out when several sessions piled up while you were away. */
   acknowledgeAll(): void {
     if (this.store.acknowledgeAll() > 0) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /**
+   * Silence (or restore) toasts for one session — "Mute this session" (§6.6 D4). Nothing is
+   * re-read; only future notification decisions are affected, so this is deliberately
+   * synchronous and re-emits immediately, mirroring `acknowledge()`.
+   */
+  setMuted(id: SessionId, muted: boolean): void {
+    const already = this.mutedSessions.has(id);
+    if (muted === already) return;
+    if (muted) this.mutedSessions.add(id);
+    else this.mutedSessions.delete(id);
+    this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  isMuted(id: SessionId): boolean {
+    return this.mutedSessions.has(id);
   }
 
   restartHistoryIndex(): void {
@@ -343,6 +410,9 @@ export class ControlEngine {
         // Nothing will ask about this session again, so drop its per-session caches.
         this.context.forget(transition.sessionId);
         this.adapter.forgetSession?.(transition.sessionId);
+        // A reappearing session id (same folder, new process) must not inherit a stale mute —
+        // mirrors the gate's own cooldown reset on `ended`.
+        this.mutedSessions.delete(transition.sessionId);
       }
     }
     this.emitter.emit('sessions', this.getSnapshot());
@@ -407,6 +477,9 @@ export class ControlEngine {
       statusSince: 0,
       // The store owns acknowledgement — it is the only thing that survives a re-read.
       seen: false,
+      // Placeholder: the engine's mute registry, not the store, owns this — `getSnapshot()`
+      // decorates the real value onto every view on the way out.
+      muted: false,
       project: snapshot.project,
       branch: facts.branch,
       groupKey: `${snapshot.project.key}::${facts.branch ?? ''}`,

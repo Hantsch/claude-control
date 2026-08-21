@@ -217,7 +217,7 @@ code,
 
 .session-row {
   display: grid;
-  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 88px;
+  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 88px 22px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -278,6 +278,34 @@ code,
    tray badge counts, marked here so the list explains what the icon is claiming. */
 .session-row.unseen {
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Muted sessions still show up, just quieter — the icon is the recognisable-at-a-glance
+   marker, the dimming reinforces it without hiding anything. */
+.session-row.muted {
+  opacity: 0.7;
+}
+
+.session-row .mute-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.session-row .mute-toggle:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.session-row .mute-toggle.on {
+  color: var(--accent);
 }
 
 /* ---------------------------------------------------------- context pressure in a row */
@@ -370,6 +398,8 @@ code,
 }
 
 .detail-jump {
+  display: flex;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
@@ -380,6 +410,20 @@ code,
 
 .detail-jump button:hover {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.detail-jump .mute-button {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.detail-jump .mute-button:hover {
+  background: var(--bg-hover);
+}
+
+.detail-jump .mute-button.on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .kv {
@@ -797,7 +841,7 @@ table.history .title {
 .popover-row {
   display: grid;
   grid-template-columns:
-    14px minmax(0, 2.1fr) minmax(0, 1.5fr) minmax(0, 1.2fr) 58px 46px 62px 62px;
+    14px minmax(0, 2.1fr) minmax(0, 1.5fr) minmax(0, 1.2fr) 58px 46px 62px 62px 22px;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -807,6 +851,34 @@ table.history .title {
   text-align: left;
   cursor: pointer;
   font-size: 12px;
+}
+
+/* Muted sessions still show up in the popover, just quieter — same treatment as the main
+   window's `.session-row.muted` so the two surfaces agree on what "muted" looks like. */
+.popover-row.muted {
+  opacity: 0.7;
+}
+
+.popover-row .mute-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.popover-row .mute-toggle:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.popover-row .mute-toggle.on {
+  color: var(--accent);
 }
 
 .popover-row:hover {

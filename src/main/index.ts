@@ -11,16 +11,18 @@
  */
 
 import { app, dialog, globalShortcut } from 'electron';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createEngine } from '../core/createEngine.ts';
 import type { SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type FocusResult } from '../shared/ipc.ts';
 import { applyAutostart, AUTOSTART_FLAG, healAutostartPath } from './autostart.ts';
 import { WindowFocuser } from './focus/focuser.ts';
+import { createWindowProbe } from './focus/windowProbe.ts';
 import { broadcast, registerIpc } from './ipc.ts';
 import { Notifier } from './notifier.ts';
 import { SettingsStore } from './settings.ts';
 import { ShortcutManager } from './shortcuts.ts';
+import { TOAST_PROTOCOL, toastActionFromArgv, type ToastAction } from './toast-protocol.ts';
 import { TrayPresenter } from './tray.ts';
 import { WindowManager, type MainTab } from './windows.ts';
 
@@ -34,6 +36,7 @@ if (!gotLock) {
 async function bootstrap(): Promise<void> {
   // Required on Windows for toasts to be attributed to this app (F5).
   app.setAppUserModelId('solutions.aidu.claude-control');
+  registerToastProtocol();
   // The app has no network features at all (N1).
   app.commandLine.appendSwitch('disable-http-cache');
 
@@ -46,7 +49,15 @@ async function bootstrap(): Promise<void> {
   healAutostartPath();
   applyAutostart(settings.get().ui.autostart);
 
-  const { engine, adapter, paths } = createEngine({ settings: settings.get() });
+  // Sync cache read for `hasTerminalWindow` — the real probe is async and runs out-of-band,
+  // driven off the same `sessions` event the tray/renderer already consume (see below), so no
+  // separate timer is needed.
+  const windowProbe = createWindowProbe();
+
+  const { engine, adapter, paths } = createEngine({
+    settings: settings.get(),
+    hasTerminalWindow: (pid) => windowProbe.get(pid),
+  });
 
   const windows = new WindowManager({
     rendererDir: join(app.getAppPath(), 'out', 'renderer'),
@@ -63,6 +74,7 @@ async function bootstrap(): Promise<void> {
     onActivate: (sessionId) => {
       void focusSession(sessionId);
     },
+    isMuted: (sessionId) => engine.isMuted(sessionId),
   });
 
   const tray = new TrayPresenter({
@@ -84,6 +96,9 @@ async function bootstrap(): Promise<void> {
     lastState = snapshot;
     tray.update(snapshot);
     broadcast(IPC.stateChanged, snapshot);
+    // Piggybacks on the engine's own refresh cadence (tick + file-change driven) instead of a
+    // separate timer. `getLiveSessions()` is the unfiltered list on purpose — see its doc.
+    void windowProbe.refresh(engine.getLiveSessions());
   });
   engine.on('transitions', (transitions) => notifier.handle(transitions));
   engine.on('history', (info) => broadcast(IPC.historyChanged, info));
@@ -153,9 +168,20 @@ async function bootstrap(): Promise<void> {
     windows.openMain(show);
   }
 
-  app.on('second-instance', () => {
-    windows.openMain('sessions');
+  // A toast button (D6) reaches us as a *new* process launched by the shell for the
+  // `claude-control://` URI; the lock above bounces it here with its argv. Anything else is a
+  // user starting the app a second time, which means "show me the app".
+  app.on('second-instance', (_event, argv) => {
+    const action = toastActionFromArgv(argv);
+    if (action) runToastAction(action);
+    else windows.openMain('sessions');
   });
+
+  // Same URI, but the app was not running when the button was pressed: then there is no second
+  // instance and the URI is simply in our own command line. Runs last, so the engine is
+  // started and `jump` can find its session.
+  const startupAction = toastActionFromArgv(process.argv);
+  if (startupAction) runToastAction(startupAction);
 
   // Tray app: closing all windows must not quit (N3, §8).
   app.on('window-all-closed', () => {
@@ -191,11 +217,39 @@ async function bootstrap(): Promise<void> {
     return focuser.focus(session);
   }
 
+  /**
+   * What a toast button does (D6). "Jump" is the same path as clicking the toast body, and
+   * "Mute" is the same call the renderer's mute switch makes over IPC — one behaviour each,
+   * reached from a second entry point.
+   */
+  function runToastAction(action: ToastAction): void {
+    const sessionId = action.sessionId as SessionId;
+    if (action.action === 'mute') engine.setMuted(sessionId, true);
+    else void focusSession(sessionId);
+  }
+
   function quit(): void {
     void engine.stop().finally(() => {
       tray.destroy();
       app.quit();
     });
+  }
+}
+
+/**
+ * Makes `claude-control://` ours, so the shell can hand a toast button's URI back to the app
+ * (D6). Windows-only: that is the only platform where the buttons exist, and registering a
+ * scheme elsewhere would be a side effect nothing asked for. A dev run has no exe of its own,
+ * so the registration has to name Electron plus the script it should run.
+ */
+function registerToastProtocol(): void {
+  if (process.platform !== 'win32') return;
+  try {
+    const script = process.argv[1];
+    if (app.isPackaged || !script) app.setAsDefaultProtocolClient(TOAST_PROTOCOL);
+    else app.setAsDefaultProtocolClient(TOAST_PROTOCOL, process.execPath, [resolve(script)]);
+  } catch {
+    // A blocked registry write costs the buttons, not the app — the toast itself still shows.
   }
 }
 

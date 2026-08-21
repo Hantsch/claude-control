@@ -290,6 +290,12 @@ export interface SessionView {
    * back for something that actually happened since.
    */
   seen: boolean;
+  /**
+   * True while the user has silenced toasts for this session (§6.6, story 004 D4). In-memory
+   * only — a restart always comes back unmuted. Affects `decideNotification` alone: status,
+   * sorting, grouping and the tray badge all read this session exactly as if it were unmuted.
+   */
+  muted: boolean;
   project: ProjectRef;
   branch: string | null;
   /** Worktree/branch grouping key (§10 of requirements, F10). */

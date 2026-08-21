@@ -16,6 +16,8 @@ export interface CreateEngineOptions {
   /** Override the process probe (tests, non-Windows hosts). */
   probe?: ProcessProbe;
   now?: () => number;
+  /** See `ControlEngineOptions.hasTerminalWindow` — the main-process window-probe cache read. */
+  hasTerminalWindow?: (pid: number) => boolean | undefined;
 }
 
 export interface CreatedEngine {
@@ -34,6 +36,11 @@ export function createEngine(options: CreateEngineOptions): CreatedEngine {
     thresholds: options.settings.thresholds,
     now: options.now,
   });
-  const engine = new ControlEngine({ adapter, settings: options.settings, now: options.now });
+  const engine = new ControlEngine({
+    adapter,
+    settings: options.settings,
+    now: options.now,
+    hasTerminalWindow: options.hasTerminalWindow,
+  });
   return { engine, adapter, paths };
 }

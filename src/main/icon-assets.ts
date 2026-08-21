@@ -11,8 +11,9 @@
  */
 
 import { app, nativeImage, type NativeImage } from 'electron';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { SessionStatus, TrayIcon } from '../core/model/status.ts';
 import { badgeLabel, paintBadge, renderFallbackTile } from './tray-icons.ts';
 
@@ -97,4 +98,23 @@ export function toastIcon(status: SessionStatus): NativeImage | undefined {
   const image = read(`app-${status}.png`);
   if (image) cache.set(key, image);
   return image ?? undefined;
+}
+
+/**
+ * The same logo as a `file:///` URI for the `toastXml` path (D6), where Windows loads the
+ * image itself instead of taking a `NativeImage` from us — so unlike `toastIcon` this only
+ * works for art the shell can actually open. `app.getAppPath()` always points inside
+ * `app.asar`, which the shell cannot open directly (only the patched `fs` sees in there), so
+ * `assets/icons/**` is listed under `asarUnpack` in `electron-builder.yml` and actually lives
+ * on disk next to the asar, under `app.asar.unpacked`; rewriting the path is what lets the
+ * shell reach it. In a dev run there is no `.asar` segment to rewrite, so this is a no-op there.
+ */
+export function toastIconUri(status: SessionStatus): string | null {
+  try {
+    const appPath = join(app.getAppPath(), 'assets', 'icons', `app-${status}.png`);
+    const path = appPath.replace(/\.asar([\\/])/i, '.asar.unpacked$1');
+    return existsSync(path) ? pathToFileURL(path).href : null;
+  } catch {
+    return null;
+  }
 }

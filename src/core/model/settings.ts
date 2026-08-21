@@ -91,6 +91,15 @@ export interface ListSettings {
    */
   hideUnusedSessions: boolean;
   /**
+   * Drop a windowless registry entry from the live surfaces when another live session in
+   * the same folder (`cwd`) still has a terminal window open. A session whose window was
+   * closed but whose process lingers (§4) is an orphan of the one still open in that folder,
+   * not a second thing to watch — but only once the real thing can be told apart from it, so
+   * a probe that has not answered yet, or is not wired up at all, must never drop anyone.
+   * History is unaffected — this only hides them while live, exactly like `hideUnusedSessions`.
+   */
+  hideOrphanSessions: boolean;
+  /**
    * How long a quiet session stays interesting to the *tray* surfaces (popover, tray menu).
    *
    * The tray is the glance surface: it should answer "what needs me right now", and a
@@ -183,6 +192,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   list: {
     hideUnusedSessions: true,
+    hideOrphanSessions: true,
     trayRecentMs: 30 * 60_000,
   },
   ui: {
@@ -289,6 +299,7 @@ export function mergeSettings(partial: unknown): AppSettings {
   const l = p.list as Record<string, unknown> | undefined;
   if (l && typeof l === 'object') {
     if (typeof l.hideUnusedSessions === 'boolean') base.list.hideUnusedSessions = l.hideUnusedSessions;
+    if (typeof l.hideOrphanSessions === 'boolean') base.list.hideOrphanSessions = l.hideOrphanSessions;
     if (isPositive(l.trayRecentMs)) base.list.trayRecentMs = l.trayRecentMs;
   }
 

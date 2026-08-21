@@ -30,6 +30,10 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
     setFocusResult(await api.focusSession(session.sessionId));
   };
 
+  const toggleMuted = (): void => {
+    void api.setSessionMuted(session.sessionId, !session.muted);
+  };
+
   const copy = async (label: string, text: string): Promise<void> => {
     await api.copyText(text);
     setCopied(label);
@@ -50,6 +54,14 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
       <div className="detail-jump">
         <button type="button" onClick={() => void jump()}>
           Jump to session
+        </button>
+        <button
+          type="button"
+          className={`mute-button${session.muted ? ' on' : ''}`}
+          onClick={toggleMuted}
+          aria-pressed={session.muted}
+        >
+          {session.muted ? '🔇 Unmute' : '🔔 Mute'}
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Noise control — abandoned sessions and actionable toasts
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
@@ -28,15 +28,15 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 
 ## Acceptance Criteria
 
-- [ ] A windowless session alongside a windowed one in the same folder disappears from the live
+- [x] A windowless session alongside a windowed one in the same folder disappears from the live
       surfaces
-- [ ] Two windowed sessions in one folder both stay; a lone windowless session stays
-- [ ] The filter is a setting, default on
-- [ ] `core/` still imports no Win32 (CONCEPT §9) — the window probe is injected as a
+- [x] Two windowed sessions in one folder both stay; a lone windowless session stays
+- [x] The filter is a setting, default on
+- [x] `core/` still imports no Win32 (CONCEPT §9) — the window probe is injected as a
       capability from `main/`, and with no probe supplied nothing is ever dropped
-- [ ] A toast carries "Jump" and "Mute this session"
-- [ ] A muted session produces no further toasts but still shows its real status everywhere
-- [ ] The mute is visible and revocable in the popover row and the detail pane — an invisible
+- [x] A toast carries "Jump" and "Mute this session"
+- [x] A muted session produces no further toasts but still shows its real status everywhere
+- [x] The mute is visible and revocable in the popover row and the detail pane — an invisible
       mute is a bug report waiting to happen
 
 ## Open Questions
@@ -118,7 +118,7 @@ Order: 1→2→3→4 and 5→6→7→8→9 are each sequential; the two chains a
 
 ## Deliverables
 
-- [ ] D1 — **Core: orphan filter + capability seam.** `ListSettings.hideOrphanSessions` (default
+- [x] D1 — **Core: orphan filter + capability seam.** `ListSettings.hideOrphanSessions` (default
       `true`, merge validation) in [settings.ts](../../src/core/model/settings.ts); optional
       `hasTerminalWindow?: (pid: number) => boolean | undefined` on `ControlEngineOptions` and the
       same-folder (`cwd`) filter in `getSnapshot()` in [engine.ts](../../src/core/engine.ts)
@@ -127,7 +127,7 @@ Order: 1→2→3→4 and 5→6→7→8→9 are each sequential; the two chains a
       *Acceptance:* windowless + windowed in one folder → windowless gone; two windowed → both
       stay; lone windowless stays; probe absent or returning `undefined` → nothing dropped;
       setting off → nothing dropped. `npm test` green, `boundaries.test.ts` still green.
-- [ ] D2 — **Main: batched window probe + cache, injected.** `findWindowsUpChain(pids)` in
+- [x] D2 — **Main: batched window probe + cache, injected.** `findWindowsUpChain(pids)` in
       [processChain.ts](../../src/main/focus/processChain.ts) (one PowerShell call for all pids,
       same loop as `findWindowUpChain`); new `src/main/focus/windowProbe.ts` with the pid→bool
       cache, TTL re-probe and candidate selection (only folders with ≥2 live sessions); wired
@@ -135,11 +135,11 @@ Order: 1→2→3→4 and 5→6→7→8→9 are each sequential; the two chains a
       [index.ts](../../src/main/index.ts) so `hasTerminalWindow` reaches the engine.
       *Acceptance:* with two sessions in one folder the cache fills within one probe pass and the
       list settles; a single session in a folder triggers no PowerShell call at all.
-- [ ] D3 — **Renderer: the setting.** Toggle for `hideOrphanSessions` in
+- [x] D3 — **Renderer: the setting.** Toggle for `hideOrphanSessions` in
       [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx), mirroring the
       `hideUnusedSessions` checkbox at line 105. *Acceptance:* toggling it changes the popover
       list without a restart.
-- [ ] D4 — **Core: mute state + decision.** `muted` argument and `'session-muted'` reason in
+- [x] D4 — **Core: mute state + decision.** `muted` argument and `'session-muted'` reason in
       `decideNotification` / `NotificationGate.evaluate`
       ([notifications.ts](../../src/core/state/notifications.ts)); `SessionView.muted`
       ([types.ts](../../src/core/model/types.ts):275); in-memory `Set<SessionId>` plus
@@ -148,21 +148,21 @@ Order: 1→2→3→4 and 5→6→7→8→9 are each sequential; the two chains a
       *Acceptance:* unit tests — a muted session yields `notify: false, reason: 'session-muted'`,
       its `status`/`statusSince`/sort position are unchanged, unmuting restores toasts, `ended`
       clears the mute, and a fresh engine starts with no mutes.
-- [ ] D5 — **IPC + notifier wiring.** `IPC.setSessionMuted` (`cc:setSessionMuted`) in
+- [x] D5 — **IPC + notifier wiring.** `IPC.setSessionMuted` (`cc:setSessionMuted`) in
       [ipc.ts](../../src/shared/ipc.ts), preload wrapper
       ([preload.ts](../../src/main/preload.ts):27) and `ipcMain.handle`
       ([main/ipc.ts](../../src/main/ipc.ts):36) — mirror `acknowledge` end to end; `isMuted` dep
       on `Notifier` ([notifier.ts](../../src/main/notifier.ts):20) wired from the engine in
       [index.ts](../../src/main/index.ts):53. *Acceptance:* calling the preload API flips
       `muted` in the next `stateChanged` payload and suppresses the next toast.
-- [ ] D6 — **Toast buttons.** Two buttons ("Jump", "Mute this session") via Windows `toastXml`
+- [x] D6 — **Toast buttons.** Two buttons ("Jump", "Mute this session") via Windows `toastXml`
       with `activationType="protocol"` in [notifier.ts](../../src/main/notifier.ts); protocol
       registration and argv parsing (`claude-control://jump|mute?session=…`) in
       [index.ts](../../src/main/index.ts) on the existing `second-instance` handler (index.ts:131),
       with the plain-`Notification` fallback kept for unsupported platforms.
       *Acceptance:* a real toast shows both buttons; "Jump" focuses the session; "Mute this
       session" mutes it and no further toast for it appears.
-- [ ] D7 — **Mute visible and revocable in the UI.** Badge + toggle in the popover row
+- [x] D7 — **Mute visible and revocable in the UI.** Badge + toggle in the popover row
       ([SessionsView.tsx](../../src/renderer/components/SessionsView.tsx):100-142, row
       restructured to `div role="button"` + nested action button) and next to "Jump to session"
       in [SessionDetailPane.tsx](../../src/renderer/components/SessionDetailPane.tsx):50-54,
@@ -216,3 +216,56 @@ Run `npm run dev`. Windows, at least two terminals.
     only).
 
 ## Done
+
+**Summary.** All 7 deliverables implemented: same-folder orphan filter with an injected,
+fail-safe `hasTerminalWindow` capability (D1–D3), an in-memory per-session mute registry that
+touches only the notification decision (D4), IPC + notifier wiring (D5), two-button Windows
+toast via `toastXml` + protocol activation (D6), and a mute badge/toggle in the popover row and
+detail pane (D7). Reviewed by `story-review-hard`: PASS with 4 findings, 2 fixed before landing,
+2 accepted as documented residual risk (see below).
+
+**Decisions (beyond the ones already in `## Decisions (Sprint)`):**
+- Fixed: the packaged/portable build lost the per-status toast logo because `toastIconUri`
+  returned `null` for any `.asar`-relative path and there was no `asarUnpack` entry for
+  `assets/icons/**`. Added that `asarUnpack` entry to `electron-builder.yml` and rewrote
+  `toastIconUri` (`src/main/icon-assets.ts`) to resolve `.asar/... → .asar.unpacked/...` before
+  checking `existsSync`; a no-op in dev, where no path contains `.asar`.
+- Fixed: arrow-key row navigation in the popover (`popover.tsx`) resolved `document.activeElement`
+  via `indexOf` against the `.popover-row` list, which returned `-1` whenever focus was on the
+  nested `.mute-toggle` button added by D7 — both arrows then jumped to the top row instead of
+  moving relatively. Now resolves the current row via `.closest('.popover-row')` first, which
+  also covers focus on the mute button; unrelated-focus fallback (Pin/Close) is unchanged.
+- Accepted, not fixed: `app.setAsDefaultProtocolClient` records the current `process.execPath`,
+  which for the `portable` electron-builder target is a per-run temp extraction path — a
+  "Mute this session" toast pressed from Action Center after the app has exited can launch a
+  stale path. This is a pre-existing property of the portable target (not introduced by this
+  story) and out of scope for a noise-control story; worth a follow-up if portable-EXE launch
+  behaviour gets its own story.
+- Accepted, not fixed: a single-pid window-probe failure (`findWindowsUpChain` returning no line
+  for that pid specifically, while the PowerShell call otherwise succeeds) is cached as a
+  definite `false` for the 30s TTL, which — if the folder mate probes `true` in the same
+  window — could hide a live session for up to 30s. A full probe failure is safe (nothing
+  answers `true`, so nothing is dropped); this is a narrower, lower-probability edge inside an
+  already-narrow candidate set (folders with ≥2 live sessions only). Deferred rather than adding
+  a third probe-result state for a case not yet observed in practice.
+
+**Verification:** `npm run typecheck`, `npm test` (217/217), `npm run build` all green after the
+review-fix round. `test/unit/boundaries.test.ts` (core has no Win32 import) stays green.
+
+**Live smoke:** not run — no live Electron environment available in this session (headless).
+Toast rendering with real buttons, and `notification.on('click')` behaviour under `toastXml`,
+can only be confirmed by a human running `npm run dev` per the `## Test Plan (manual acceptance)`
+above. Live/manual acceptance is handed to the user per the project's `live-smoke-required`
+policy (mirrors how story 003 was handled).
+
+**Commit message:** `004: noise control — abandoned sessions and actionable toasts`
+
+**Changed files:** src/core/createEngine.ts, src/core/engine.ts, src/core/model/settings.ts,
+src/core/model/types.ts, src/core/state/notifications.ts, src/main/focus/processChain.ts,
+src/main/focus/windowProbe.ts (new), src/main/icon-assets.ts, src/main/index.ts, src/main/ipc.ts,
+src/main/notifier.ts, src/main/preload.ts, src/main/toast-protocol.ts (new),
+src/renderer/components/SessionDetailPane.tsx, src/renderer/components/SessionsView.tsx,
+src/renderer/components/SettingsView.tsx, src/renderer/popover.tsx, src/renderer/styles.css,
+src/shared/ipc.ts, electron-builder.yml, test/unit/derivations.test.ts,
+test/unit/processChain.test.ts (new), test/unit/toastProtocol.test.ts (new),
+test/unit/windowProbe.test.ts (new), docs/sprints/S02/progress.md.

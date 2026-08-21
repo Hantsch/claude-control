@@ -124,6 +124,24 @@ export function SettingsView(): React.JSX.Element {
         </span>
       </div>
       <div className="field">
+        <span>Hide abandoned sessions</span>
+        <input
+          type="checkbox"
+          checked={settings.list.hideOrphanSessions}
+          onChange={(event) =>
+            void apply({
+              ...settings,
+              list: { ...settings.list, hideOrphanSessions: event.target.checked },
+            })
+          }
+        />
+        <span className="hint">
+          A session whose terminal window is gone while a windowed twin still runs in the same
+          folder is likely an abandoned process. With this on, such orphaned sessions stay out
+          of the list, the popover and the tray.
+        </span>
+      </div>
+      <div className="field">
         <span>Keep settled sessions in the tray for</span>
         <span>
           <input

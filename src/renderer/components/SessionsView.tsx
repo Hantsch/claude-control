@@ -4,6 +4,7 @@
 
 import type { AppState, ProjectGroup, SessionView } from '../../shared/ipc.ts';
 import { STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
+import { api } from '../api.ts';
 import { formatAge } from '../lib/format.ts';
 import { ContextBar } from './ContextBar.tsx';
 import { StatusDot } from './StatusDot.tsx';
@@ -113,12 +114,34 @@ function SessionRow({
   // not something you can have "missed".
   const unseen = !session.seen && (session.status === 'done' || session.status === 'waiting');
 
+  const activate = (): void => onActivate(session);
+  const select = (): void => onSelect(session);
+
+  const toggleMuted = (event: React.SyntheticEvent): void => {
+    // The mute button is nested inside the row's div-as-button — stop the click here or it
+    // would also fire the row's onClick (select) right after toggling mute.
+    event.stopPropagation();
+    void api.setSessionMuted(session.sessionId, !session.muted);
+  };
+
   return (
-    <button
-      type="button"
-      className={`session-row${selected ? ' selected' : ''}${unseen ? ' unseen' : ''}`}
-      onClick={() => onSelect(session)}
-      onDoubleClick={() => onActivate(session)}
+    <div
+      role="button"
+      tabIndex={0}
+      className={`session-row${selected ? ' selected' : ''}${unseen ? ' unseen' : ''}${session.muted ? ' muted' : ''}`}
+      onClick={select}
+      onDoubleClick={activate}
+      onKeyDown={(event) => {
+        // Preserve the button-like keyboard behaviour a plain <div role="button"> does not
+        // get for free — but only for the row itself: bail out if the keydown bubbled up from
+        // the nested mute-toggle <button> so its own native Enter/Space activation is not
+        // suppressed (and replaced by "select the row") by this handler.
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          select();
+        }
+      }}
       title={session.statusReason}
     >
       <StatusDot status={session.status} />
@@ -137,6 +160,16 @@ function SessionRow({
       </span>
       <span className="age">{formatAge(age)}</span>
       <ContextBar context={session.context} />
-    </button>
+      <button
+        type="button"
+        className={`mute-toggle${session.muted ? ' on' : ''}`}
+        onClick={toggleMuted}
+        onDoubleClick={(event) => event.stopPropagation()}
+        title={session.muted ? 'Unmute this session' : 'Mute this session'}
+        aria-pressed={session.muted}
+      >
+        {session.muted ? '🔇' : '🔔'}
+      </button>
+    </div>
   );
 }

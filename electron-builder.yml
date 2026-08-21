@@ -11,6 +11,13 @@ files:
   - package.json
   - assets/icons/**/*
 
+# The toast XML path (D6, src/main/icon-assets.ts:toastIconUri) hands Windows a `file:///` URI
+# it opens itself, which cannot reach into `app.asar` — only the patched `fs` can. Unpacking the
+# icon art keeps it reachable by plain file path at `app.asar.unpacked/assets/icons/**` in the
+# packaged portable build.
+asarUnpack:
+  - assets/icons/**/*
+
 # N3: portable EXE, started manually. No installer, no autostart.
 win:
   target:

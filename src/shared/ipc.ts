@@ -102,6 +102,7 @@ export const IPC = {
   focusSession: 'cc:focus-session',
   acknowledge: 'cc:acknowledge',
   acknowledgeAll: 'cc:acknowledge-all',
+  setSessionMuted: 'cc:set-session-muted',
   getSettings: 'cc:get-settings',
   setSettings: 'cc:set-settings',
   resetSettings: 'cc:reset-settings',
@@ -132,6 +133,8 @@ export interface RendererApi {
   acknowledge(id: SessionId): Promise<void>;
   /** Mark every live session as seen. */
   acknowledgeAll(): Promise<void>;
+  /** Mute or unmute toast notifications for one session (§6.6). */
+  setSessionMuted(id: SessionId, muted: boolean): Promise<void>;
   getSettings(): Promise<AppSettings>;
   setSettings(settings: AppSettings): Promise<AppSettings>;
   resetSettings(): Promise<AppSettings>;

@@ -238,7 +238,9 @@ function Popover(): React.JSX.Element {
   const focusTopRow = useCallback(() => {
     const container = rows.current;
     if (!container) return;
-    const row = container.querySelector<HTMLButtonElement>('button.popover-row');
+    // Rows are `div[role="button"].popover-row` (a nested mute-toggle `<button>` ruled out a
+    // real `<button>` for the row itself), so the selector matches on the shared class alone.
+    const row = container.querySelector<HTMLElement>('.popover-row');
     if (!row) return;
     row.focus();
     focusedYet.current = true;
@@ -286,10 +288,15 @@ function Popover(): React.JSX.Element {
       if (event.defaultPrevented) return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
-        const items = rows.current?.querySelectorAll<HTMLButtonElement>('button.popover-row');
+        const items = rows.current?.querySelectorAll<HTMLElement>('.popover-row');
         if (!items || items.length === 0) return;
         const list = Array.from(items);
-        const currentIndex = list.indexOf(document.activeElement as HTMLButtonElement);
+        // `document.activeElement` may be the row itself, or — since D7 added the nested
+        // `mute-toggle` <button> — a descendant of it; `.closest()` resolves either case to the
+        // owning row before falling back to the old `indexOf` (which stays -1, clamping to the
+        // top row) when focus is elsewhere entirely, e.g. on Pin or Close.
+        const activeRow = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.popover-row') ?? null;
+        const currentIndex = activeRow ? list.indexOf(activeRow) : -1;
         const delta = event.key === 'ArrowDown' ? 1 : -1;
         const nextIndex = Math.min(Math.max(currentIndex + delta, 0), list.length - 1);
         list[nextIndex]?.focus();
@@ -375,13 +382,32 @@ function Popover(): React.JSX.Element {
                   </span>
                 </div>
               )}
-              {group.sessions.map((session) => (
-                <button
+              {group.sessions.map((session) => {
+                const toggleMuted = (event: React.SyntheticEvent): void => {
+                  // The mute toggle is nested inside the row's div-as-button — stop the click
+                  // here or it would also fire the row's onClick (focus/jump) right after.
+                  event.stopPropagation();
+                  void api.setSessionMuted(session.sessionId, !session.muted);
+                };
+                return (
+                <div
                   key={session.sessionId}
-                  type="button"
-                  className="popover-row"
+                  role="button"
+                  tabIndex={0}
+                  className={`popover-row${session.muted ? ' muted' : ''}`}
                   title={session.statusReason}
                   onClick={() => void api.focusSession(session.sessionId)}
+                  onKeyDown={(event) => {
+                    // Preserve the button-like keyboard behaviour a plain <div role="button">
+                    // does not get for free — but only for the row itself: bail out if the
+                    // keydown bubbled up from the nested mute-toggle <button> so its own native
+                    // Enter/Space activation is not suppressed by this handler.
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      void api.focusSession(session.sessionId);
+                    }
+                  }}
                   onFocus={() => {
                     focusedRowId.current = session.sessionId;
                   }}
@@ -429,8 +455,19 @@ function Popover(): React.JSX.Element {
                     )}
                   </span>
                   <ContextBar context={session.context} />
-                </button>
-              ))}
+                  <button
+                    type="button"
+                    className={`mute-toggle${session.muted ? ' on' : ''}`}
+                    onClick={toggleMuted}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    title={session.muted ? 'Unmute this session' : 'Mute this session'}
+                    aria-pressed={session.muted}
+                  >
+                    {session.muted ? '🔇' : '🔔'}
+                  </button>
+                </div>
+                );
+              })}
             </Fragment>
           ))}
         </div>

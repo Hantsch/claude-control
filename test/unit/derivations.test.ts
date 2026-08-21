@@ -28,6 +28,8 @@ import {
 import { NotificationGate, decideNotification, firstSentence } from '../../src/core/state/notifications.ts';
 import { cleanPromptText } from '../../src/core/adapters/claude/summarize.ts';
 import { InMemorySessionStore } from '../../src/core/store/sessionStore.ts';
+import { ControlEngine } from '../../src/core/engine.ts';
+import type { AgentAdapter } from '../../src/core/adapters/types.ts';
 import {
   DEFAULT_SETTINGS,
   DEFAULT_THRESHOLDS,
@@ -48,6 +50,7 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     statusSource: 'inferred',
     statusSince: 0,
     seen: false,
+    muted: false,
     project: { path: 'c:\\dev\\proj', name: 'proj', key: 'c:/dev/proj' },
     branch: 'main',
     groupKey: 'c:/dev/proj::main',
@@ -308,6 +311,31 @@ describe('notification discipline', () => {
     expect(firstSentence(null)).toBeNull();
   });
 
+  it('treats a session mute as an override, ahead of the global settings', () => {
+    expect(decideNotification(transition('done', T0), null, settings, true)).toMatchObject({
+      notify: false,
+      reason: 'session-muted',
+    });
+    // Muted still beats a disabled-globally setting or a not-notifying status — 'session-muted'
+    // is reported because the mute is what's actually silencing it here.
+    expect(
+      decideNotification(transition('waiting', T0), null, { ...settings, enabled: false }, true),
+    ).toMatchObject({ notify: false, reason: 'session-muted' });
+    // Unmuted (the default) behaves exactly as before.
+    expect(decideNotification(transition('done', T0), null, settings, false).notify).toBe(true);
+  });
+
+  it('threads the mute flag through the gate the same way as the settings', () => {
+    const gate = new NotificationGate();
+    expect(gate.evaluate(transition('done', T0), settings, true)).toMatchObject({
+      notify: false,
+      reason: 'session-muted',
+    });
+    // Unmuting restores normal toasts immediately, with no cooldown residue from the muted
+    // attempt (a muted decision never records `lastNotifiedAt`).
+    expect(gate.evaluate(transition('done', T0 + 1_000), settings, false).notify).toBe(true);
+  });
+
   it('honours the per-status toggles', () => {
     const muted = { ...settings, onDone: false };
     expect(decideNotification(transition('done', T0), null, muted).notify).toBe(false);
@@ -505,6 +533,248 @@ describe('session store', () => {
     // A session that is live now belongs to the live list, not to history.
     store.putLive([view({ sessionId: 'h1', status: 'working' })], T0);
     expect(store.listHistory().map((entry) => entry.sessionId)).toEqual(['h2']);
+  });
+});
+
+describe('orphan filter (§4: windowless sessions sharing a live one\'s folder)', () => {
+  /** `getSnapshot()` never calls the adapter directly; only the constructor needs one. */
+  const stubAdapter: AgentAdapter = {
+    id: 'stub',
+    discoverLiveSessions: async () => [],
+    watchRoots: () => [],
+    readStatus: async () => {
+      throw new Error('not used');
+    },
+    indexHistory: async function* () {},
+    readHistoryEntry: async () => null,
+    readDetail: async () => {
+      throw new Error('not used');
+    },
+    listIdeWindows: async () => [],
+  };
+
+  function engineWith(
+    sessions: SessionView[],
+    hasTerminalWindow?: (pid: number) => boolean | undefined,
+    hideOrphanSessions = true,
+  ): ControlEngine {
+    const store = new InMemorySessionStore();
+    store.putLive(sessions, T0);
+    return new ControlEngine({
+      adapter: stubAdapter,
+      settings: { ...DEFAULT_SETTINGS, list: { ...DEFAULT_SETTINGS.list, hideOrphanSessions } },
+      store,
+      now: () => T0,
+      hasTerminalWindow,
+    });
+  }
+
+  const folderA = 'c:\\dev\\proj-a';
+  const folderB = 'c:\\dev\\proj-b';
+
+  it('drops the windowless session when another live session in the same folder has a window', () => {
+    const windowless = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+    const engine = engineWith([windowless, windowed], (pid) => pid === 2);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId)).toEqual(['w2']);
+  });
+
+  it('keeps both sessions when each has its own window, even in the same folder', () => {
+    const a = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const b = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+    const engine = engineWith([a, b], () => true);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+  });
+
+  it('keeps a lone windowless session — nothing else to be an orphan of', () => {
+    const alone = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const engine = engineWith([alone], () => false);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId)).toEqual(['w1']);
+  });
+
+  it('drops nothing when no probe is wired up at all', () => {
+    const windowless = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+    const engine = engineWith([windowless, windowed], undefined);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+  });
+
+  it('drops nothing when the probe answers "not known yet" for either side', () => {
+    const windowless = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+    const unknownForBoth = engineWith([windowless, windowed], () => undefined);
+    expect(unknownForBoth.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+
+    const unknownForOther = engineWith([windowless, windowed], (pid) => (pid === 1 ? false : undefined));
+    expect(unknownForOther.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+  });
+
+  it('drops nothing when the setting is off, even with a decisive probe', () => {
+    const windowless = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+    const engine = engineWith([windowless, windowed], (pid) => pid === 2, false);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+  });
+
+  it('judges folders independently — two worktrees of one repo do not orphan each other', () => {
+    const windowlessA = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const windowedB = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderB });
+    const engine = engineWith([windowlessA, windowedB], (pid) => pid === 2);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w1', 'w2']);
+  });
+});
+
+describe('mute registry (§6.6, story 004 D4)', () => {
+  const stubAdapter: AgentAdapter = {
+    id: 'stub',
+    discoverLiveSessions: async () => [],
+    watchRoots: () => [],
+    readStatus: async () => {
+      throw new Error('not used');
+    },
+    indexHistory: async function* () {},
+    readHistoryEntry: async () => null,
+    readDetail: async () => {
+      throw new Error('not used');
+    },
+    listIdeWindows: async () => [],
+  };
+
+  function engineWith(sessions: SessionView[]): ControlEngine {
+    const store = new InMemorySessionStore();
+    store.putLive(sessions, T0);
+    return new ControlEngine({ adapter: stubAdapter, settings: DEFAULT_SETTINGS, store, now: () => T0 });
+  }
+
+  it('starts with nothing muted', () => {
+    const engine = engineWith([view({ sessionId: 's1', status: 'working' })]);
+    expect(engine.isMuted('s1')).toBe(false);
+    expect(engine.getSnapshot().sessions[0]!.muted).toBe(false);
+  });
+
+  it('setMuted decorates the session in getSnapshot(), leaving status/statusSince/order untouched', () => {
+    const engine = engineWith([
+      view({ sessionId: 'a', status: 'waiting', statusSince: T0 - 1_000 }),
+      view({ sessionId: 'b', status: 'working', statusSince: T0 - 2_000 }),
+    ]);
+    const before = engine.getSnapshot().sessions;
+    const order = before.map((s) => s.sessionId);
+    const statuses = before.map((s) => [s.status, s.statusSince]);
+
+    engine.setMuted('b', true);
+    expect(engine.isMuted('b')).toBe(true);
+
+    const after = engine.getSnapshot().sessions;
+    expect(after.map((s) => s.sessionId)).toEqual(order);
+    expect(after.map((s) => [s.status, s.statusSince])).toEqual(statuses);
+    expect(after.find((s) => s.sessionId === 'b')!.muted).toBe(true);
+    expect(after.find((s) => s.sessionId === 'a')!.muted).toBe(false);
+  });
+
+  it('unmuting restores the unmuted view, and setMuted re-emits immediately like acknowledge()', () => {
+    const engine = engineWith([view({ sessionId: 's1', status: 'done' })]);
+    const emitted: boolean[] = [];
+    engine.on('sessions', (snapshot) => {
+      emitted.push(snapshot.sessions[0]!.muted);
+    });
+
+    engine.setMuted('s1', true);
+    engine.setMuted('s1', false);
+    expect(emitted).toEqual([true, false]);
+    expect(engine.isMuted('s1')).toBe(false);
+    expect(engine.getSnapshot().sessions[0]!.muted).toBe(false);
+  });
+
+  it('does not re-emit when setMuted has nothing to change', () => {
+    const engine = engineWith([view({ sessionId: 's1', status: 'done' })]);
+    let emits = 0;
+    engine.on('sessions', () => {
+      emits += 1;
+    });
+    engine.setMuted('s1', false); // already unmuted
+    expect(emits).toBe(0);
+  });
+
+  it('clears the mute on a transition to ended, so a reappearing session id starts fresh', async () => {
+    const facts: import('../../src/core/model/types.ts').TranscriptTailFacts = {
+      last: null,
+      pendingTool: null,
+      pendingTools: [],
+      stalledTools: [],
+      queuedPrompt: false,
+      branch: null,
+      model: null,
+      usage: null,
+      aiTitle: null,
+      lastPromptText: null,
+      runStartedAt: null,
+      lastAssistantText: null,
+      subagents: [],
+      agentVersion: null,
+      read: {
+        fileSize: 0,
+        mtimeMs: 0,
+        windowBytes: 0,
+        startOffset: 0,
+        linesParsed: 0,
+        linesSkipped: 0,
+        exhausted: false,
+        error: null,
+      },
+    };
+    const ref: import('../../src/core/model/types.ts').LiveSessionRef = {
+      sessionId: 's1',
+      pid: 1,
+      cwd: 'c:\\dev\\proj',
+      name: 's1',
+      entrypoint: 'claude-vscode',
+      kind: 'cli',
+      agentVersion: '2.1.222',
+      startedAt: T0,
+      procStart: null,
+      transcriptPath: null,
+      source: 'test',
+      reportedStatus: null,
+      waitingFor: null,
+      reportedAt: null,
+    };
+    let refs = [ref];
+    const adapter: AgentAdapter = {
+      id: 'stub',
+      discoverLiveSessions: async () => refs,
+      watchRoots: () => [],
+      readStatus: async (r) => ({
+        sessionId: r.sessionId,
+        ref: r,
+        project: { path: 'c:\\dev\\proj', name: 'proj', key: 'c:/dev/proj' },
+        alive: true,
+        facts,
+        readAt: T0,
+      }),
+      indexHistory: async function* () {},
+      readHistoryEntry: async () => null,
+      readDetail: async () => {
+        throw new Error('not used');
+      },
+      listIdeWindows: async () => [],
+    };
+
+    const engine = new ControlEngine({
+      adapter,
+      settings: { ...DEFAULT_SETTINGS, indexHistoryOnStart: false },
+      now: () => T0,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+
+    await engine.start();
+    engine.setMuted('s1', true);
+    expect(engine.isMuted('s1')).toBe(true);
+
+    refs = [];
+    await engine.refreshNow();
+    expect(engine.isMuted('s1')).toBe(false);
+
+    await engine.stop();
   });
 });
 

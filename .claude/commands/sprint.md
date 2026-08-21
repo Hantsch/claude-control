@@ -5,7 +5,7 @@ model: sonnet
 effort: medium
 ---
 
-<!-- ai-scrum:managed 2.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Run sprint **$1**.
@@ -13,9 +13,9 @@ Run sprint **$1**.
 ## Project profile
 
 Read `.claude/ai-scrum.md` first — paths, verify commands, branching, auto-commit,
-acceptance policy and doc language come from there. If it is missing, stop and say: run
-`/ai-scrum:setup` first. Below, `<sprints>` and `<requirements>` mean the corresponding
-paths from the profile.
+acceptance policy, `changelog-path` and doc language come from there. If it is missing, stop
+and say: run `/ai-scrum:setup` first. Below, `<sprints>` and `<requirements>` mean the
+corresponding paths from the profile.
 
 ## Core principle
 
@@ -71,8 +71,11 @@ Before any refine agent starts:
 ## Phase 1b — Refine (all stories, in parallel)
 
 For every story in the sprint list whose requirement is still `draft`, ONE fresh `Agent`
-(`subagent_type: "general-purpose"`, **`model: "opus"`**) — all calls in ONE message so they
-run in parallel. Prompt (self-contained, the agent does not know this session):
+(`subagent_type: "general-purpose"`, **`model: "opus"`**, **`run_in_background: false`**) —
+all calls in ONE message. Several foreground calls in one message run concurrently *and*
+block until all of them have returned, which is exactly what this phase wants; backgrounding
+them instead buys nothing and costs you the completion notifications. Prompt (self-contained,
+the agent does not know this session):
 
 - Read the refine procedure — the file is
   `.claude/commands/refine.md` — and refine story **<id>** exactly along those
@@ -101,10 +104,14 @@ those stories. Stories still blocked afterwards are marked in their `sprint.md` 
 
 ## Phase 2 — Build (all stories, sequentially in list order)
 
-For every `ready` story ONE fresh `Agent` (`subagent_type: "general-purpose"`, model:
-inherited session/Sonnet tier — do **not** escalate on your own) — in the **foreground,
-strictly one after another** (later stories build on earlier ones). Prompt
-(self-contained):
+For every `ready` story ONE fresh `Agent` (`subagent_type: "general-purpose"`,
+**`model: "sonnet"`**, **`run_in_background: false`**) — strictly one after another (later
+stories build on earlier ones). Both parameters are written out on purpose: an unset `model`
+inherits the *session* model rather than this command's frontmatter and re-tiers the entire
+agent tree below it, and an unset `run_in_background` means **background**, which for a
+story-long build is a coin flip on whether you ever hear back. Do **not** escalate the tier
+on your own — the hard tier is chosen per deliverable inside `/build`, from `## Model Hints`.
+Prompt (self-contained):
 
 - Read the build procedure — the file is
   `.claude/commands/build.md` — and implement story **<id>** exactly along it:
@@ -119,8 +126,18 @@ strictly one after another** (later stories build on earlier ones). Prompt
     return `BLOCKED: <reason>`. QA rules apply without exception — never weaken tests to go
     green.
   - Do not commit (the orchestrator does that).
+  - **Progress trail:** get the real current timestamp by running a shell command
+    (`date "+%Y-%m-%d %H:%M"` or the PowerShell equivalent `Get-Date -Format "yyyy-MM-dd
+    HH:mm"`) — never guess or estimate it — both right before delegating a deliverable and
+    right after it returns, and append one line each time to `<sprints>/$1/progress.md`
+    (create the file if it is missing):
+    `- <YYYY-MM-DD HH:MM> · <story id> · D<n> <short title> · started|done|blocked`. It costs
+    almost nothing and it is the only thing that tells the user a long build is alive — they
+    watch the working tree, where a running agent and a dead one look identical. The
+    started/done pair per deliverable also gives a real duration instead of a guess.
 - Return: `done` or `BLOCKED: <reason>`, the commit message from the Done section, changed
-  files, findings/decisions as bullet points.
+  files, findings/decisions as bullet points — **at most 20 lines**, no diffs and no pasted
+  file contents. Everything it returns stays in your context for the rest of the sprint.
 
 **After each story YOU commit** — but only if `auto-commit-per-story: true` in the profile,
 and only on the sprint branch (never push, never on a `protected-branches` entry). If it is
@@ -143,7 +160,8 @@ and only on the sprint branch (never push, never on a `protected-branches` entry
      (corrections, direction decisions).
    - **Blocked / open:** blocked stories with their reason and the question the user has to
      decide.
-2. **`<sprints>/$1/testplan.md`** — delegate to ONE fresh `Agent`, prompt:
+2. **`<sprints>/$1/testplan.md`** — delegate to ONE fresh `Agent` (`model: "sonnet"`,
+   `run_in_background: false`), prompt:
    - Read the sprint's story files (`## Acceptance Criteria`, `## Test Plan (manual
      acceptance)`) and check the surface that was actually built, in the code.
    - Write `<sprints>/$1/testplan.md`: per use case a step-by-step guide the user can follow
@@ -160,8 +178,13 @@ and only on the sprint branch (never push, never on a `protected-branches` entry
    acceptance — until then "built, acceptance pending"); add lasting gaps from the findings
    under the milestone's "Gaps/notes". If a concept is thereby fully implemented (all
    stories done): `git mv` it to `systems-path` and update its status line.
-4. `sprint.md`: `status: done` (blocked stories stay visibly marked).
-5. Final commit: `$1: sprint review + testplan + roadmap`.
+4. **If `changelog-path` is set in the profile:** check that every story done in this sprint
+   with a user-facing change has its entry there, under `# Features` / `# Fixes` of the current
+   version section. `/build` writes them per story; this is the sweep that catches the ones it
+   missed. A missing entry is a finding in the review, not something you fix silently — add it,
+   and say in the review that it was added late. When `changelog-path` is `none`, skip this.
+5. `sprint.md`: `status: done` (blocked stories stay visibly marked).
+6. Final commit: `$1: sprint review + testplan + roadmap`.
 
 ## Final report to the user
 
@@ -181,8 +204,23 @@ review. A `protected-branches` entry is never the target of a sprint branch merg
   accepted. The user does the live acceptance after the sprint.
 - Auto-commits apply only to `/sprint` on the sprint branch; elsewhere "never
   commit without being asked" still holds.
+- **Never end a turn with "waiting".** A turn without a tool call ends your run — "I'll report
+  back once the build agent returns" is not a pause, it is the end of the sprint, and the user
+  finds out by noticing that the working tree stopped moving. Keep every delegation in the
+  foreground and the question never comes up.
+- **There is no working watchdog, so do not build the sprint on one.** `ScheduleWakeup` is
+  rejected outside `/loop` mode, and `TaskOutput` cannot resolve a subagent id — both fail with
+  an error rather than protecting you. Foreground delegation is the mechanism that makes this
+  command reliable; polling, heartbeat agents and dummy "noop" agents are not substitutes for
+  it and must not be improvised.
+- **Do not switch the session model while a sprint runs**, and say so to the user if they ask
+  mid-run. Every agent started without an explicit `model` inherits the session model and
+  passes it down its whole subtree — flipping to Opus mid-sprint therefore re-tiers everything
+  that follows, at roughly five times the price, with no visible change in behaviour.
 - Context discipline: keep agent returns short; read story files only where needed — the
-  state lives in `sprint.md` + story status, not in your memory.
+  state lives in `sprint.md` + story status, not in your memory. You are the orchestrator:
+  reading source files yourself is an agent's job, and whatever you read is re-read on every
+  turn you have left.
 - If ALL stories are blocked or phase 0 fails: stop cleanly and report the state honestly.
 - **Older story files** may use the previous German headings (`## Offene Fragen`,
   `## Entscheidungen (Sprint)`, `## Akzeptanzkriterien`, `## Modell-Hinweise`) — treat them

@@ -5,7 +5,7 @@ model: opus
 effort: high
 ---
 
-<!-- ai-scrum:managed 2.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Refine the story with ID **$1**.
@@ -46,9 +46,15 @@ into memory. Everything has to be reviewable in the repository.
    `subagent_type: "Explore"` (pure search, fast) or `"Plan"`/`"general-purpose"`
    (architecture trade-offs) — never grep broadly through the repo yourself. Give each
    agent a self-contained prompt (goal, what is already known, what to return — it cannot
-   see this conversation). If a sub-question needs real architectural thinking rather than
-   search, call that agent explicitly with `model: "opus"` instead of relying on the
-   session model. Bring back the essence, not the raw material.
+   see this conversation), and pin **`model: "sonnet"`** plus **`run_in_background: false`**
+   on every one of them: searching does not need the expensive tier, an unset `model`
+   silently takes the session's, and an unset `run_in_background` means background — which
+   for a call whose answer you need in the next step is simply a lost answer. Several
+   foreground calls in one message still run concurrently. If a sub-question needs real
+   architectural thinking rather than search, that single call gets `model: "opus"`. Bring
+   back the essence, not the raw material — ask for a bounded answer (10-20 lines,
+   `file:line` pointers instead of pasted code), because whatever comes back is re-read on
+   every remaining turn of this refine.
 
 4. **Write into the file** (only the relevant sections, leave the rest of the structure
    untouched; write in the profile's `doc-language`):

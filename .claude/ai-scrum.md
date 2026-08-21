@@ -9,7 +9,7 @@
   the commands read both.
 -->
 
-ai-scrum-version: 2.0.0
+ai-scrum-version: 2.1.1
 project: claude-control
 
 ## Verify
@@ -32,6 +32,20 @@ concepts-path: docs/concepts
 systems-path: docs/systems
 story-id-format: NNN <!-- three digits + slug, e.g. 042-npc-haggling.md -->
 sprint-id-format: SNN <!-- e.g. S07 -->
+
+changelog-path: none
+<!--
+  Optional. Path to a USER-FACING changelog (e.g. version.md, CHANGELOG.md) — not the
+  git history. When set, /build and /sprint require an entry for every user-facing
+  change; when `none`, the rule is dormant and nothing asks for it.
+
+  The house style for such a file, if you set one:
+    - one entry per user-facing feature or fix, under `# Features` / `# Fixes`
+    - tests, refactors and internal changes do not appear — they change nothing for the user
+    - append to the current version section only; never restructure earlier ones
+    - short, punchy, a little funny. Not a paragraph explaining the implementation.
+    - the language is `doc-language`
+-->
 
 ## Branching
 

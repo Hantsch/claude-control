@@ -5,15 +5,16 @@ model: sonnet
 effort: medium
 ---
 
-<!-- ai-scrum:managed 2.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Implement the story with ID **$1**.
 
 ## Project profile
 
-Read `.claude/ai-scrum.md` first — paths, verify commands, acceptance policy, doc language
-and the files every agent must read before coding all come from there. If it is missing,
+Read `.claude/ai-scrum.md` first — paths, verify commands, acceptance policy,
+`changelog-path`, doc language and the files every agent must read before coding all come
+from there. If it is missing,
 stop and say: run `/ai-scrum:setup` (ai-scrum plugin) first. Below, `<requirements>` means
 `requirements-path` from the profile.
 
@@ -30,15 +31,43 @@ and building around it is the most expensive mistake available here: the Ds all 
 code review finds the hole at the very end, and the fix cycle costs more than the
 implementation agents together. Back to `/refine $1`.
 
+## Delegation rules
+
+You delegate every line of code in this command, so these four decide whether the build
+finishes or quietly stops with nothing in the working tree to show for it.
+
+- **Never start a background child.** Put `run_in_background: false` on every `Agent` call you
+  make. Completion notifications are delivered to the **top-level session only** — you are a
+  subagent, so a background child you start will never wake you again, however long you wait.
+- **Never end a turn with "waiting".** A turn without a tool call *ends you*. "Waiting for D2
+  and D3 to come back" is not a pause, it is your final answer, and the build stops there. If
+  you have nothing left to do, you are not waiting — you are done, so return your report.
+- **Parallelism is several foreground calls in ONE message**, never background plus polling.
+  Multiple `Agent` calls in a single message run concurrently *and* block until all of them
+  have returned. That is the only safe way to overlap deliverables, and it applies only to Ds
+  that touch disjoint files — anything sharing a file (an i18n bundle, a barrel export, a
+  central test file) stays strictly sequential, or the two agents overwrite each other.
+- **A failed agent is not a finished agent.** A report that comes back empty, or says
+  "terminated early", or names an API error (`529 Overloaded` and relatives), means nothing
+  was delivered. Look at the working tree first — a terminated agent often leaves partial
+  edits behind — then re-dispatch that one deliverable once with the same prompt. Only if it
+  fails twice is it a blocker.
+
 ## Flow (scrum-like: small deliverables, acceptance at the end)
 
 1. Set `status: in-progress`.
 2. Read `## Plan`, `## Deliverables` and `## Model Hints`.
 3. Work the deliverables **in order**, without waiting for approval in between. For each
    `D` you are the orchestrator — the actual implementation is delegated to a fresh `Agent`:
-   - **Pick the tier:** default is a plain `Agent` call without `subagent_type`/`model` — it
-     inherits this command's model and effort. If the D is marked `→ deliverable-hard` in
-     `## Model Hints` (legacy marking: `→ Opus`), use `subagent_type: "deliverable-hard"`;
+   - **Pick the tier:** default is `model: "sonnet"`, written out on the `Agent` call.
+     **Never leave `model` unset.** An unset `model` does not inherit this command's
+     frontmatter — it inherits the *session* model, and hands that down to the children of
+     your children. A session switched to Opus therefore re-tiers the whole agent tree
+     silently, and that is the single largest cost item in this workflow: measured across
+     real sprints, the same sprint shape came out at ~$255 per story on an inherited Opus
+     tree and ~$63 per story with the default pinned to Sonnet. If the D is marked
+     `→ deliverable-hard` in `## Model Hints` (legacy marking: `→ Opus`), use
+     `subagent_type: "deliverable-hard"`;
      that agent definition (`.claude/agents/deliverable-hard.md` in this project) carries
      Opus **and** high thinking effort — do not additionally set `model` by hand. If the
      agent cannot be resolved, fall back to a plain `Agent` call with `model: "opus"` and
@@ -50,9 +79,10 @@ implementation agents together. Back to `/refine $1`.
      complicated. No marking means default tier. If an unmarked D turns out to feel risky
      enough for the hard tier while implementing, that is a plan-gap signal → stop briefly
      and ask the user instead of silently escalating.
-   - **Delegate:** ONE foreground `Agent` call (no `run_in_background` — you need the result
-     before moving to the next D) with a self-contained prompt. The agent cannot see this
-     conversation, so give it:
+   - **Delegate:** ONE `Agent` call with **`run_in_background: false`** spelled out, and a
+     self-contained prompt. Spelling it out is the point: `false` is *not* the default, and a
+     background child never wakes you again — see the delegation rules above. The agent
+     cannot see this conversation, so give it:
      - the full text of exactly this one deliverable (not the other Ds),
      - the affected files/paths — from the D itself and from `## Plan` — and the file to
        mirror if the D names one, with the instruction to **start from those files instead of
@@ -65,10 +95,16 @@ implementation agents together. Back to `/refine $1`.
        `## Context to read before coding` in `.claude/ai-scrum.md` **before writing code**,
      - that ONLY this deliverable is implemented (no jumping ahead to later Ds),
      - that nothing is committed or pushed,
-     - that it returns a short summary of changed files + anything notable.
+     - that it returns **at most 10 lines**: changed files with their paths, the verification
+       result, and anything genuinely notable — no diffs, no pasted file contents, no
+       restatement of the deliverable. Every line it returns lands in your context and is
+       paid for again on each of your remaining turns.
    - **Check and continue:** review the agent's result briefly (file diff, build relevance),
      tick `- [ ] D…` to `- [x]` in the file and start the next D immediately — no stop at the
-     user. **Keep a note of which files each D actually changed** — the code review in step 6
+     user. Tick it **right away, not at the end of the story**: that tick is the only liveness
+     signal the user has — they watch the working tree, where a healthy build and a dead one
+     look identical except that the ticks keep moving.
+     **Keep a note of which files each D actually changed** — the code review in step 6
      gets that mapping, so it does not have to reconstruct it from the diff. Interrupt only on
      a real blocker (plan has gaps, agent fails, ambiguity only the user can resolve).
 4. Honour the project rules in `CLAUDE.md` and the profile's context files yourself as well.
@@ -79,6 +115,9 @@ implementation agents together. Back to `/refine $1`.
    - Run the `build`, `test` (and `lint`/`typecheck`, if set) commands from the profile's
      `## Verify` section. Entries set to `none` are skipped. Run `test` when tests exist or
      were touched.
+   - **Run each command once.** A green result stays valid until something changes — do not
+     re-run a suite "to be sure" while the tree is untouched. The deliverable agents already
+     verified their own work; this pass is the story-level gate, not a repeat of theirs.
    - **If `live-smoke-required: true` and the story has a visible surface (P2):** green
      build/test is NOT enough. Drive the actual flow through the running app, the way
      `live-smoke-how` in the profile describes, and look at the result yourself. If that is
@@ -122,6 +161,13 @@ implementation agents together. Back to `/refine $1`.
      first, e.g. `042: finish team-based combat`).
    - Verification: build/test/lint status + review outcome; open points and blockers.
 9. Check all `## Acceptance Criteria` and tick the ones that are met.
+9b. **If `changelog-path` is set in the profile:** every user-facing feature or fix in this
+    story gets an entry there, under `# Features` or `# Fixes` of the **current** version
+    section — appended, never restructuring an earlier one. Short, punchy, a little funny, in
+    `doc-language`; what the user can now do, not how it was built. Tests, refactors and
+    internal changes get no entry, because they change nothing for the user. A story with no
+    user-facing change adds nothing at all — an empty entry is worse than none. When
+    `changelog-path` is `none`, skip this step entirely.
 10. Set `status: done` — for user-facing stories **only** after a passed live smoke or a
     confirmed user acceptance (P2, if enabled); otherwise leave `in-progress` and hand over.
     Then `git mv` the file to `<requirements>/done/` and append a line to
@@ -131,6 +177,11 @@ implementation agents together. Back to `/refine $1`.
 
 ## Rules
 
+- **You orchestrate, you do not read.** Resist opening source files yourself: your context is
+  re-read in full on every turn, so a file you pull in during D2 is still being paid for at
+  the review in step 6. Read the story file, and whatever you need in order to *decide*
+  something — the code itself belongs to the agents you delegate to. Catching yourself reading
+  a file a second time is the signal that you are doing an agent's job.
 - **Do not commit, do not push**, unless the user explicitly asks. `/build` writes
   code + the Done section; the commit is the user's deliberate act, using the prepared
   commit message. (Inside `/sprint` the orchestrator commits — see that command.)

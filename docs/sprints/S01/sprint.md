@@ -1,0 +1,26 @@
+---
+sprint: S01
+status: planned # planned | in-progress | done
+branch: # set by /sprint
+milestone: M1 — Popover at a glance
+---
+
+# Sprint S01 — Popover at a glance
+
+## Goal
+
+The popover answers "which session needs me, and what for" without a click: grouping, model,
+waiting reason, current tool, waiting count and a reachable notification switch are all visible
+at a glance. The registry status field correction lands first as the (cheap) bookkeeping basis
+for the popover's status read.
+
+## Stories (in build order)
+
+- [ ] 001 — Registry status field — record its absence, use it if it returns
+- [ ] 002 — Popover at a glance
+
+## Notes
+
+First sprint of Phase 2 — M1 is deliberately engine-free (renderer + shared presentation only)
+so it can be built in one sitting. 002 carries one open decision (waiting count vs. `attention`)
+to resolve during `/sprint`'s clarification round.

@@ -5,7 +5,7 @@ model: opus
 effort: high
 ---
 
-<!-- ai-scrum:managed 2.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Work out a concept for **$1** — together with the user, by interview.
@@ -32,8 +32,10 @@ rules from `CLAUDE.md`, content of concepts already decided.
      (already implemented, as reference) — at least the project's overall vision document
      and the topically closest ones, which are also your **format reference**. The docs index
      tells you what lives where; the roadmap says what is planned or unprioritised.
-   - For code/system research call `Agent` with `subagent_type: "Explore"` — never grep
-     broadly through the repo yourself. Goal: know what already exists, so your questions are
+   - For code/system research call `Agent` with `subagent_type: "Explore"`,
+     `model: "sonnet"` and `run_in_background: false` — never grep broadly through the repo
+     yourself, and never leave those two parameters unset (unset `model` inherits the session
+     tier, unset `run_in_background` means background, i.e. an answer you never get). Goal: know what already exists, so your questions are
      precise and the concept builds on what is there.
 
 2. **Run the interview (iteratively, in rounds):**
@@ -77,17 +79,34 @@ rules from `CLAUDE.md`, content of concepts already decided.
    ## 1. Vision
    <Why does the system exist, how does it feel — from the interview answers.>
 
-   ## 2. Goals & non-goals
-   <Goals as a list; then "### Non-goals (deliberately out)".>
+   ## 2. Scope
+   <Three lists, in this order — the distinction is the point:>
+
+   ### In scope (v1)
+   <What the first version does.>
+
+   ### Deliberately not in v1
+   <What is wanted but comes later — each with a rationale for the deferral,
+   as a short "> Rationale: …" note under the list.>
+
+   ### Non-goals (permanent)
+   <What this will never do, and why. A permanent no is a decision worth keeping;
+   without this section it gets re-proposed every few months.>
 
    ## 3. Design decisions taken (from the requirements interview)
-   <Table | Topic | Decision | — one row per resolved question. ONLY what the user
-   answered.>
+   <Table | Topic | Decision | Rationale | — one row per resolved question. ONLY
+   what the user answered; the rationale is the user's reason, not yours.>
 
-   ## 4. Core terms & model
+   ## 4. Tech decisions
+   <Only where this concept fixes technology. Table | Area | Choice | Rationale |
+   with one row per area (runtime, language, UI, styling, build, packaging, state,
+   tests, lint). Omit the section entirely when the concept adds nothing to the
+   stack already in CLAUDE.md — an empty table is worse than none.>
+
+   ## 5. Core terms & model
    <Terms, an ASCII flow diagram is welcome.>
 
-   ## 5…n. <Topic sections>
+   ## 6…n. <Topic sections>
    <The mechanics in detail, grouped by topic like the reference concepts.>
 
    ## n+1. Integration with existing systems (architecture notes)
@@ -97,9 +116,15 @@ rules from `CLAUDE.md`, content of concepts already decided.
    <Numbered, checkable requirements (e.g. XYZ-1, XYZ-2, …), grouped by topic.>
 
    ## n+3. Open points
-   <Numbered list of everything unresolved — every question not asked or deliberately
-   deferred lands here.>
+   <Numbered list of everything still unresolved — every question not asked or
+   deliberately deferred lands here.>
    ```
+
+   **Open points get answered inline, not appended.** When the user resolves one during the
+   review loop, write the answer into the section it belongs to, add the row to the decision
+   table, and remove the item from the open-points list. A document where the body says "open"
+   and a list at the end holds the answer has two truths; the list shrinking to nothing is what
+   "this concept is decided" looks like.
 
 4. **Review loop:** show the user the document (short summary + path), ask for corrections
    and work the feedback straight into the file. The command is done only once the user is

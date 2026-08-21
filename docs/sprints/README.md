@@ -15,6 +15,7 @@ sprints/
   _TEMPLATE/sprint.md     template
   SNN/                    running sprint
     sprint.md             planning: goal, story list (build order), status
+    progress.md           live trail: one line per finished deliverable, while the sprint runs
     review.md             result: implemented stories, findings & decisions, blockers
     testplan.md           manual acceptance: use cases with step-by-step instructions
   done/SNN/               finished sprints, moved with `git mv`
@@ -49,6 +50,13 @@ sprints/
 
 The sprint is **resumable**: if the session dies, `/sprint SNN` continues at the
 first open spot based on `sprint.md` + story status.
+
+## Watching a running sprint
+
+A sprint runs for hours and mostly says nothing, so `progress.md` is what you watch: the build
+agent appends a line there after every finished deliverable. If it keeps growing, the sprint is
+working — a slow deliverable and a dead one look identical in the working tree otherwise. Ticked
+`- [x] D…` boxes in the story file are the second signal.
 
 ## Numbering
 

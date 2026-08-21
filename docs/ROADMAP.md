@@ -44,7 +44,7 @@ status read can later be judged at all.
 
 Stories: [001](requirements/001-registry-status-field.md) ·
 [002](requirements/002-popover-at-a-glance.md)
-Sprints: —
+Sprints: [S01](sprints/S01/sprint.md)
 Gaps/notes:
 - 002 carries one open decision: waiting count vs. the existing `attention` count in the header
 

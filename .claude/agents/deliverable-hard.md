@@ -5,7 +5,7 @@ model: opus
 effort: high
 ---
 
-<!-- ai-scrum:managed 2.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 You implement **exactly one** deliverable of a story — one that refine explicitly marked as
@@ -32,5 +32,10 @@ Binding:
 - **Do not commit, do not push.**
 - Never weaken, skip or delete a test to make things pass. If something is red, it is red and
   you say so.
-- Return: a short summary of changed files + anything notable, plus one sentence on how the
-  named risk is covered. Report plan gaps clearly instead of filling them silently.
+- **Run each verify command once.** Green stays green until you change something — re-running
+  a suite "to be sure" on an untouched tree buys nothing and every result you pull in is
+  re-read on each of your remaining turns.
+- Return **at most 10 lines**: the changed files with their paths, the verification result,
+  one sentence on how the named risk is covered, and anything genuinely notable. No diffs, no
+  pasted file contents, no restatement of the deliverable — your caller pays for every line
+  of it on every turn it has left. Report plan gaps clearly instead of filling them silently.

@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Popover at a glance
-status: ready # draft -> ready -> in-progress -> done
+status: in-progress # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
@@ -39,7 +39,7 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 - [ ] The popover header carries a notification quick-switch showing the current mode; changing
       it persists immediately and the main window's Settings tab reflects it without a reload
 - [ ] The popover does not close while that menu is open
-- [ ] `enabled: true` stays the default — only the reachability of the switch is copied from
+- [x] `enabled: true` stays the default — only the reachability of the switch is copied from
       ClaudeSessionTray, not its off-by-default stance (telling you about a finished turn is
       this app's stated purpose)
 - [ ] Rows are grouped by project, sorted so the group explaining the tray badge is on top; a
@@ -51,7 +51,7 @@ Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-c
 - [ ] The waiting dot is findable without reading — it carries a halo, and no other status does
 - [ ] The header shows the waiting count when non-zero, in the waiting colour
 - [ ] Uptime is visible for long-lived sessions without being mistakable for the idle age
-- [ ] Ages under 5 s read "just now" instead of "0s" on every surface
+- [x] Ages under 5 s read "just now" instead of "0s" on every surface
 - [ ] The popover's self-measuring height (`report()`) stays correct with headers present
 
 ## Open Questions
@@ -145,7 +145,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
 
 ## Deliverables
 
-- [ ] D1 — **Layout + self-measure groundwork.** `.popover-row` grid goes to
+- [x] D1 — **Layout + self-measure groundwork.** `.popover-row` grid goes to
       `14px minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,1.2fr) 58px 46px 62px 62px` with the
       ellipsis rules extended to the new cells; `report()`'s `ResizeObserver` observes `head`
       and `foot` in addition to `rows`. Files:
@@ -153,7 +153,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       [popover.tsx](../../src/renderer/popover.tsx#L56-L72).
       *Acceptance:* popover renders unchanged visually, empty new cells collapse, window height
       still matches content on open/close and when the list changes length.
-- [ ] D2 — **Group rows by project.** `groupSessions(state.traySessions)` instead of the flat
+- [x] D2 — **Group rows by project.** `groupSessions(state.traySessions)` instead of the flat
       loop; `.popover-group-head` (project name + `N session(s)`, dim, ~11 px) mirroring the
       wording of `.project-header` in
       [SessionsView.tsx:72-81](../../src/renderer/components/SessionsView.tsx#L72-L81) but sized
@@ -162,7 +162,7 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       [styles.css](../../src/renderer/styles.css).
       *Acceptance:* multi-project state shows headers with the waiting group on top, a
       single-project state shows none, height stays correct in both.
-- [ ] D3 — **`modelDisplayName()` in
+- [x] D3 — **`modelDisplayName()` in
       [presentation.ts](../../src/shared/presentation.ts)** — strip everything up to the last
       `.` (`us.anthropic.…`), split off a trailing `[…]` suffix, drop `claude-`, title-case the
       hyphen-separated words, re-append the suffix upper-cased as ` · 1M`; unknown shapes
@@ -170,44 +170,44 @@ Verify per deliverable: `npm run typecheck`, `npm test`, `npm run build`; final 
       `test/unit/presentation.test.ts` over `claude-opus-5[1m]`, `claude-sonnet-4-5`,
       `us.anthropic.claude-opus-5`, an unknown id, `null`, `''`.
       *Acceptance:* `npm test` green, no throw on any input.
-- [ ] D4 — **Model badge.** New `.model` cell on the popover row (dim pill, `title` = raw id,
+- [x] D4 — **Model badge.** New `.model` cell on the popover row (dim pill, `title` = raw id,
       nothing rendered when the formatter returns `null`), and
       [SessionDetailPane.tsx:76](../../src/renderer/components/SessionDetailPane.tsx#L76) uses
       the formatter with the raw id as `title`, keeping `—`.
       *Acceptance:* a running session shows e.g. `Opus 5 · 1M`; a session without a model shows
       an empty cell, no dash.
-- [ ] D5 — **Waiting reason inline.** For `status === 'waiting'` the `.where` cell renders
+- [x] D5 — **Waiting reason inline.** For `status === 'waiting'` the `.where` cell renders
       `statusReason` in `var(--status-waiting)` instead of `project · branch` (project name is
       already in the group header from D2), ellipsized, full text still on the row `title`.
       Mirror: `SessionRow.cs:166`. File: [popover.tsx](../../src/renderer/popover.tsx#L135-L138),
       [styles.css](../../src/renderer/styles.css).
       *Acceptance:* a long reason ellipsizes and the window width never changes.
-- [ ] D6 — **Tool + subagent marker** in `.status`, copied from
+- [x] D6 — **Tool + subagent marker** in `.status`, copied from
       [SessionsView.tsx:129-137](../../src/renderer/components/SessionsView.tsx#L129-L137)
       (`session.pendingTool.name`, `· subagent` when any `subagents[].status === 'running'`,
       `pendingTool.hint` as tooltip). File: [popover.tsx](../../src/renderer/popover.tsx).
       *Acceptance:* a working session with a tool reads `working · Bash`; without one, just
       `working`.
-- [ ] D7 — **Halo on the waiting dot.** [StatusDot.tsx](../../src/renderer/components/StatusDot.tsx)
+- [x] D7 — **Halo on the waiting dot.** [StatusDot.tsx](../../src/renderer/components/StatusDot.tsx)
       adds a `halo` class for `waiting` only; CSS `box-shadow` derived from `--status-waiting`
       so it cannot drift; check the popover row/list padding does not clip it.
       *Acceptance:* the waiting dot is the only one with a halo, in popover **and** main window.
-- [ ] D8 — **Waiting count in the header** — count of `traySessions` with `status === 'waiting'`
+- [x] D8 — **Waiting count in the header** — count of `traySessions` with `status === 'waiting'`
       rendered in `var(--status-waiting)` when > 0, next to the existing session count, which
       stays as-is when zero; keeps the existing `· N settled` hint. File:
       [popover.tsx:84-95](../../src/renderer/popover.tsx#L84-L95).
       *Acceptance:* header number equals the number of waiting dots below it.
-- [ ] D9 — **Uptime cell** from `startedAt`, only when `now - startedAt >= 1 h`, rendered
+- [x] D9 — **Uptime cell** from `startedAt`, only when `now - startedAt >= 1 h`, rendered
       `↑{formatDuration(...)}` dim with `title="Running for …"`, in its own 46 px column left of
       `.age`. Mirror: `SessionRow.cs:116`. Files:
       [popover.tsx](../../src/renderer/popover.tsx), [styles.css](../../src/renderer/styles.css).
       *Acceptance:* a session younger than an hour shows an empty cell; an older one shows
       `↑3h 12m` clearly distinct from `4m ago`.
-- [ ] D10 — **`just now` under 5 s** in [format.ts](../../src/renderer/lib/format.ts)
+- [x] D10 — **`just now` under 5 s** in [format.ts](../../src/renderer/lib/format.ts)
       `formatAge` (replaces the `< 1 s → 'now'` branch). Mirror: `SessionRow.cs:190`. Boundary
       test (4 999 ms / 5 000 ms) in `test/unit/presentation.test.ts`.
       *Acceptance:* `npm test` green; popover, main list and history all read `just now`.
-- [ ] D11 — **Notification quick-switch in the popover header.** In-renderer dropdown button
+- [x] D11 — **Notification quick-switch in the popover header.** In-renderer dropdown button
       (`notify: all ▾`) next to pin/close: reads `api.getSettings()` and stays in sync via
       `api.onSettingsChanged`; four items (No notifications / When a session needs me / When a
       session is done / Both) mapped onto `notifications.enabled|onDone|onWaiting`; writes via
@@ -250,3 +250,78 @@ and open the tray popover by clicking the tray icon. All steps are done in the p
    `just now`, not `0s ago`; after ~10 s it reads `10s ago`.
 
 ## Done
+
+**Summary.** All 11 deliverables implemented in the renderer/shared layer: the popover row
+grid widened to 8 columns with `report()` observing head+foot (D1); rows grouped by project
+via the shared `groupSessions()` (D2); a new `modelDisplayName()` formatter with a model badge
+on the row and in the detail pane (D3, D4); waiting reason inline in the waiting colour (D5);
+tool + subagent marker in the status cell (D6); a halo on the waiting dot (D7); a waiting count
+in the header (D8); an uptime cell for sessions running ≥ 1 h (D9); `formatAge`'s "just now"
+under 5 s (D10); and an in-renderer notification quick-switch mapping four modes onto the
+existing three settings booleans without touching the `enabled: true` default (D11, hard tier).
+A clean-agent review (story-review-hard) found 11 findings; the four real ones were fixed
+(stale CLI age formatter, duplicated status-sort-rank table, uptime cell font size, missing
+error handling on the settings write) and verified green again.
+
+**Commit message:**
+```
+002: popover at a glance — grouping, model/status/uptime cells, waiting halo, notify quick-switch
+```
+
+**Verification:**
+- `npm run typecheck` — pass
+- `npm test` — 168/168 pass (8 files)
+- `npm run build` — pass
+- Code review (story-review-hard, clean agent): verdict UNCLEAR → 4 confirmed findings fixed
+  (see Decisions below for the remaining 7, deliberately left as documented deviations/
+  accepted risk), then build/test/typecheck re-verified green.
+- **Live smoke: NOT performed.** This story is UI-only (popover layout, colours, halo,
+  ellipsis, an in-renderer dropdown) and `live-smoke-required: true` / `ui-acceptance-required:
+  true` apply. Driving and *visually* judging a popover (halo shape, ellipsis behaviour, dropdown
+  clipping, the menu staying open on blur, cross-window settings sync) is not something this
+  session can do — no browser automation is available for the Electron tray UI, and CLI/log
+  inspection cannot substitute for looking at rendered pixels. Per policy P2 the story is left
+  **`in-progress`**, not `done`; handing over `## Test Plan (manual acceptance)` below (already
+  present, unchanged) for a human to run via `npm run dev`.
+
+**Decisions (implementation-time, beyond the pre-existing Decisions section above):**
+- D2's `groupSessions` sort needs the urgency rank table; `STATUS_SORT_RANK` was not exported
+  from `aggregate.ts`, so it was first duplicated locally in `popover.tsx`, then — after the
+  review flagged the drift risk — `STATUS_SORT_RANK` was exported from `aggregate.ts` and
+  imported directly, removing the duplicate.
+- D9's uptime cell needed a duration formatter; reused/added `formatDuration` in
+  `src/renderer/lib/format.ts` next to `formatAge` rather than introducing a second helper
+  module.
+- D10's "single age formatter... on every surface" decision in the story was incomplete: the
+  CLI (`src/cli/index.ts`) had its own private age formatter untouched by the renderer's
+  `formatAge` change. Extracted a dependency-free CLI-side formatter (`src/cli/format.ts`, kept
+  separate from the renderer's because CLI output conventions differ — no `" ago"` suffix,
+  fixed-width columns) with the same `< 5000ms → "just now"` threshold, plus a boundary test.
+- D11's settings write is now `void api.setSettings(next).catch(console.error)` instead of a
+  bare fire-and-forget call, matching `SettingsView.apply()`'s standard of care without adding
+  rollback UX that the reference pattern doesn't have either.
+- `.uptime`'s font-size was reduced to 11px (matching `.model`) after the review flagged that
+  `↑3h 12m` was likely to ellipsize in the 46px column.
+
+**Deliberately unfixed review findings (documented, not fixed):**
+- Group sort ranks on raw status and does not special-case already-acknowledged ("seen")
+  attention, so a *seen* waiting session's group could in theory outrank a *done*-unseen
+  group that actually colours the tray badge. This mirrors a blind spot already present in the
+  story's own Sprint Decision on group order; left as-is rather than redesigning tray-colour
+  logic that this story does not own.
+- The tool-pending tooltip (`pendingTool.hint`) replaces the status hint entirely instead of
+  keeping both, unlike `SessionsView.tsx`'s two-part tooltip — a cosmetic deviation from "copied
+  from," left as a minor simplification since the popover row has much less room than the main
+  list.
+- Outside-click-to-close listens on `mousedown`, which may not fire reliably over the
+  `-webkit-app-region: drag` header region; low-severity, needs a live check rather than a
+  speculative fix.
+- A single-project state with a waiting row shows neither project nor branch in `.where` (the
+  reason replaces it, per D5's letter) — an edge case the deliverable didn't anticipate; left
+  as specified rather than reintroducing project text that D2's group header is meant to own.
+- `tsconfig.node.json` now includes `src/renderer/lib/**/*.ts` under the DOM-free Node project;
+  harmless while `format.ts` is the only file there, flagged for whoever adds a DOM-touching
+  renderer/lib helper next.
+- `src/core/model/settings.ts` gained two new pure functions for D11's mode mapping, one file
+  beyond D11's stated file list (`popover.tsx`, `styles.css`) — kept because it made the
+  four-mode/three-boolean mapping independently unit-testable rather than buried in JSX.

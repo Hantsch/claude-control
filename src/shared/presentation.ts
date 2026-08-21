@@ -100,3 +100,42 @@ export function clampLabel(text: string, max: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
+
+/**
+ * How a raw model id (`us.anthropic.claude-opus-5`, `claude-opus-5[1m]`, …) reads on the
+ * tray and popover, instead of the API's dotted/bracketed wire form.
+ *
+ * Steps:
+ *  1. Strip everything up to and including the *last* `.` (drops a vendor/region prefix
+ *     such as `us.anthropic.`).
+ *  2. Split off a trailing `[...]` suffix (e.g. `[1m]`), if present.
+ *  3. If what remains doesn't start with `claude-`, the shape is unrecognised — return the
+ *     original input verbatim, unchanged.
+ *  4. Drop the `claude-` prefix, then title-case each hyphen-separated word (digits pass
+ *     through as-is) and join with spaces.
+ *  5. Re-append the bracketed suffix, upper-cased, separated by ` · ` (e.g. ` · 1M`).
+ *
+ * `null` or a blank/whitespace-only string yields `null`. Never throws.
+ */
+export function modelDisplayName(modelId: string | null | undefined): string | null {
+  if (modelId == null) return null;
+  if (modelId.trim() === '') return null;
+
+  const lastDot = modelId.lastIndexOf('.');
+  const afterDot = lastDot >= 0 ? modelId.slice(lastDot + 1) : modelId;
+
+  const suffixMatch = afterDot.match(/^(.*)\[([^\]]*)\]$/);
+  const base = suffixMatch ? (suffixMatch[1] ?? '') : afterDot;
+  const suffix = suffixMatch ? (suffixMatch[2] ?? '') : null;
+
+  if (!base.startsWith('claude-')) return modelId;
+
+  const words = base.slice('claude-'.length).split('-').filter((w) => w.length > 0);
+  if (words.length === 0) return modelId;
+
+  const titled = words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+  return suffix ? `${titled} · ${suffix.toUpperCase()}` : titled;
+}

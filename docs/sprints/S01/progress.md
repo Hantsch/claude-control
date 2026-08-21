@@ -7,3 +7,26 @@
 - 2026-08-21 08:48 · 001 · D4 Provenance visible · started
 - 2026-08-21 08:50 · 001 · D4 Provenance visible · done
 - 2026-08-21 09:02 · 001 · story complete, live smoke passed via CLI, status done, moved to done/ · done
+- 2026-08-21 09:03 · 002 · D1 Layout + self-measure groundwork · started
+- 2026-08-21 09:07 · 002 · D1 Layout + self-measure groundwork · done
+- 2026-08-21 09:07 · 002 · D2 Group rows by project · started
+- 2026-08-21 09:09 · 002 · D2 Group rows by project · done
+- 2026-08-21 09:09 · 002 · D3 modelDisplayName() · started
+- 2026-08-21 09:11 · 002 · D3 modelDisplayName() · done
+- 2026-08-21 09:11 · 002 · D4 Model badge · started
+- 2026-08-21 09:13 · 002 · D4 Model badge · done
+- 2026-08-21 09:13 · 002 · D5 Waiting reason inline · started
+- 2026-08-21 09:15 · 002 · D5 Waiting reason inline · done
+- 2026-08-21 09:15 · 002 · D6 Tool + subagent marker · started
+- 2026-08-21 09:16 · 002 · D6 Tool + subagent marker · done
+- 2026-08-21 09:16 · 002 · D7 Halo on waiting dot · started
+- 2026-08-21 09:16 · 002 · D8 Waiting count in header · started
+- 2026-08-21 09:16 · 002 · D10 just now under 5s · started
+- 2026-08-21 09:19 · 002 · D7 Halo on waiting dot · done
+- 2026-08-21 09:19 · 002 · D8 Waiting count in header · done
+- 2026-08-21 09:19 · 002 · D10 just now under 5s · done
+- 2026-08-21 09:19 · 002 · D9 Uptime cell · started
+- 2026-08-21 09:21 · 002 · D9 Uptime cell · done
+- 2026-08-21 09:21 · 002 · D11 Notification quick-switch · started
+- 2026-08-21 09:26 · 002 · D11 Notification quick-switch · done
+- 2026-08-21 09:40 · 002 · story-review-hard · done (4 findings fixed, live smoke pending)

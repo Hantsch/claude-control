@@ -24,6 +24,7 @@
     "src/main/**/*.ts",
     "src/shared/**/*.ts",
     "src/cli/**/*.ts",
+    "src/renderer/lib/**/*.ts",
     "scripts/**/*.ts",
     "test/**/*.ts",
     "electron.vite.config.ts",

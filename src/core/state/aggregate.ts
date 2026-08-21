@@ -142,7 +142,7 @@ export function groupSessions(sessions: readonly SessionView[]): ProjectGroup[] 
   return groups;
 }
 
-const STATUS_SORT_RANK: Record<SessionStatus, number> = {
+export const STATUS_SORT_RANK: Record<SessionStatus, number> = {
   waiting: 0,
   done: 1,
   stale: 2,

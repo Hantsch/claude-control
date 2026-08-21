@@ -17,7 +17,7 @@ for the popover's status read.
 ## Stories (in build order)
 
 - [x] 001 — Registry status field — record its absence, use it if it returns
-- [ ] 002 — Popover at a glance
+- [x] 002 — Popover at a glance (built, live acceptance pending)
 
 ## Notes
 

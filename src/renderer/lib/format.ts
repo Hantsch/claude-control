@@ -2,7 +2,7 @@
 
 export function formatAge(ms: number | null): string {
   if (ms === null) return '—';
-  if (ms < 1_000) return 'now';
+  if (ms < 5_000) return 'just now';
   const seconds = Math.round(ms / 1_000);
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);

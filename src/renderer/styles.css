@@ -330,6 +330,12 @@ code,
   animation: pulse 1.6s ease-in-out infinite;
 }
 
+/* The waiting dot is the only one that gets a halo — derived from the same
+   --status-waiting variable used for its fill, so the two can never drift apart. */
+.dot.halo {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) 35%, transparent);
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -625,6 +631,9 @@ table.history .title {
 .popover-head {
   display: flex;
   align-items: center;
+  /* Wraps so the notification menu can be a full-width second line of the head — see
+     `.notify-menu`. With nothing open the head is a single line as before. */
+  flex-wrap: wrap;
   gap: 8px;
   padding: 5px 6px 5px 10px;
   border-bottom: 1px solid var(--border);
@@ -673,6 +682,75 @@ table.history .title {
   background: var(--bg-active);
 }
 
+/* Notification quick-switch: same weight as the icon buttons next to it, just wider. */
+.popover-head .notify-button {
+  -webkit-app-region: no-drag;
+  padding: 2px 6px;
+  height: 22px;
+  border-color: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  flex: none;
+}
+
+.popover-head .notify-button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.popover-head .notify-button.on {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--bg-active);
+}
+
+/* A line of the head's own flex box, not an absolutely positioned overlay: the window is
+   exactly as tall as `report()` measures the head, rows and footer to be, so an overhanging
+   menu would be clipped at the window edge. As its own 100 % line it grows the head instead,
+   and the ResizeObserver on the head resizes the window to match. `order` puts it below
+   pin/close even though the button that opens it sits before them in the DOM. */
+.popover-head .notify-menu {
+  -webkit-app-region: no-drag;
+  order: 1;
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.popover-head .notify-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-color: transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: left;
+}
+
+.popover-head .notify-item:hover {
+  color: var(--text);
+}
+
+.popover-head .notify-item.on {
+  color: var(--text);
+}
+
+.popover-head .notify-item .mark {
+  width: 8px;
+  color: var(--accent);
+  font-size: 8px;
+  line-height: 1;
+}
+
 .popover-list {
   flex: 1;
   min-height: 0;
@@ -688,9 +766,34 @@ table.history .title {
   padding: 4px;
 }
 
+/* Mirrors `.project-header`'s wording (project name + "N session(s)"), but dim and sized
+   for the popover — this is a glance surface, not the full sessions list. Suppressed
+   entirely when there is only one project (see popover.tsx). */
+.popover-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 6px 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.popover-group-head:first-child {
+  padding-top: 4px;
+}
+
+.popover-group-head .name {
+  font-weight: 600;
+}
+
+.popover-group-head .count {
+  color: var(--text-faint);
+}
+
 .popover-row {
   display: grid;
-  grid-template-columns: 14px minmax(0, 2.2fr) minmax(0, 1.4fr) 92px 62px 62px;
+  grid-template-columns:
+    14px minmax(0, 2.1fr) minmax(0, 1.5fr) minmax(0, 1.2fr) 58px 46px 62px 62px;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -709,6 +812,8 @@ table.history .title {
 .popover-row .name,
 .popover-row .where,
 .popover-row .status,
+.popover-row .model,
+.popover-row .uptime,
 .popover-row .age {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -716,12 +821,39 @@ table.history .title {
 }
 
 .popover-row .where,
+.popover-row .uptime,
 .popover-row .age {
   color: var(--text-dim);
 }
 
+/* The model badge is a dim pill — present even when empty (D4) so the grid columns
+   after it never shift. */
+.popover-row .model {
+  color: var(--text-dim);
+  background: var(--bg-active);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+  text-align: center;
+  justify-self: start;
+}
+
+.popover-row .model:empty {
+  background: none;
+  padding: 0;
+}
+
+.popover-row .uptime,
 .popover-row .age {
   text-align: right;
+}
+
+/* The uptime column is only 46px wide — at the row's default font size, "↑3h 12m" is
+   likely to ellipsize. Matches the `.model` pill's 11px, plus a touch of negative tracking
+   so an 8-character stamp still fits. */
+.popover-row .uptime {
+  font-size: 11px;
+  letter-spacing: -0.2px;
 }
 
 .popover-footer {

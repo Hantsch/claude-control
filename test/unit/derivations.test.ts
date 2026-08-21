@@ -32,7 +32,9 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_THRESHOLDS,
   SETTINGS_SCHEMA_VERSION,
+  applyNotificationMode,
   mergeSettings,
+  notificationMode,
 } from '../../src/core/model/settings.ts';
 import type { SessionStatus } from '../../src/core/model/status.ts';
 import type { HistoryEntry, SessionView, StatusTransition } from '../../src/core/model/types.ts';
@@ -503,6 +505,51 @@ describe('session store', () => {
     // A session that is live now belongs to the live list, not to history.
     store.putLive([view({ sessionId: 'h1', status: 'working' })], T0);
     expect(store.listHistory().map((entry) => entry.sessionId)).toEqual(['h2']);
+  });
+});
+
+describe('notification modes (the popover quick-switch)', () => {
+  const base = DEFAULT_SETTINGS.notifications;
+
+  it('reads the four modes off the booleans, and a fresh install as "all"', () => {
+    expect(notificationMode(base)).toBe('all');
+    expect(notificationMode({ ...base, enabled: false })).toBe('off');
+    expect(notificationMode({ ...base, onDone: false })).toBe('waiting');
+    expect(notificationMode({ ...base, onWaiting: false })).toBe('done');
+    // Enabled with neither toggle delivers nothing, so it reads as off rather than throwing.
+    expect(notificationMode({ ...base, onDone: false, onWaiting: false })).toBe('off');
+  });
+
+  it('writes each mode back onto the booleans', () => {
+    expect(applyNotificationMode(base, 'waiting')).toMatchObject({
+      enabled: true,
+      onWaiting: true,
+      onDone: false,
+    });
+    expect(applyNotificationMode(base, 'done')).toMatchObject({
+      enabled: true,
+      onWaiting: false,
+      onDone: true,
+    });
+    expect(applyNotificationMode({ ...base, enabled: false }, 'all')).toMatchObject({
+      enabled: true,
+      onWaiting: true,
+      onDone: true,
+    });
+  });
+
+  it('keeps the on/off pair and the cooldown when switched off, and restores it', () => {
+    const picked = applyNotificationMode({ ...base, cooldownMs: 5_000 }, 'done');
+    const off = applyNotificationMode(picked, 'off');
+    expect(off).toEqual({ ...picked, enabled: false });
+    expect(notificationMode(off)).toBe('off');
+    // Switching back on finds the previous pair untouched.
+    expect({ ...off, enabled: true }).toEqual(picked);
+  });
+
+  it('never touches the shipped default', () => {
+    applyNotificationMode(DEFAULT_SETTINGS.notifications, 'off');
+    expect(DEFAULT_SETTINGS.notifications.enabled).toBe(true);
   });
 });
 

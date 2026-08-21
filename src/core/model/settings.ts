@@ -27,6 +27,41 @@ export interface NotificationSettings {
   cooldownMs: number;
 }
 
+/**
+ * The four choices the popover's notification quick-switch offers (§8). A *view* on the
+ * three booleans above, not a new persisted field — so the switch and the Settings tab's
+ * individual checkboxes can never disagree, and nothing about the shipped defaults changes.
+ */
+export type NotificationMode = 'off' | 'waiting' | 'done' | 'all';
+
+/** Which mode the current booleans read as. `enabled` with nothing selected delivers
+ * nothing, so it reads as `off` rather than as an invalid state. */
+export function notificationMode(settings: NotificationSettings): NotificationMode {
+  if (!settings.enabled) return 'off';
+  if (settings.onWaiting && settings.onDone) return 'all';
+  if (settings.onWaiting) return 'waiting';
+  if (settings.onDone) return 'done';
+  return 'off';
+}
+
+/**
+ * The mode written back onto the booleans. `off` touches `enabled` only: the on/off pair
+ * survives, so switching notifications back on restores what was picked before instead of
+ * resetting it. `cooldownMs` is never touched by any mode.
+ */
+export function applyNotificationMode(
+  settings: NotificationSettings,
+  mode: NotificationMode,
+): NotificationSettings {
+  if (mode === 'off') return { ...settings, enabled: false };
+  return {
+    ...settings,
+    enabled: true,
+    onWaiting: mode === 'waiting' || mode === 'all',
+    onDone: mode === 'done' || mode === 'all',
+  };
+}
+
 export interface ReadingSettings {
   /** First tail window (§5.2). */
   tailWindowBytes: number;

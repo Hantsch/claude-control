@@ -5,7 +5,12 @@
 
 import { useState } from 'react';
 import type { FocusResult, SessionRun, SessionView } from '../../shared/ipc.ts';
-import { STATUS_HINT, STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
+import {
+  STATUS_HINT,
+  STATUS_LABEL,
+  modelDisplayName,
+  sessionLabel,
+} from '../../shared/presentation.ts';
 import { api } from '../api.ts';
 import { formatAge, formatDateTime, formatDuration } from '../lib/format.ts';
 import { ContextGauge } from './ContextGauge.tsx';
@@ -82,7 +87,7 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
         <dt>Branch</dt>
         <dd>{session.branch ?? '—'}</dd>
         <dt>Model</dt>
-        <dd>{session.model ?? '—'}</dd>
+        <dd title={session.model ?? undefined}>{modelDisplayName(session.model) ?? '—'}</dd>
         <dt>Started</dt>
         <dd>{formatDateTime(session.startedAt)}</dd>
         <dt>Last activity</dt>

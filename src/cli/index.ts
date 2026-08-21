@@ -17,6 +17,7 @@ import { STATUS_LABEL } from '../core/model/status.ts';
 import type { EngineSnapshot } from '../core/engine.ts';
 import type { SessionView, StatusTransition } from '../core/model/types.ts';
 import { sessionLabel } from '../shared/presentation.ts';
+import { formatAge } from './format.ts';
 
 interface CliOptions {
   watch: boolean;
@@ -241,16 +242,6 @@ function symbol(status: string): string {
 
 function pad(value: string, width: number): string {
   return value.length >= width ? value.slice(0, width) : value.padEnd(width);
-}
-
-function formatAge(ms: number): string {
-  if (ms < 1000) return 'now';
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`;
 }
 
 main().catch((error: unknown) => {

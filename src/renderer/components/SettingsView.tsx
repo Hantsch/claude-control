@@ -5,15 +5,45 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { AppSettings, DiagnosticsInfo, ShortcutStatus } from '../../shared/ipc.ts';
+import type {
+  AppSettings,
+  DiagnosticsInfo,
+  ModelWindowStatus,
+  ShortcutStatus,
+} from '../../shared/ipc.ts';
 import { acceleratorFromChord, formatAccelerator } from '../../shared/accelerator.ts';
 import { api } from '../api.ts';
+
+/** Renders the age of a fetched table for the checkbox's inline result and the diagnostics line. */
+function formatAgeMs(ageMs: number | null): string {
+  if (ageMs === null) return 'just now';
+  const days = Math.floor(ageMs / 86_400_000);
+  if (days >= 1) return `${days} d`;
+  const hours = Math.floor(ageMs / 3_600_000);
+  if (hours >= 1) return `${hours} h`;
+  const minutes = Math.max(1, Math.floor(ageMs / 60_000));
+  return `${minutes} min`;
+}
+
+/** The Diagnostics state line for the opt-in exact-context-window table (story 005, D7). */
+function formatModelWindowsLine(status: ModelWindowStatus): string {
+  if (!status.enabled) return 'off — no network requests';
+  const parts: string[] = [
+    'on',
+    `${status.entryCount} model${status.entryCount === 1 ? '' : 's'}`,
+    status.fetchedAt === null ? 'never fetched' : `fetched ${formatAgeMs(status.ageMs)} ago`,
+  ];
+  parts.push(`last refresh ${status.lastOutcome === 'never' ? 'pending' : status.lastOutcome}`);
+  return parts.join(' · ');
+}
 
 export function SettingsView(): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [shortcutStatus, setShortcutStatus] = useState<ShortcutStatus | null>(null);
   const [saved, setSaved] = useState(false);
+  const [modelWindowsPending, setModelWindowsPending] = useState(false);
+  const [modelWindowsResult, setModelWindowsResult] = useState<string | null>(null);
   /**
    * The data directory is committed on blur or Enter, not on every keystroke: changing it
    * tears down and rebuilds the file watchers, so saving per character would restart them
@@ -39,6 +69,44 @@ export function SettingsView(): React.JSX.Element {
     await api.setSettings(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 1200);
+  };
+
+  const toggleOnlineTable = (checked: boolean): void => {
+    void apply({
+      ...settings,
+      contextWindows: { ...settings.contextWindows, useOnlineTable: checked },
+    });
+    setModelWindowsResult(null);
+    if (!checked) {
+      // No fetch happens with the setting off (D3/D6), but the Diagnostics line still needs to
+      // flip to "off — no network requests" right away rather than keep showing the stale
+      // "on · …" text until something else happens to re-fetch diagnostics. `enabled: false` is
+      // the only field `formatModelWindowsLine` looks at in that case, so flipping it locally
+      // (instead of round-tripping through `api.diagnostics()`, which could race the `apply`
+      // call above) is enough to mirror the ON path's re-fetch-and-update behavior.
+      setDiagnostics((prev) =>
+        prev && prev.modelWindows ? { ...prev, modelWindows: { ...prev.modelWindows, enabled: false } } : prev,
+      );
+      return;
+    }
+    setModelWindowsPending(true);
+    void api
+      .refreshModelWindows()
+      .then((status) => {
+        setModelWindowsPending(false);
+        setDiagnostics((prev) => (prev ? { ...prev, modelWindows: status } : prev));
+        if (!status) {
+          setModelWindowsResult('Refresh did not run.');
+        } else if (status.lastOutcome === 'ok') {
+          setModelWindowsResult(`Fetched ${status.entryCount} models.`);
+        } else {
+          setModelWindowsResult(status.lastError ? `Refresh failed: ${status.lastError}` : 'Refresh failed.');
+        }
+      })
+      .catch((error: unknown) => {
+        setModelWindowsPending(false);
+        setModelWindowsResult(error instanceof Error ? `Refresh failed: ${error.message}` : 'Refresh failed.');
+      });
   };
 
   const setSeconds = (key: 'tWorkMs', seconds: number): void => {
@@ -362,6 +430,24 @@ export function SettingsView(): React.JSX.Element {
         )}
       </div>
 
+      <div className="section-title">Context windows</div>
+      <div className="field">
+        <span>Fetch exact context windows online</span>
+        <input
+          type="checkbox"
+          checked={settings.contextWindows.useOnlineTable}
+          onChange={(event) => toggleOnlineTable(event.target.checked)}
+        />
+        <span className="hint">
+          Downloads LiteLLM&rsquo;s model&rarr;context-window table from a JSON file on GitHub, at
+          most once a week and checked periodically in the background. This is the only network
+          request Claude Control ever makes; off by default, and the gauge keeps using
+          today&rsquo;s estimated window without it.
+        </span>
+        {modelWindowsPending && <span className="hint">Checking…</span>}
+        {!modelWindowsPending && modelWindowsResult && <span className="hint">{modelWindowsResult}</span>}
+      </div>
+
       <div className="row-actions">
         <button type="button" onClick={() => void api.resetSettings().then(setSettings)}>
           Reset to defaults
@@ -390,6 +476,16 @@ export function SettingsView(): React.JSX.Element {
               <dd className="warning">not registered — toast buttons will not work</dd>
             )}
             {diagnostics.protocolTarget.state === 'unsupported' && <dd>n/a — Windows only</dd>}
+            <dt>Exact context windows</dt>
+            <dd
+              className={
+                diagnostics.modelWindows?.enabled && diagnostics.modelWindows.lastOutcome === 'failed'
+                  ? 'warning'
+                  : undefined
+              }
+            >
+              {diagnostics.modelWindows ? formatModelWindowsLine(diagnostics.modelWindows) : 'off — no network requests'}
+            </dd>
             <dt>Version</dt>
             <dd>
               {diagnostics.appVersion} · Electron {diagnostics.electronVersion} · {diagnostics.platform}
@@ -397,7 +493,9 @@ export function SettingsView(): React.JSX.Element {
           </dl>
           <div className="estimate">
             Claude Control is read-only: it never writes to Claude Code&rsquo;s data, never sends
-            input to a session and makes no network requests.
+            input to a session. It has no listening socket, sends no telemetry, and by default
+            sends nothing over the network &mdash; the exact-context-window lookup above is the
+            only exception, making exactly one outbound request while it is turned on.
           </div>
         </>
       )}

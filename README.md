@@ -38,7 +38,9 @@ grouping / context gauge / subagent tree, history with filters, and a portable E
 
 - Send prompts to sessions, approve permissions, or start/kill sessions — it is read-only
 - Track cost in USD (explicitly out of scope for v1)
-- Expose anything over the network — local machine only, no HTTP server, no telemetry
+- Expose anything over the network — no listening socket, no HTTP server, no telemetry, and by
+  default no outbound requests either; the optional exact-context-window lookup (opt-in, off by
+  default) is the one exception, making exactly one outbound request while it is on
 - Support agents other than Claude Code in v1 (the adapter boundary is designed for it)
 
 ## Requirements

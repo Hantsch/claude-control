@@ -8,6 +8,7 @@
 
 import type { ContextPressure } from '../../shared/ipc.ts';
 import { BAND_COLOR_VAR, BAND_LABEL, BAND_SYMBOL } from '../../shared/presentation.ts';
+import { contextGaugeEstimateText } from '../lib/contextProvenance.ts';
 import { formatTokens } from '../lib/format.ts';
 
 export function ContextGauge({ context }: { context: ContextPressure | null }): React.JSX.Element {
@@ -35,12 +36,7 @@ export function ContextGauge({ context }: { context: ContextPressure | null }): 
           {formatTokens(context.used)} / {formatTokens(context.window)}
         </span>
       </div>
-      <div className="estimate">
-        Estimate: input + cache read + cache creation tokens against an assumed window
-        {context.widened
-          ? ' — auto-widened to the 1M tier because observed usage exceeded 200k.'
-          : '. The transcript does not reveal the 1M-context variant.'}
-      </div>
+      <div className="estimate">{contextGaugeEstimateText(context)}</div>
     </div>
   );
 }

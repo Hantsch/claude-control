@@ -48,13 +48,16 @@ export function buildMetricParts(metrics: SubagentMetrics): MetricPart[] {
     });
   }
   if (metrics.context) {
-    const { used, window, band, ratio } = metrics.context;
+    const { used, window, band, ratio, windowSource } = metrics.context;
     parts.push({
       key: 'ctx',
       text: `${BAND_SYMBOL[band]} ctx ${Math.round(ratio * 100)}%`,
       title:
-        `Context when the run finished — estimate: ${formatTokens(used)} of an assumed ` +
-        `${formatTokens(window)} window (${BAND_LABEL[band]})`,
+        windowSource === 'exact'
+          ? `Context when the run finished — exact: ${formatTokens(used)} of the ` +
+            `${formatTokens(window)} window from the fetched model table (${BAND_LABEL[band]})`
+          : `Context when the run finished — estimate: ${formatTokens(used)} of an assumed ` +
+            `${formatTokens(window)} window (${BAND_LABEL[band]})`,
     });
   }
   if (metrics.toolUses !== null) {

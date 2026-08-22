@@ -65,6 +65,12 @@ export interface ContextPressure {
   band: ContextBand;
   /** True when the assumed window was widened because observed usage exceeded it. */
   widened: boolean;
+  /**
+   * Where `window` came from: `'exact'` only when the opt-in model→window table resolved
+   * this model. Auto-widening is a guess layered on a number, so a `widened` estimate is
+   * always `'estimated'`, even when the table had an entry (story 005).
+   */
+  windowSource: 'estimated' | 'exact';
   model: string | null;
 }
 

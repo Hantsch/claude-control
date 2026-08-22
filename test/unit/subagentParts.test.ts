@@ -57,7 +57,15 @@ describe('buildMetricParts', () => {
   it('adds a context part with band symbol, rounded ratio and the estimate in the title', () => {
     const parts = buildMetricParts(
       metrics({
-        context: { used: 180_000, window: 1_000_000, ratio: 0.18, band: 'green', widened: false, model: null },
+        context: {
+          used: 180_000,
+          window: 1_000_000,
+          ratio: 0.18,
+          band: 'green',
+          widened: false,
+          windowSource: 'estimated',
+          model: null,
+        },
       }),
     );
     expect(parts).toEqual([
@@ -66,6 +74,30 @@ describe('buildMetricParts', () => {
         text: '🟢 ctx 18%',
         title:
           'Context when the run finished — estimate: 180k of an assumed 1.00M window (below 60 %)',
+      },
+    ]);
+  });
+
+  it('labels the title exact when windowSource is exact — window from the fetched model table', () => {
+    const parts = buildMetricParts(
+      metrics({
+        context: {
+          used: 180_000,
+          window: 1_000_000,
+          ratio: 0.18,
+          band: 'green',
+          widened: false,
+          windowSource: 'exact',
+          model: null,
+        },
+      }),
+    );
+    expect(parts).toEqual([
+      {
+        key: 'ctx',
+        text: '🟢 ctx 18%',
+        title:
+          'Context when the run finished — exact: 180k of the 1.00M window from the fetched model table (below 60 %)',
       },
     ]);
   });
@@ -119,7 +151,15 @@ describe('buildMetricParts', () => {
       metrics({
         model: 'claude-opus-5',
         totalTokens: 1_000,
-        context: { used: 500, window: 1_000, ratio: 0.5, band: 'yellow', widened: false, model: null },
+        context: {
+          used: 500,
+          window: 1_000,
+          ratio: 0.5,
+          band: 'yellow',
+          widened: false,
+          windowSource: 'estimated',
+          model: null,
+        },
         toolUses: 3,
         linesAdded: 1,
         linesRemoved: 1,

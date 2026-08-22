@@ -5,6 +5,7 @@
  */
 
 import { BrowserWindow, app, clipboard, ipcMain, shell } from 'electron';
+import type { WindowSource } from '../core/context/windowSource.ts';
 import type { ControlEngine } from '../core/engine.ts';
 import type { HistoryQuery, SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type DiagnosticsInfo, type FocusResult } from '../shared/ipc.ts';
@@ -26,6 +27,8 @@ export interface IpcDeps {
   focusSession: (id: SessionId) => Promise<FocusResult>;
   quit: () => void;
   protocolRegistration: ProtocolRegistration;
+  /** Null when no data dir was supplied (story 005, D6) — no fetch is possible, only an estimate. */
+  windowSource: WindowSource | null;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -97,10 +100,18 @@ export function registerIpc(deps: IpcDeps): void {
     focusBackend: deps.focuser.backendName(),
     platform: `${process.platform} ${process.arch}`,
     protocolTarget: deps.protocolRegistration,
+    modelWindows: deps.windowSource?.status() ?? null,
   }));
 
   ipcMain.handle(IPC.quit, () => {
     deps.quit();
+  });
+
+  // The Settings checkbox (D7) awaits this — a forced refresh happens inside the call, so the
+  // toggle's own success/failure is visible immediately rather than on the next background tick.
+  ipcMain.handle(IPC.refreshModelWindows, async () => {
+    if (!deps.windowSource) return null;
+    return deps.windowSource.refresh({ force: true });
   });
 
   // The popover sizes itself to its content, so it can ask for the height it needs (§8).

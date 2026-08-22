@@ -1,7 +1,7 @@
 ---
 sprint: S05
-status: planned # planned | in-progress | done
-branch: # set by /sprint
+status: in-progress # planned | in-progress | done
+branch: sprint/S05
 milestone: M5 — Exact context windows
 ---
 
@@ -18,7 +18,7 @@ taskbar only.
 
 <!-- Order = the order the build phase works through. Dependent stories go last. -->
 
-- [ ] 005 — Exact context windows, and the network promise it costs
+- [x] 005 — Exact context windows, and the network promise it costs (built, live acceptance pending)
 - [ ] 015 — S04 residuals — a total that admits its page, and a test that cannot miss its event
 - [ ] 014 — Tray tile on a light taskbar
 

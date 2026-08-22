@@ -15,6 +15,7 @@ import {
   DEFAULT_CONTEXT_WINDOW,
   WIDE_CONTEXT_WINDOW,
   bandFor,
+  pressureFor,
   usedTokens,
   windowForModel,
 } from '../../src/core/state/contextPressure.ts';
@@ -42,7 +43,7 @@ import {
   notificationMode,
 } from '../../src/core/model/settings.ts';
 import type { SessionStatus } from '../../src/core/model/status.ts';
-import type { HistoryEntry, SessionView, StatusTransition } from '../../src/core/model/types.ts';
+import type { HistoryEntry, SessionView, StatusTransition, UsageTotals } from '../../src/core/model/types.ts';
 import { T0, makeFixtureTree, registryEntry } from '../fixtures/builders.ts';
 
 function view(overrides: Partial<SessionView> & { sessionId: string; status: SessionStatus }): SessionView {
@@ -73,6 +74,11 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     agentVersion: '2.1.222',
     ...overrides,
   };
+}
+
+/** A usage total with everything but `inputTokens` at zero — used ≈ inputTokens. */
+function usage(inputTokens: number): UsageTotals {
+  return { inputTokens, cacheReadTokens: 0, cacheCreationTokens: 0, outputTokens: 0 };
 }
 
 describe('context pressure', () => {
@@ -136,6 +142,63 @@ describe('context pressure', () => {
 
   it('returns null when the tail carried no usage', () => {
     expect(new ContextWindowEstimator().estimate('s1', 'claude-opus-5', null)).toBeNull();
+  });
+
+  it('labels the estimate table as estimated when no exact lookup is wired', () => {
+    const pressure = pressureFor('claude-opus-5', usage(100_000));
+    expect(pressure.window).toBe(DEFAULT_CONTEXT_WINDOW);
+    expect(pressure.windowSource).toBe('estimated');
+    expect(new ContextWindowEstimator().estimate('s1', 'claude-opus-5', usage(100_000))!.windowSource).toBe(
+      'estimated',
+    );
+  });
+
+  it('keeps the estimate when the lookup has no entry for the model', () => {
+    const pressure = pressureFor('claude-opus-5', usage(100_000), false, () => null);
+    expect(pressure.window).toBe(DEFAULT_CONTEXT_WINDOW);
+    expect(pressure.windowSource).toBe('estimated');
+  });
+
+  it('uses the exact window over the estimate table and says so', () => {
+    const estimator = new ContextWindowEstimator(() => 500_000);
+    const pressure = estimator.estimate('s1', 'claude-opus-5', usage(100_000))!;
+    expect(pressure.window).toBe(500_000);
+    expect(pressure.ratio).toBeCloseTo(0.2);
+    expect(pressure.widened).toBe(false);
+    expect(pressure.windowSource).toBe('exact');
+  });
+
+  it('does not widen while the usage still fits the exact window', () => {
+    // 250k exceeds the 200k *estimate* but not the exact 500k, so the old widening is gone.
+    const pressure = new ContextWindowEstimator(() => 500_000).estimate('s1', 'claude-opus-5', usage(250_000))!;
+    expect(pressure.widened).toBe(false);
+    expect(pressure.window).toBe(500_000);
+    expect(pressure.windowSource).toBe('exact');
+  });
+
+  it('reports a widened session as estimated even when an exact window was available', () => {
+    const estimator = new ContextWindowEstimator(() => 500_000);
+    const over = estimator.estimate('s1', 'claude-opus-5', usage(600_000))!;
+    expect(over.widened).toBe(true);
+    expect(over.window).toBe(WIDE_CONTEXT_WINDOW);
+    expect(over.windowSource).toBe('estimated');
+
+    // Sticky: the session stays widened after a compaction, so it stays 'estimated' too —
+    // an auto-widened guess is never re-labelled as the table's exact number.
+    const after = estimator.estimate('s1', 'claude-opus-5', usage(10_000))!;
+    expect(after.widened).toBe(true);
+    expect(after.window).toBe(WIDE_CONTEXT_WINDOW);
+    expect(after.windowSource).toBe('estimated');
+  });
+
+  it('follows the lookup live, so toggling the setting off falls back to the estimate', () => {
+    let exact: number | null = 500_000;
+    const estimator = new ContextWindowEstimator(() => exact);
+    expect(estimator.estimate('s1', 'claude-opus-5', usage(100_000))!.window).toBe(500_000);
+    exact = null; // what WindowSource returns once `setEnabled(false)` was called
+    const off = estimator.estimate('s1', 'claude-opus-5', usage(100_000))!;
+    expect(off.window).toBe(DEFAULT_CONTEXT_WINDOW);
+    expect(off.windowSource).toBe('estimated');
   });
 });
 
@@ -1052,5 +1115,22 @@ describe('settings migration', () => {
     });
     expect(merged.ui.autostart).toBe(DEFAULT_SETTINGS.ui.autostart);
     expect(merged.ui.globalShortcut).toBe(DEFAULT_SETTINGS.ui.globalShortcut);
+  });
+});
+
+describe('contextWindows setting (005)', () => {
+  it('defaults useOnlineTable to false, so an empty file never triggers a fetch', () => {
+    const merged = mergeSettings({});
+    expect(merged.contextWindows.useOnlineTable).toBe(false);
+  });
+
+  it('round-trips an explicit true', () => {
+    const merged = mergeSettings({ contextWindows: { useOnlineTable: true } });
+    expect(merged.contextWindows.useOnlineTable).toBe(true);
+  });
+
+  it('falls back to false when the persisted value is garbage', () => {
+    const merged = mergeSettings({ contextWindows: { useOnlineTable: 'yes' } });
+    expect(merged.contextWindows.useOnlineTable).toBe(false);
   });
 });

@@ -11,13 +11,48 @@
  *   npm run cli -- --json    machine-readable output
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createEngine } from '../core/createEngine.ts';
 import { DEFAULT_SETTINGS, mergeSettings } from '../core/model/settings.ts';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import type { EngineSnapshot } from '../core/engine.ts';
 import type { SessionView, StatusTransition } from '../core/model/types.ts';
 import { sessionLabel } from '../shared/presentation.ts';
-import { formatAge } from './format.ts';
+import { engineDataDir, formatAge, formatContextColumn } from './format.ts';
+
+/**
+ * Same `%APPDATA%` file the app persists Settings to (`src/main/settings.ts`), resolved
+ * independently here since the CLI is a separate entry point with no Electron `userData`
+ * to ask. Packaged builds use the `productName` from `electron-builder.yml` ("Claude
+ * Control"); a dev checkout that has never been packaged uses the app name folder Electron
+ * would otherwise fall back to ("claude-control"). `CLAUDE_CONTROL_DATA_DIR` overrides both,
+ * mainly for tests. Whichever directory is picked also doubles as the `WindowSource` cache
+ * dir (D3), so a table already fetched by the app is what the CLI reads too.
+ */
+function resolveDataDir(): string {
+  const override = process.env.CLAUDE_CONTROL_DATA_DIR;
+  if (override && override.trim()) return override;
+  const appData = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+  const packaged = join(appData, 'Claude Control');
+  const dev = join(appData, 'claude-control');
+  if (existsSync(join(packaged, 'settings.json'))) return packaged;
+  if (existsSync(join(dev, 'settings.json'))) return dev;
+  return packaged;
+}
+
+/** A missing or unreadable `settings.json` is simply "use the defaults" — never a hard error. */
+function readContextWindowsSetting(dataDir: string): boolean {
+  try {
+    const file = join(dataDir, 'settings.json');
+    if (!existsSync(file)) return DEFAULT_SETTINGS.contextWindows.useOnlineTable;
+    const persisted = mergeSettings(JSON.parse(readFileSync(file, 'utf8')) as unknown);
+    return persisted.contextWindows.useOnlineTable;
+  } catch {
+    return DEFAULT_SETTINGS.contextWindows.useOnlineTable;
+  }
+}
 
 interface CliOptions {
   watch: boolean;
@@ -64,20 +99,29 @@ function printUsage(): void {
       '  -v, --verbose        include derivation reasons and read diagnostics',
       '  -h, --help           this text',
       '',
+      'Reads the persisted Settings file for the "Exact context windows" toggle (off by',
+      'default; the ctx= column marks ~ estimated vs = exact). Set CLAUDE_CONTROL_DATA_DIR',
+      'to override where that settings.json (and its model-window cache) is read from.',
+      '',
     ].join('\n'),
   );
 }
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  const dataDir = resolveDataDir();
+  // No flag exists yet for this setting, so the persisted value always applies as the
+  // fallback/default (story 005 Decisions: explicit flags win, this is not one).
+  const useOnlineTable = readContextWindowsSetting(dataDir);
   const settings = mergeSettings({
     ...DEFAULT_SETTINGS,
     claudeDir: options.claudeDir,
     indexHistoryOnStart: options.history,
+    contextWindows: { useOnlineTable },
   });
 
   const started = Date.now();
-  const { engine, paths } = createEngine({ settings });
+  const { engine, paths } = createEngine({ settings, dataDir: engineDataDir(useOnlineTable, dataDir) });
 
   engine.on('error', (error) => {
     process.stderr.write(`[error] ${error.message}\n`);
@@ -144,6 +188,8 @@ function printSnapshot(
     return;
   }
 
+  process.stdout.write('ctx legend: ~ estimated window · = exact window (fetched table)\n\n');
+
   for (const group of snapshot.groups) {
     process.stdout.write(`${group.project.name}  (${group.project.path})\n`);
     for (const branch of group.branches) {
@@ -158,15 +204,13 @@ function printSnapshot(
 
 function printSession(session: SessionView, options: CliOptions): void {
   const age = session.lastActivityAt ? formatAge(Date.now() - session.lastActivityAt) : '—';
-  const context = session.context
-    ? `${Math.round(session.context.ratio * 100)}%${session.context.widened ? '*' : ''}`
-    : '—';
+  const context = formatContextColumn(session.context);
   const tool = session.pendingTool ? ` tool=${session.pendingTool.name}` : '';
   const subagents = session.subagents.length > 0 ? ` agents=${session.subagents.length}` : '';
 
   process.stdout.write(
     `    ${symbol(session.status)} ${pad(sessionLabel(session), 32)} ${pad(STATUS_LABEL[session.status], 16)} ` +
-      `${pad(age, 8)} ctx=${pad(context, 6)} ${session.model ?? '—'}${tool}${subagents}\n`,
+      `${pad(age, 8)} ctx=${pad(context, 7)} ${session.model ?? '—'}${tool}${subagents}\n`,
   );
   if (options.verbose) {
     const source =

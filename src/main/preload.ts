@@ -9,6 +9,7 @@ import {
   type AppSettings,
   type AppState,
   type HistoryQuery,
+  type ModelWindowStatus,
   type RendererApi,
   type ShortcutStatus,
 } from '../shared/ipc.ts';
@@ -46,6 +47,8 @@ const api: RendererApi & {
   closePopover: () => ipcRenderer.invoke(IPC.closePopover) as Promise<void>,
   diagnostics: () => ipcRenderer.invoke(IPC.diagnostics),
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,
+  refreshModelWindows: () =>
+    ipcRenderer.invoke(IPC.refreshModelWindows) as Promise<ModelWindowStatus | null>,
   onStateChanged: (listener) => subscribe(IPC.stateChanged, listener as (payload: never) => void),
   onHistoryChanged: (listener) => subscribe(IPC.historyChanged, listener as (payload: never) => void),
   onSettingsChanged: (listener) => subscribe(IPC.settingsChanged, listener as (payload: never) => void),

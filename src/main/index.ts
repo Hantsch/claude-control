@@ -12,6 +12,7 @@
 
 import { app, dialog, globalShortcut } from 'electron';
 import { join } from 'node:path';
+import { REFRESH_CADENCE_MS } from '../core/context/windowSource.ts';
 import { createEngine } from '../core/createEngine.ts';
 import type { SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type FocusResult } from '../shared/ipc.ts';
@@ -44,7 +45,8 @@ async function bootstrap(): Promise<void> {
   // Required on Windows for toasts to be attributed to this app (F5).
   app.setAppUserModelId('solutions.aidu.claude-control');
   const protocolRegistration = registerToastProtocol();
-  // The app has no network features at all (N1).
+  // No outbound requests by default (N1) — the opt-in exact-context-window lookup is the sole
+  // exception, so there is nothing here for Electron's HTTP cache to usefully retain.
   app.commandLine.appendSwitch('disable-http-cache');
 
   await app.whenReady();
@@ -61,9 +63,13 @@ async function bootstrap(): Promise<void> {
   // separate timer is needed.
   const windowProbe = createWindowProbe();
 
-  const { engine, adapter, paths } = createEngine({
+  const { engine, adapter, paths, windowSource } = createEngine({
     settings: settings.get(),
     hasTerminalWindow: (pid) => windowProbe.get(pid),
+    // Electron's per-user data dir — the same root `SettingsStore` already writes under, so
+    // the cache file (`model-windows.json`) lives next to `settings.json` rather than
+    // introducing a second location.
+    dataDir: app.getPath('userData'),
   });
 
   const windows = new WindowManager({
@@ -140,7 +146,22 @@ async function bootstrap(): Promise<void> {
     focusSession,
     quit,
     protocolRegistration,
+    windowSource,
   });
+
+  // Opt-in exact-context-window refresh (story 005, D6). `refresh()` is a no-op while the
+  // setting is off (checked inside `WindowSource`, not here) and never throws, so firing it
+  // without awaiting cannot block or crash startup (AC2). The interval mirrors the class's own
+  // cadence — ticking more often would be wasted work, since `refresh()` itself will no-op
+  // until the due-check window has passed.
+  if (windowSource) {
+    void windowSource.refresh();
+    const windowRefreshTimer = setInterval(() => {
+      void windowSource.refresh();
+    }, REFRESH_CADENCE_MS);
+    windowRefreshTimer.unref?.();
+    app.on('before-quit', () => clearInterval(windowRefreshTimer));
+  }
 
   // Live tier first (N5), tray immediately afterwards.
   await engine.start();

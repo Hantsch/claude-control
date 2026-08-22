@@ -7,6 +7,10 @@
  *    IPC; the preload is the entire surface.
  *  - **N1: no network.** No HTTP server, no client, no socket, anywhere.
  *  - **N2: nothing under `core/` opens a file for writing.**
+ *
+ * Story 005 renegotiated N1 and N2 for exactly ONE file — the opt-in model-window source.
+ * The exception is a single named path, not a directory, and it is paid for by the extra
+ * rule at the bottom of this file, which pins what that one file may do.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -46,6 +50,16 @@ const NODE_BUILTINS = 'node:[a-z_]+|fs|fs/promises|path|os|child_process|crypto|
 const NETWORK_MODULES =
   'node:(?:http|https|http2|net|dgram|tls)|http|https|http2|net|dgram|tls|axios|undici|node-fetch|ws|socket\\.io|socket\\.io-client';
 
+/**
+ * The single file story 005 allowlisted out of N1 (`fetch(`) and N2 (the cache write).
+ * A path, not a prefix: `core/context/` as a whole stays under both rules.
+ */
+const WINDOW_SOURCE = join('core', 'context', 'windowSource.ts');
+
+/** N1's inline forms, split so the allowlist can forgive `fetch(` and nothing else. */
+const INLINE_FETCH = /\bfetch\s*\(/;
+const INLINE_OTHER_NETWORK = /\bnew\s+WebSocket\b|\bnew\s+EventSource\b|\bXMLHttpRequest\b|sendBeacon\s*\(/;
+
 describe('architecture boundaries', () => {
   it('core/ never imports Electron, in any import form', async () => {
     const rule = importsAny(ELECTRON, { subpaths: true });
@@ -64,6 +78,8 @@ describe('architecture boundaries', () => {
     const writeHandle = /\bopen\s*\([^)]*['"](?:w\+?|a\+?|r\+)['"]|\b(?:handle|file|stream|fd)\.write\s*\(/i;
     const offenders: string[] = [];
     for (const file of await sourceFiles(join(SRC, 'core'))) {
+      // The one allowlisted writer (005 D3) — pinned by its own rule below.
+      if (relative(SRC, file) === WINDOW_SOURCE) continue;
       const body = await code(file);
       if (write.test(body) || writeHandle.test(body)) offenders.push(relative(SRC, file));
     }
@@ -84,13 +100,46 @@ describe('architecture boundaries', () => {
 
   it('nothing anywhere opens a network connection or a listening socket (N1)', async () => {
     const rule = importsAny(NETWORK_MODULES);
-    const inlineNetwork = /\bnew\s+WebSocket\b|\bnew\s+EventSource\b|\bfetch\s*\(|\bXMLHttpRequest\b|sendBeacon\s*\(/;
     const offenders: string[] = [];
     for (const file of await sourceFiles(SRC)) {
+      const rel = relative(SRC, file);
       const body = await code(file);
-      if (rule.test(body) || inlineNetwork.test(body)) offenders.push(relative(SRC, file));
+      // Only `fetch(`, and only in the one allowlisted file (005 D3); every other inline
+      // form, and every network module import, still applies to it too.
+      const inline = INLINE_OTHER_NETWORK.test(body) || (INLINE_FETCH.test(body) && rel !== WINDOW_SOURCE);
+      if (rule.test(body) || inline) offenders.push(rel);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('the one allowlisted network+writing module stays inside its exception (005 D3)', async () => {
+    const body = await code(join(SRC, WINDOW_SOURCE));
+
+    // 1. The global `fetch` and nothing else: no network module in any import form, and
+    //    exactly one call site, against the one URL the story named.
+    expect(importsAny(NETWORK_MODULES).test(body)).toBe(false);
+    expect(INLINE_FETCH.test(body)).toBe(true);
+    expect(body.match(/\bfetch\s*\(/g) ?? []).toHaveLength(1);
+    expect(body).toMatch(/fetch\(MODEL_WINDOWS_URL,/);
+    expect(body).toMatch(
+      /MODEL_WINDOWS_URL =\s*'https:\/\/raw\.githubusercontent\.com\/BerriAI\/litellm\/main\/model_prices_and_context_window\.json'/,
+    );
+    // And it cannot hang: the request is bounded by an abort.
+    expect(body).toMatch(/new AbortController\(\)/);
+    expect(body).toMatch(/signal: controller\.signal/);
+
+    // 2. It writes exactly one path, and that path is rooted in the caller-supplied data
+    //    dir. No Claude-Code-owned location is even nameable here — read-only stays absolute.
+    expect(body).not.toMatch(/claudeDir|claudeHome|claudeRoot|\.claude\b/i);
+    expect(body).toMatch(/this\.file = join\(dataDir, MODEL_WINDOWS_FILE\)/);
+    expect(body.match(/writeFileSync\s*\(/g) ?? []).toHaveLength(1);
+    expect(body.match(/renameSync\s*\(/g) ?? []).toHaveLength(1);
+    expect(body.match(/mkdirSync\s*\(/g) ?? []).toHaveLength(1);
+    expect(body).toMatch(/writeFileSync\(temp,/);
+    expect(body).toMatch(/renameSync\(temp, this\.file\)/);
+    expect(body).toMatch(/mkdirSync\(dirname\(this\.file\)/);
+    // No other filesystem verb: no delete, no chmod, no second file.
+    expect(body).not.toMatch(/\b(rm|rmdir|unlink|chmod|chown|symlink|copyFile|appendFileSync|createWriteStream)\s*\(/);
   });
 
   it('every renderer window is locked down (contextIsolation, no nodeIntegration)', async () => {

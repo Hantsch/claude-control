@@ -36,6 +36,7 @@ import {
   trayStateFor,
   type ProjectGroup,
 } from './state/aggregate.ts';
+import type { WindowSource } from './context/windowSource.ts';
 import { ContextWindowEstimator } from './state/contextPressure.ts';
 import { deriveStatus } from './state/machine.ts';
 import { InMemorySessionStore, type SessionRepository } from './store/sessionStore.ts';
@@ -88,6 +89,12 @@ export interface ControlEngineOptions {
    * never be treated as "no window": a slow/failed/absent probe can never hide a real session.
    */
   hasTerminalWindow?: (pid: number) => boolean | undefined;
+  /**
+   * The opt-in model→context-window table (story 005). Absent means "estimate table only",
+   * which is also what an present-but-disabled source resolves to, so the estimate path is
+   * unaffected either way. The engine owns following the setting; see `updateSettings`.
+   */
+  windowSource?: WindowSource;
 }
 
 interface CachedSnapshot {
@@ -101,7 +108,8 @@ export class ControlEngine {
   private readonly emitter = new EventEmitter();
   private readonly adapter: AgentAdapter;
   private readonly store: SessionRepository;
-  private readonly context = new ContextWindowEstimator();
+  private readonly context: ContextWindowEstimator;
+  private readonly windowSource: WindowSource | null;
   private readonly now: () => number;
   private readonly hasTerminalWindow?: (pid: number) => boolean | undefined;
   private settings: AppSettings;
@@ -131,6 +139,12 @@ export class ControlEngine {
     this.store = options.store ?? new InMemorySessionStore();
     this.now = options.now ?? (() => Date.now());
     this.hasTerminalWindow = options.hasTerminalWindow;
+    // The setting is the single source of truth for whether the table may be consulted; the
+    // lookup itself stays a live closure, so a later toggle needs no new estimator.
+    this.windowSource = options.windowSource ?? null;
+    const source = this.windowSource;
+    if (source) source.setEnabled(options.settings.contextWindows.useOnlineTable);
+    this.context = new ContextWindowEstimator(source ? (model) => source.lookupWindow(model) : null);
     if (options.createWatcher) this.createWatcher = options.createWatcher;
   }
 
@@ -312,8 +326,13 @@ export class ControlEngine {
       settings.reading.debounceMs !== this.settings.reading.debounceMs ||
       settings.claudeDir !== this.settings.claudeDir;
     const tickChanged = settings.reading.tickIntervalMs !== this.settings.reading.tickIntervalMs;
+    const onlineTableChanged =
+      settings.contextWindows.useOnlineTable !== this.settings.contextWindows.useOnlineTable;
     this.settings = settings;
 
+    // Turning it off makes every lookup null again, so the refresh below re-derives every
+    // session back onto the estimate table — no exact number survives the toggle.
+    if (onlineTableChanged) this.windowSource?.setEnabled(settings.contextWindows.useOnlineTable);
     if (tickChanged) this.startTick();
     if (watchRelevant && this.watcher) {
       await this.watcher.stop();

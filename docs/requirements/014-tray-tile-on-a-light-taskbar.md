@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Tray tile on a light taskbar
-status: draft # draft -> ready -> in-progress -> done
+status: ready # draft -> ready -> in-progress -> done
 created: 2026-08-22
 ---
 
@@ -43,19 +43,134 @@ runs changes the tile without a restart.
 
 ## Open Questions
 
-- **A second art set, or a treatment of the existing one?** A full light-taskbar master set is
-  the better-looking answer and the more expensive one (it needs image-gen art the user has to
-  approve); a programmatic treatment of the shipped tiles (outline, darkened rim, inverted
-  ground) is cheap, reproducible and probably good enough. Which is wanted — and if art, is
-  generating it part of this story or a hand-off?
-- **Which signal decides "light taskbar"?** Windows has two independent theme settings: app mode
-  and Windows (taskbar) mode. `nativeTheme.shouldUseDarkColors` reflects the *app* mode, so a
-  user with light apps and a dark taskbar would get the light tile on a dark bar — exactly
-  backwards. Do we accept that (it is what the badge rim already does), or read the taskbar's
-  own setting (`SystemUsesLightTheme` in the registry) and accept a Windows-specific read?
-- **Is the toast logo and window icon in scope?** `assets/icons/app-<status>.png` and `app.png`
-  are drawn from the same masters and appear on light surfaces too. Tray only, or the whole set?
-- **How is this accepted?** Contrast on a generated PNG cannot be asserted the way
-  `test/unit/theme.test.ts` asserts CSS tokens against WCAG — or can it (sample the tile's
-  pixels against the two known taskbar greys)? A test that measures beats a screenshot someone
-  once looked at.
+- ~~**A second art set, or a treatment of the existing one?**~~ answered → Decisions (Sprint)
+- ~~**Which signal decides "light taskbar"?**~~ answered → Decisions (Sprint)
+- ~~**Is the toast logo and window icon in scope?**~~ answered → Decisions (Sprint)
+- ~~**How is this accepted?**~~ answered → Decisions (Sprint)
+
+_(No open questions — everything above is decided below.)_
+
+## Decisions (Sprint)
+
+- **(User)** Programmatic treatment of the existing tiles (outline / darkened rim / inverted
+  ground) in `scripts/build-icons.py`, not a second image-gen master set — cheap, reproducible,
+  no human-approval round-trip.
+- **(User)** Keep `nativeTheme.shouldUseDarkColors` (app mode) as the signal, consistent with
+  what the badge rim already does; the light-app/dark-taskbar mismatch edge case is accepted, no
+  Windows-specific `SystemUsesLightTheme` registry read.
+- **(User)** Scope is tray icons only — `assets/icons/app-<status>.png` and `app.png` (toast,
+  window icon) are not touched by this story.
+- **(User)** Acceptance is a pixel-sampling test: sample the generated tile's pixels against the
+  two known taskbar greys and assert contrast, the same spirit as
+  `test/unit/theme.test.ts`'s WCAG assertions on CSS tokens.
+- **The treatment is inverted ground + darkened rim, not outline-only.** The shipped tile is a
+  full-bleed, opaque near-black slab (measured: ground luminance ~24/255 out to the rounded
+  edge), so an outline changes nothing about the black block a light-desktop user sees; only
+  inverting the ground makes it read as a light-desktop icon, and the rim then gives back the
+  edge a light ground loses against a light taskbar.
+- **The marks (ring + glyph) are retargeted to the app's light-scheme status colours**
+  (`--status-*` in the `prefers-color-scheme: light` block of `src/renderer/styles.css`:
+  waiting `#a04c00`, done `#157f3c`, working `#1b5fc9`, stale `#8f7c5f`), hardcoded in
+  `build-icons.py` with a pointer comment — same precedent as the existing `DERIVED` target, and
+  it is what keeps AC 4 true (a state's tile colour is the colour its popover row already has).
+- **Second output folder `assets/icons/tray-light/<px>/<state>.png`**, the dark set stays at
+  `tray/` and byte-identical — makes AC 2 checkable by inspection and keeps the runtime change to
+  one path segment.
+- **Runtime falls back to the dark tile when a light tile is missing**, not to
+  `renderFallbackTile` — a half-deployed asset set should degrade to today's picture, not to the
+  code-drawn placeholder.
+- **The badge rim keeps 007's rule (near-white in light theme).** On the inverted tile the
+  near-white rim is exactly the gap that separates the red badge disc from the ring beneath it,
+  so AC 5 needs a test, not a code change.
+- **`renderFallbackTile` gets light state colours instead of a "dark-only" note.** It draws onto
+  a transparent bitmap, so its strokes sit directly on the taskbar — a `LIGHT_STATE_COLORS`
+  mirror of the styles.css light tokens is ~10 lines and cheaper than documenting a known defect.
+- **The contrast bar is parity with the dark set** (>= what the dark tile reaches on `#202020`)
+  plus an absolute 3:1 floor, and distinguishability is the OKLab worst-pair comparison — the
+  same "dark ships and is accepted, so light must not be worse" logic `theme.test.ts` uses.
+- **Taskbar greys are pinned as `#f3f3f3` (Win11 light) / `#202020` (Win11 dark)** in the test,
+  with a comment — two named constants beat a per-run probe of an OS colour the tests cannot see.
+- **PNG decoding in the test is a ~60-line zlib reader** (`test/unit/png.ts`), no new dependency:
+  every shipped tile is 8-bit RGBA, non-interlaced (verified), and the reader asserts that.
+
+## Plan
+
+1. **`scripts/build-icons.py` — light treatment (D1).** After the existing dark set is written
+   (including the derived `stale`), run every dark tile through a new `light_tile()`:
+   - neutral pixels (`s < NEUTRAL_SATURATION`, i.e. ground and glow-on-ground) get their value
+     inverted onto a light ground, keeping their relative structure;
+   - saturated pixels (ring, glyph) are moved onto the state's light-scheme hue/saturation with
+     the existing `recolor_ring` machinery, and dimmed so they hold on the light ground;
+   - the alpha silhouette's outer ~1px (scaled per size) is darkened into a rim.
+   Write to `assets/icons/tray-light/<size>/<state>.png`. The dark branch is untouched.
+2. **`src/main/icon-assets.ts` — folder per theme (D2).** `buildTrayImage` takes the theme (the
+   cache key in `trayImage` already carries it), reads `tray-light` when
+   `!nativeTheme.shouldUseDarkColors`, falls back to `tray` and only then to the code tile.
+   `tray.ts` already invalidates on `nativeTheme.on('updated')` — verify, don't rebuild.
+   Same commit: the icon paragraph in `docs/IMPLEMENTATION.md` (l. 94-110) names the two sets.
+3. **`test/unit/trayTileContrast.test.ts` + `test/unit/png.ts` (D3).** Decode the shipped tiles,
+   sample them, assert legibility / parity / distinguishability / badge legibility.
+4. **`src/main/tray-icons.ts` — fallback tile (D4).** `LIGHT_STATE_COLORS` + a `dark` parameter
+   on `renderFallbackTile`, threaded from `buildTrayImage`.
+
+Order: D1 → D3 (the test needs the tiles); D2 and D4 are independent of D3.
+
+## Deliverables
+
+- **D1 — Light tile set out of `npm run icons`.**
+  `scripts/build-icons.py` only; writes `assets/icons/tray-light/<16|20|24|32|40|48>/<none |
+  working | waiting | done | stale | mixed>.png` (36 new PNGs, committed).
+  *Mirror:* `recolor_ring()` in the same file — same HSV/radius vocabulary, same module-level
+  tunables with a one-line reason each.
+  *Acceptance:* `npm run icons` writes both sets; `git status` shows **no** change under
+  `assets/icons/tray/`, `app.png`, `app.ico`, `app-*.png`; `tray-light/*/stale.png` is still
+  derived from `waiting` (no new art input); every light tile is a light ground carrying a
+  visibly darker, hue-correct mark.
+- **D2 — The runtime picks the set by theme.**
+  `src/main/icon-assets.ts` (+ the icon paragraph in `docs/IMPLEMENTATION.md`); read `tray.ts`
+  and `tray-icons.ts` for context but expect no change there.
+  *Acceptance:* light theme loads `tray-light`, dark theme loads `tray`, a missing light file
+  falls back to the dark tile (not to `renderFallbackTile`); a unit test in the style of
+  `test/unit/tray-icons.test.ts` covers the three cases; `npm run build` + `npm test` green.
+- **D3 — Pixel-sampling contrast test.**
+  `test/unit/png.ts` (new; 8-bit RGBA non-interlaced decoder on `node:zlib`, asserts the format)
+  and `test/unit/trayTileContrast.test.ts` (new).
+  *Mirror:* `test/unit/theme.test.ts` — reuse its `linear` / `luminance` / `contrast` / `oklab` /
+  `distance` / `worstPair` shape and its "dark is the threshold" argument.
+  *Acceptance, over all six sizes x six states:*
+  (a) both sets exist and decode; (b) every light tile's mark reaches >= 3:1 against `#f3f3f3`
+  **and** >= what the same dark tile reaches against `#202020`; (c) the light set's OKLab
+  worst-pair gap (mean of the saturated pixels per state) >= the dark set's; (d) each state's
+  light mark hue is within a stated tolerance of its `--status-*` light token; (e) after
+  `paintBadge(..., dark=false)` on a light tile, badge disc vs rim and digit vs disc both clear
+  3:1 at every size.
+- **D4 — The code-drawn fallback survives a light taskbar.**
+  `src/main/tray-icons.ts` (`LIGHT_STATE_COLORS`, `renderFallbackTile(icon, size, dark)`, the
+  `waiting` notch colour) and the call site in `src/main/icon-assets.ts`.
+  *Acceptance:* `renderFallbackTile` with `dark=false` uses the light tokens; the unit test in
+  `test/unit/tray-icons.test.ts` gains the flipped case; contrast of each fallback colour against
+  `#f3f3f3` >= 3:1 (asserted in D3's file).
+
+## Model Hints
+
+- **D1 → `deliverable-hard`** — pixel maths over generated art with two silent-failure modes: a
+  treatment that also touches the dark branch (AC 2 regression, invisible in a green test run)
+  and a hue/value shift that collapses `waiting` into `stale` or breaks the derived `stale`.
+- D2, D3, D4 → default tier.
+- **Review: → default** — the diff is one script, two small main-process files and one test; the
+  correctness claim sits in D3's assertions, which the review can read.
+
+## Test Plan (manual acceptance)
+
+The tray tile *is* the UI here, so acceptance runs through the real tray (P1), not a console dump.
+
+1. `npm run icons`, then `git status` — only `assets/icons/tray-light/**` is new or changed.
+2. Windows → Settings → Personalization → Colors → **Light**. Start `npm run dev`.
+3. Look at the tray tile: light ground, visible edge against the taskbar, the mark clearly
+   readable. Drive the six states (start a session, let it finish, leave one waiting, use the
+   CLI fixtures) and confirm each of the six is distinguishable at a glance.
+4. Trigger a badge (an unacknowledged `waiting` / `done`) and confirm the red disc and its digit
+   stay readable on the light tile.
+5. Switch Windows to **Dark** with the app still running: the tile flips back to today's dark art
+   without a restart, and back again on the next switch.
+6. Repeat step 3 at 150 % display scaling (24 px tile) and at 100 % (16 px).

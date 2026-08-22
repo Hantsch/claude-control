@@ -1,0 +1,17 @@
+- 2026-08-22 14:48 · 005 · D1 The reworded promise and the switch itself · started
+- 2026-08-22 14:50 · 005 · D1 The reworded promise and the switch itself · done
+- 2026-08-22 14:50 · 005 · D2 Pure model→window table · started
+- 2026-08-22 14:51 · 005 · D2 Pure model→window table · done
+- 2026-08-22 14:51 · 005 · D3 Fetch + APPDATA cache · started
+- 2026-08-22 15:00 · 005 · D3 Fetch + APPDATA cache · done
+- 2026-08-22 15:00 · 005 · D4 Consumption in core · started
+- 2026-08-22 15:04 · 005 · D4 Consumption in core · done
+- 2026-08-22 15:04 · 005 · D5 Renderer provenance labelling · started
+- 2026-08-22 15:04 · 005 · D6 Main wiring + IPC surface · started
+- 2026-08-22 15:04 · 005 · D8 CLI honours the setting · started
+- 2026-08-22 15:09 · 005 · D5 Renderer provenance labelling · done
+- 2026-08-22 15:09 · 005 · D6 Main wiring + IPC surface · done
+- 2026-08-22 15:09 · 005 · D8 CLI honours the setting · done
+- 2026-08-22 15:09 · 005 · D7 Settings UI switch + Diagnostics state line · started
+- 2026-08-22 15:11 · 005 · D7 Settings UI switch + Diagnostics state line · done
+- 2026-08-22 15:23 · 005 · review + fixes + Done section · done

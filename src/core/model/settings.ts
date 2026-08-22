@@ -111,6 +111,15 @@ export interface ListSettings {
   trayRecentMs: number;
 }
 
+export interface ContextWindowsSettings {
+  /**
+   * Opt-in for fetching the LiteLLM model→context-window table over the network. Off by
+   * default: with this `false`, the app makes no outbound request and the gauge keeps using
+   * today's estimated window. Turning it on is the only thing that ever sends a request.
+   */
+  useOnlineTable: boolean;
+}
+
 export interface AppSettings {
   /** See `SETTINGS_SCHEMA_VERSION`. Absent in files written before migrations existed. */
   schemaVersion: number;
@@ -125,6 +134,8 @@ export interface AppSettings {
   ui: UiSettings;
   /** Start the history index in the background after the live tier is on screen (§5.1). */
   indexHistoryOnStart: boolean;
+  /** Opt-in exact context-window lookup (005). Read by `core/`. */
+  contextWindows: ContextWindowsSettings;
 }
 
 /**
@@ -201,6 +212,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     globalShortcut: 'Ctrl+Alt+C',
   },
   indexHistoryOnStart: true,
+  contextWindows: {
+    useOnlineTable: false,
+  },
 };
 
 /** `T_work` for a specific tool, falling back to the default (§6.3). */
@@ -259,6 +273,7 @@ export function mergeSettings(partial: unknown): AppSettings {
     reading: { ...DEFAULT_SETTINGS.reading },
     list: { ...DEFAULT_SETTINGS.list },
     ui: { ...DEFAULT_SETTINGS.ui },
+    contextWindows: { ...DEFAULT_SETTINGS.contextWindows },
   };
   if (!partial || typeof partial !== 'object') return base;
   const p = migrate(partial as Record<string, unknown>);
@@ -308,6 +323,11 @@ export function mergeSettings(partial: unknown): AppSettings {
     if (typeof u.popoverPinned === 'boolean') base.ui.popoverPinned = u.popoverPinned;
     if (typeof u.autostart === 'boolean') base.ui.autostart = u.autostart;
     if (typeof u.globalShortcut === 'string') base.ui.globalShortcut = u.globalShortcut;
+  }
+
+  const cw = p.contextWindows as Record<string, unknown> | undefined;
+  if (cw && typeof cw === 'object') {
+    if (typeof cw.useOnlineTable === 'boolean') base.contextWindows.useOnlineTable = cw.useOnlineTable;
   }
 
   if (base.reading.maxTailWindowBytes < base.reading.tailWindowBytes) {

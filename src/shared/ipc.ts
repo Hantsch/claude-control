@@ -96,6 +96,28 @@ export type ProtocolRegistration =
   | { state: 'failed'; path: string; reason: string }
   | { state: 'unsupported' };
 
+/** What the last model-window refresh attempt in this process did. `'never'` = none yet. */
+export type RefreshOutcome = 'ok' | 'failed' | 'never';
+
+/**
+ * Mirrors `core/context/windowSource.ts`'s `ModelWindowStatus` (story 005, D3) — duplicated
+ * rather than imported because `core/context` touches the filesystem and network and is
+ * therefore excluded from `tsconfig.web.json`'s boundary (see that file's own comment); this
+ * file is also part of the renderer's TS project, same reasoning as `ProtocolRegistration`
+ * above. Keep the two shapes in sync by hand.
+ */
+export interface ModelWindowStatus {
+  enabled: boolean;
+  entryCount: number;
+  fetchedAt: number | null;
+  ageMs: number | null;
+  stale: boolean;
+  lastOutcome: RefreshOutcome;
+  lastAttemptAt: number | null;
+  lastError?: string;
+  source: string;
+}
+
 export interface DiagnosticsInfo {
   claudeDir: string;
   adapterId: string;
@@ -110,6 +132,8 @@ export interface DiagnosticsInfo {
    * has since moved or been deleted.
    */
   protocolTarget: ProtocolRegistration;
+  /** Status of the opt-in exact-context-window table (story 005, D3/D6). Null with no data dir. */
+  modelWindows: ModelWindowStatus | null;
 }
 
 export const IPC = {
@@ -133,6 +157,7 @@ export const IPC = {
   closePopover: 'cc:close-popover',
   diagnostics: 'cc:diagnostics',
   quit: 'cc:quit',
+  refreshModelWindows: 'cc:refresh-model-windows',
 
   // main → renderer (send)
   stateChanged: 'cc:state-changed',
@@ -165,6 +190,8 @@ export interface RendererApi {
   closePopover(): Promise<void>;
   diagnostics(): Promise<DiagnosticsInfo>;
   quit(): Promise<void>;
+  /** Forces an immediate fetch of the exact-context-window table (Settings toggle, D6). */
+  refreshModelWindows(): Promise<ModelWindowStatus | null>;
   onStateChanged(listener: (state: AppState) => void): () => void;
   onHistoryChanged(listener: (info: { count: number; done: boolean }) => void): () => void;
   onSettingsChanged(listener: (settings: AppSettings) => void): () => void;

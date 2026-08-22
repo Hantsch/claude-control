@@ -66,6 +66,14 @@ export function windowForModel(model: string | null): number {
 }
 
 /**
+ * The opt-in exact window lookup (story 005), injected as a plain function so this module
+ * keeps importing nothing — `core/state/` is compiled into the renderer's project too, and
+ * `WindowSource` reads the filesystem. Null means "no exact number for this model", which
+ * is also what a disabled source returns, so the estimate path stays the default.
+ */
+export type ExactWindowLookup = (model: string | null) => number | null;
+
+/**
  * One estimate, no history: the window from the model, widened when the observation already
  * exceeds it (or when `forceWide` says a previous observation did). Used directly for
  * subagent runs — those are one-shot, so there is nothing to keep sticky.
@@ -74,13 +82,17 @@ export function pressureFor(
   model: string | null,
   usage: UsageTotals,
   forceWide = false,
+  exactWindow?: ExactWindowLookup | null,
 ): ContextPressure {
   const used = usedTokens(usage);
-  let window = windowForModel(model);
+  const exact = exactWindow ? exactWindow(model) : null;
+  let window = exact ?? windowForModel(model);
   const widened = forceWide || used > window;
   if (widened) window = Math.max(window, WIDE_CONTEXT_WINDOW);
   const ratio = window > 0 ? used / window : 0;
-  return { used, window, ratio, band: bandFor(ratio), widened, model };
+  // A widened window is this app's guess, never the table's number — see `windowSource`.
+  const windowSource = !widened && exact !== null ? 'exact' : 'estimated';
+  return { used, window, ratio, band: bandFor(ratio), widened, windowSource, model };
 }
 
 /**
@@ -90,11 +102,21 @@ export function pressureFor(
  */
 export class ContextWindowEstimator {
   private readonly widened = new Set<SessionId>();
+  private readonly exactWindow: ExactWindowLookup | null;
+
+  /**
+   * `exactWindow` is consulted per estimate rather than snapshotted, so the setting can be
+   * toggled at runtime without rebuilding the estimator: the source returns null while it
+   * is off and the estimate table takes over again.
+   */
+  constructor(exactWindow?: ExactWindowLookup | null) {
+    this.exactWindow = exactWindow ?? null;
+  }
 
   estimate(sessionId: SessionId, model: string | null, usage: UsageTotals | null): ContextPressure | null {
     if (!usage) return null;
     // Observed usage exceeding the assumption promotes the session to the wider tier (§6.4).
-    const pressure = pressureFor(model, usage, this.widened.has(sessionId));
+    const pressure = pressureFor(model, usage, this.widened.has(sessionId), this.exactWindow);
     if (pressure.widened) this.widened.add(sessionId);
     return pressure;
   }

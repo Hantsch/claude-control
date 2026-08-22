@@ -15,3 +15,12 @@
 - 2026-08-22 15:09 · 005 · D7 Settings UI switch + Diagnostics state line · started
 - 2026-08-22 15:11 · 005 · D7 Settings UI switch + Diagnostics state line · done
 - 2026-08-22 15:23 · 005 · review + fixes + Done section · done
+- 2026-08-22 15:25 · 015 · D1 the truncated flag and the shared wording · started
+- 2026-08-22 15:25 · 015 · D1 the truncated flag and the shared wording · done
+- 2026-08-22 15:26 · 015 · D2 the history view says what it is showing · started
+- 2026-08-22 15:26 · 015 · D2 the history view says what it is showing · done
+- 2026-08-22 15:29 · 015 · D3 the CLI qualifies its list the same way · started
+- 2026-08-22 15:29 · 015 · D3 the CLI qualifies its list the same way · done
+- 2026-08-22 15:31 · 015 · D4 timing tests that cannot miss their event · started
+- 2026-08-22 15:38 · 015 · D4 timing tests that cannot miss their event · done
+- 2026-08-22 16:08 · 015 · review (fail) + engine.ts race fix + re-review (pass) + Done section · done

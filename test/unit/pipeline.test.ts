@@ -369,12 +369,9 @@ describe('discovery and status through the adapter', () => {
       settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
     });
 
+    const done = historyDone(engine);
     await engine.start();
-    await new Promise<void>((resolve) => {
-      engine.on('history', (info) => {
-        if (info.done) resolve();
-      });
-    });
+    await done;
 
     const indexed = engine.listHistory().entries.find((entry) => entry.sessionId === 'sess-usage-lazy');
     expect(indexed!.usageComplete).toBe(false);
@@ -806,16 +803,15 @@ describe('engine', () => {
     const bytes = await treeSize(tree.projectsDir);
     expect(bytes).toBeGreaterThan(0.9 * totalMb * 1024 * 1024);
 
+    // Subscribed before `start()` (015 D4) so an event emitted while `start()` is still
+    // running cannot be missed; the measured window below is unchanged.
+    const done = historyDone(engine);
     const started = Date.now();
     await engine.start();
     // `start()` fires history indexing in the background without awaiting it, so the
     // budget has to wait for the 'history' done event too, or it would only measure
     // live-tier resolution and never touch the usage-summation path at all.
-    await new Promise<void>((resolve) => {
-      engine.on('history', (info) => {
-        if (info.done) resolve();
-      });
-    });
+    await done;
     const elapsed = Date.now() - started;
     const snapshot = engine.getSnapshot();
 
@@ -919,12 +915,9 @@ describe('engine', () => {
       settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
     });
 
+    const done = historyDone(engine);
     await engine.start();
-    await new Promise<void>((resolve) => {
-      engine.on('history', (info) => {
-        if (info.done) resolve();
-      });
-    });
+    await done;
     // Detail reads are the only full parses; they must not touch the file either.
     for (const entry of engine.listHistory().entries) {
       await engine.getDetail(entry.sessionId);
@@ -936,6 +929,35 @@ describe('engine', () => {
     expect(after).toEqual(before);
   });
 });
+
+/**
+ * Resolves when the engine reports its history index as done — subscribed *before*
+ * `engine.start()` is called, so an event emitted while `start()` is still running cannot be
+ * missed (015 D4). Use as `const done = historyDone(engine); await engine.start(); await done;`.
+ *
+ * The timeout is a fail-fast net well below vitest's own (30 s default, 180 s on N5): an
+ * event that never comes fails with this message instead of running into the test timeout.
+ */
+function historyDone(engine: ControlEngine, timeoutMs = 10_000): Promise<void> {
+  const waited = new Promise<void>((resolve, reject) => {
+    const listener = (info: { count: number; done: boolean }): void => {
+      if (!info.done) return;
+      clearTimeout(timer);
+      engine.off('history', listener);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      engine.off('history', listener);
+      reject(new Error(`historyDone: no history 'done' event within ${timeoutMs}ms`));
+    }, timeoutMs);
+    engine.on('history', listener);
+  });
+  // The promise is created before `await engine.start()`, so a timeout could reject while
+  // nothing awaits it yet; a no-op handler keeps that from surfacing as an unhandled
+  // rejection instead of the readable failure at the `await done` site.
+  waited.catch(() => {});
+  return waited;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS, mergeSettings } from '../core/model/settings.ts';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import type { EngineSnapshot } from '../core/engine.ts';
 import type { SessionView, StatusTransition } from '../core/model/types.ts';
-import { sessionLabel } from '../shared/presentation.ts';
+import { formatShownOf, sessionLabel } from '../shared/presentation.ts';
 import { engineDataDir, formatAge, formatContextColumn } from './format.ts';
 
 /**
@@ -140,8 +140,19 @@ async function main(): Promise<void> {
 
   if (options.json && !options.watch) {
     const snapshot = engine.getSnapshot();
+    const historyPage = options.history ? engine.listHistory({ limit: 200 }) : null;
     process.stdout.write(
-      `${JSON.stringify({ ...snapshot, coldStartMs: elapsed, history: options.history ? engine.listHistory({ limit: 200 }).entries : [] }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          ...snapshot,
+          coldStartMs: elapsed,
+          history: historyPage ? historyPage.entries : [],
+          historyShown: historyPage ? historyPage.entries.length : 0,
+          historyTotal: historyPage ? historyPage.total : 0,
+        },
+        null,
+        2,
+      )}\n`,
     );
   } else if (!options.json) {
     printSnapshot(engine.getSnapshot(), options, paths.root, elapsed);
@@ -154,7 +165,8 @@ async function main(): Promise<void> {
         if (info.done) resolve();
       });
     });
-    printHistory(engine.listHistory({ limit: 40 }).entries);
+    const historyPage = engine.listHistory({ limit: 40 });
+    printHistory(historyPage.entries, historyPage.total);
   }
 
   if (!options.watch) {
@@ -258,8 +270,13 @@ function printTransitions(transitions: readonly StatusTransition[], options: Cli
   }
 }
 
-function printHistory(entries: readonly { sessionId: string; title: string | null; project: { name: string }; endedAt: number | null; finalStatus: string }[]): void {
+function printHistory(
+  entries: readonly { sessionId: string; title: string | null; project: { name: string }; endedAt: number | null; finalStatus: string }[],
+  total: number,
+): void {
   process.stdout.write(`\nHistory (${entries.length} shown)\n`);
+  const shownOf = formatShownOf(entries.length, total);
+  if (shownOf) process.stdout.write(`${shownOf}\n`);
   for (const entry of entries) {
     const when = entry.endedAt ? new Date(entry.endedAt).toISOString().slice(0, 16).replace('T', ' ') : '—';
     process.stdout.write(

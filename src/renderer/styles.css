@@ -723,6 +723,15 @@ code,
 
 .history-group-head .total {
   font-weight: 500;
+  cursor: help;
+}
+
+/* "Showing 200 of 438 sessions" (story 015 D2) — same quiet register as `.estimate` and
+   `.not-counted`, sits above the table/group list in both flat and grouped mode. */
+.shown-of {
+  color: var(--text-faint);
+  font-size: 11px;
+  margin: 4px 0 8px;
 }
 
 table.history {

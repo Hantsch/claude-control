@@ -170,6 +170,11 @@ export class ControlEngine {
     this.started = true;
 
     this.ideWindows = await this.adapter.listIdeWindows().catch(() => []);
+    // Mark a background index as expected before the initial refresh runs, so any
+    // session-ended transition it triggers (which fires indexOne) reports done:false
+    // instead of a spurious done:true (indexingHistory would otherwise still be false
+    // here, since startHistoryIndex() hasn't been called yet).
+    this.indexingHistory = this.settings.indexHistoryOnStart;
     await this.refresh('start');
 
     this.watcher = this.createWatcher({

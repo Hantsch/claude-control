@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { acceleratorFromChord, formatAccelerator } from '../../src/shared/accelerator.ts';
-import { modelDisplayName } from '../../src/shared/presentation.ts';
+import { formatShownOf, modelDisplayName } from '../../src/shared/presentation.ts';
 import { formatAge } from '../../src/renderer/lib/format.ts';
 
 describe('modelDisplayName', () => {
@@ -61,6 +61,20 @@ describe('modelDisplayName', () => {
   it('does not treat an uppercase or partial match as a tier alias', () => {
     expect(modelDisplayName('Opus')).toBe('Opus');
     expect(modelDisplayName('opus-5')).toBe('opus-5');
+  });
+});
+
+describe('formatShownOf', () => {
+  it('returns null when shown equals total', () => {
+    expect(formatShownOf(200, 200)).toBeNull();
+  });
+
+  it('returns null when shown exceeds total', () => {
+    expect(formatShownOf(200, 100)).toBeNull();
+  });
+
+  it('returns the sentence when shown is smaller than total', () => {
+    expect(formatShownOf(200, 438)).toBe('Showing 200 of 438 sessions');
   });
 });
 

@@ -8,7 +8,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { AppState, HistoryEntry, HistoryPage } from '../../shared/ipc.ts';
-import { HISTORY_FINAL_LABEL } from '../../shared/presentation.ts';
+import {
+  formatShownOf,
+  HISTORY_FINAL_LABEL,
+  TRUNCATED_TOTAL_EXPLANATION,
+  TRUNCATED_TOTAL_MARKER,
+} from '../../shared/presentation.ts';
 import { api } from '../api.ts';
 import { formatBytes, formatDateTime, formatDuration, formatTokens } from '../lib/format.ts';
 import { groupHistory, type HistoryGroup, type HistoryGroupDimension } from '../../core/state/historyGrouping.ts';
@@ -58,10 +63,14 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
   // all groups start expanded. Reset whenever the dimension changes.
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
+  const truncated = page.total > page.entries.length;
+
   const groups = useMemo<HistoryGroup[]>(
-    () => (dimension === 'none' ? [] : groupHistory(page.entries, dimension)),
-    [page.entries, dimension],
+    () => (dimension === 'none' ? [] : groupHistory(page.entries, dimension, { truncated })),
+    [page.entries, dimension, truncated],
   );
+
+  const shownOf = formatShownOf(page.entries.length, page.total);
 
   const query = useMemo(
     () => ({
@@ -145,6 +154,8 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
         ))}
       </div>
 
+      {shownOf && <div className="shown-of">{shownOf}</div>}
+
       {dimension === 'none' ? (
         <table className="history">
           <thead>
@@ -210,7 +221,14 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
                     <span className="not-counted">· {group.notCounted} not counted</span>
                   )}
                   <span className="spacer" />
-                  <span className="total">
+                  <span
+                    className="total"
+                    title={group.truncated || group.partial ? TRUNCATED_TOTAL_EXPLANATION : undefined}
+                    aria-label={
+                      group.truncated || group.partial ? TRUNCATED_TOTAL_EXPLANATION : undefined
+                    }
+                  >
+                    {group.truncated ? TRUNCATED_TOTAL_MARKER : ''}
                     {group.partial ? '~' : ''}
                     {formatTokens(group.totalTokens)} tokens
                   </span>

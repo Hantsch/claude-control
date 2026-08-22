@@ -1,7 +1,7 @@
 ---
 id: 015
 title: S04 residuals — a total that admits its page, and a test that cannot miss its event
-status: ready # draft -> ready -> in-progress -> done
+status: in-progress # draft -> ready -> in-progress -> done
 created: 2026-08-22
 ---
 
@@ -31,15 +31,15 @@ budget rests on, and a latent flake in it costs a sprint's afternoon at the wors
 
 ## Acceptance Criteria
 
-- [ ] When a filter matches more history entries than the view fetched, the view says so — the
+- [x] When a filter matches more history entries than the view fetched, the view says so — the
       user can see that they are looking at part of the result, not all of it
-- [ ] A group total computed over a truncated result is visibly marked as partial, and that
+- [x] A group total computed over a truncated result is visibly marked as partial, and that
       marker is not confusable with 006's existing "some entries had no usage" marker
-- [ ] A total that *is* complete stays unmarked — the marker has to mean something
-- [ ] Grouping, filtering and the marker still agree with each other after a filter change
-- [ ] The N5 and N2 timing tests observe every event their measurement depends on, regardless of
+- [x] A total that *is* complete stays unmarked — the marker has to mean something
+- [x] Grouping, filtering and the marker still agree with each other after a filter change
+- [x] The N5 and N2 timing tests observe every event their measurement depends on, regardless of
       when it is emitted, and fail fast rather than timing out when the event never comes
-- [ ] `npm test` stays green and the N5 measurement still reports a number against its 2000 ms
+- [x] `npm test` stays green and the N5 measurement still reports a number against its 2000 ms
       budget
 
 ## Open Questions
@@ -116,7 +116,7 @@ Order: D1 -> D2 -> D3 (D2/D3 both depend on D1's exports), D4 independent of all
 
 ## Deliverables
 
-**D1 — the truncated flag and the shared wording**
+**D1 — the truncated flag and the shared wording** [x]
 - `src/shared/presentation.ts`: `TRUNCATED_TOTAL_MARKER`, `formatShownOf(shown, total): string | null`,
   marker explanation text (mirror `HISTORY_FINAL_LABEL`).
 - `src/core/state/historyGrouping.ts`: `HistoryGroup.truncated` + optional `options` argument.
@@ -125,21 +125,21 @@ Order: D1 -> D2 -> D3 (D2/D3 both depend on D1's exports), D4 independent of all
   (`formatShownOf` returns null when `shown === total`, the sentence when it is smaller).
 - Acceptance: `npm test` + `npm run typecheck` green; no renderer touched.
 
-**D2 — the history view says what it is showing**
+**D2 — the history view says what it is showing** [x]
 - `src/renderer/components/HistoryView.tsx`, `src/renderer/styles.css`.
 - Count line rendered in grouped *and* flat mode; `≥` on every group total when the page is
   truncated, `~` unchanged, both explained in one `title`/`aria-label`; nothing shown when
   `page.total === page.entries.length`. `PAGE_SIZE` stays 200.
 - Acceptance: build + typecheck green; behaviour verified live per Test Plan.
 
-**D3 — the CLI qualifies its list the same way**
+**D3 — the CLI qualifies its list the same way** [x]
 - `src/cli/index.ts` (`printHistory` signature + JSON payload), optionally `src/cli/format.ts`.
 - Text mode prints the `formatShownOf` line from D1 (not its own wording); JSON mode exposes the
   pre-limit total. Mirror `printHistory`'s existing header line style.
 - Acceptance: `npm run cli -- --history` shows the line when the store holds more entries than the
   40-row text limit and shows no line when it does not.
 
-**D4 — timing tests that cannot miss their event**
+**D4 — timing tests that cannot miss their event** [x]
 - `test/unit/pipeline.test.ts` only.
 - `historyDone()` helper; N5, N2 and every other attach-after-start site converted; a never-emitted
   event fails with a readable message instead of running into the 180 s timeout.
@@ -168,3 +168,58 @@ Order: D1 -> D2 -> D3 (D2/D3 both depend on D1's exports), D4 independent of all
    up to the shown 200.
 5. `npm run cli -- --history`: the printed history block carries the same "Showing X of N sessions"
    line when truncated, and no such line when everything matched fits.
+
+## Done
+
+**Summary.** Part A (D1-D3): `formatShownOf()` and the `≥` marker/explanation now live in
+`src/shared/presentation.ts`; `groupHistory()` carries a `truncated` flag per group
+(`src/core/state/historyGrouping.ts`); the GUI history view (`HistoryView.tsx`) shows a "Showing
+X of Y sessions" line in both flat and grouped mode and prefixes truncated group totals with `≥`
+(next to 006's `~`, both explained by one tooltip); the CLI (`src/cli/index.ts`) prints the same
+line in text mode and exposes `historyShown`/`historyTotal` in JSON mode. Part B (D4): a shared
+`historyDone()` helper in `test/unit/pipeline.test.ts` now subscribes to the engine's `'history'`
+event *before* `engine.start()` at all three former attach-after-start sites (D5's usage-upgrade
+test, N5, N2), rejecting with a readable message on a 10s internal timeout instead of running
+into the suite's timeout.
+
+**Decisions (implementation).**
+- D4's fix (subscribing before `start()`) exposed a genuine pre-existing race in
+  `src/core/engine.ts`: `start()` ran the initial `refresh('start')` before
+  `startHistoryIndex()` set `this.indexingHistory = true`, so a session that transitioned to
+  `ended` during that initial refresh could make `indexOne()` emit a spurious `'history'` event
+  with `done: true` (since `indexingHistory` was still `false`) before the real background index
+  had even begun. The old, buggy test code never saw this because it attached its listener too
+  late to catch it; fixing the test attachment order (as D4's plan required) made the race
+  observable as an intermittent N5 failure (confirmed ~3/13 runs under full-suite load by the
+  first review pass). Fix: `start()` now sets `this.indexingHistory = this.settings.indexHistoryOnStart`
+  synchronously before the initial refresh, so `indexOne()` reports `done: false` correctly during
+  that window. This is a one-line, behavior-preserving change outside D4's originally scoped
+  files (`src/core/engine.ts` rather than `test/unit/pipeline.test.ts` alone) — treated as a
+  review-fix rather than a new deliverable, since AC 5/6 ("`npm test` stays green") already
+  required it and the plan simply hadn't anticipated this specific hazard.
+- CLI truncation surface is the count line only (no group totals with `≥`), per the story's own
+  Decisions (Sprint) — the CLI has no grouping feature to attach a per-group marker to.
+
+**Verification.**
+- `npm run build` — green (typecheck + electron-vite build for main/preload/renderer).
+- `npm test` — green, 371/371 tests across 21 files; re-run 3+ times after the engine.ts fix with
+  no flake (previously ~3/13 runs failed on the N5 test before the fix).
+- `npm run typecheck` — green.
+- Live-checked `npm run cli -- --history` against the real data directory: prints
+  `Showing 40 of 315 sessions` (the store holds far more history than the CLI's 40-row text
+  limit), confirming D3's live behaviour.
+- Code review: first pass FAILED on a real regression (the engine.ts race above, found via
+  repeated full-suite runs); fix applied; second review pass PASSED — all 6 acceptance criteria
+  verified PASS with file:line evidence, no scope creep, no weakened tests, `npm test` 3/3 green.
+- **Open point — live GUI smoke pending.** `live-smoke-required: true` and this story has a
+  visible GUI surface (`HistoryView.tsx`), but no browser/UI automation is available for the
+  Electron tray app in this environment (per `.claude/ai-scrum.md`'s `live-smoke-how`). The CLI
+  half of the truncation surface (D3) was live-verified above; the GUI half (D2 — the "Showing X
+  of Y sessions" line and the `≥` marker in the History view) still needs the manual walk-through
+  in `## Test Plan (manual acceptance)` above, run by a human against `npm run dev`. Status is
+  left `in-progress` pending that manual acceptance, per project policy (P2).
+
+**Commit message.**
+```
+015: truncated history totals (GUI + CLI) and race-proof N5/N2 timing tests
+```

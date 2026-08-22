@@ -76,6 +76,34 @@ export const HISTORY_FINAL_LABEL: Record<SessionStatus, string> = {
   unknown: 'no messages',
 };
 
+/**
+ * Prefix on a history group's total when the page it was computed from was truncated (story
+ * 015 D1) — states that the sum is a lower bound, not the whole group. Visually and
+ * semantically distinct from the `~` inexact-usage marker (006): `~` means "some entries had
+ * no usable usage number", `≥` means "there are more entries than were counted at all". Both
+ * can appear together as `≥~` on the same total.
+ */
+export const TRUNCATED_TOTAL_MARKER = '≥';
+
+/**
+ * Explains both group-total markers in one string, for a shared `title`/`aria-label` on the
+ * marker (story 015 D1; closes the gap that 006's `~` never had one).
+ */
+export const TRUNCATED_TOTAL_EXPLANATION =
+  `${TRUNCATED_TOTAL_MARKER} means the page was truncated, so this total is a lower bound, ` +
+  'not the whole group; ~ means some entries in this group had no usable usage number.';
+
+/**
+ * "Showing 200 of 438 sessions" line for a truncated history page (story 015 D1), shared by
+ * the GUI history view and the CLI so both surfaces state the same truncation the same way.
+ * Returns `null` when nothing was truncated (`shown === total`) — an unmarked view stays
+ * unmarked.
+ */
+export function formatShownOf(shown: number, total: number): string | null {
+  if (shown >= total) return null;
+  return `Showing ${shown} of ${total} sessions`;
+}
+
 /** Context-pressure band → indicator, per the §6.4 thresholds. */
 export const BAND_SYMBOL: Record<ContextBand, string> = {
   green: '🟢',

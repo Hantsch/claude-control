@@ -196,4 +196,33 @@ describe('groupHistory', () => {
     expect(groups[0]!.notCounted).toBe(1);
     expect(groups[0]!.totalTokens).toBe(0);
   });
+
+  it('truncated defaults to false when the options argument is omitted', () => {
+    const groups = groupHistory([entry()], 'branch');
+    expect(groups[0]!.truncated).toBe(false);
+  });
+
+  it('truncated is false when options.truncated is explicitly false', () => {
+    const groups = groupHistory([entry()], 'branch', { truncated: false });
+    expect(groups[0]!.truncated).toBe(false);
+  });
+
+  it('truncated is true on every group when options.truncated is true', () => {
+    const a = entry({ sessionId: 'a', branch: 'main' });
+    const b = entry({ sessionId: 'b', branch: 'other' });
+
+    const groups = groupHistory([a, b], 'branch', { truncated: true });
+
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g) => g.truncated)).toBe(true);
+  });
+
+  it('truncated is orthogonal to partial: a truncated, non-partial group has truncated true and partial false', () => {
+    const complete = entry({ sessionId: 'complete', usageComplete: true });
+
+    const groups = groupHistory([complete], 'branch', { truncated: true });
+
+    expect(groups[0]!.truncated).toBe(true);
+    expect(groups[0]!.partial).toBe(false);
+  });
 });

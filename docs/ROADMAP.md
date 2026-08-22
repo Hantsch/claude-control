@@ -21,7 +21,7 @@ Rules (so this document does not drift):
 | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | ✔ done |
 | 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ✔ done |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M6 accepted, M5 next (S05), M7 last |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M6 accepted, M5 built in S05 (acceptance pending), M7 last |
 
 ---
 
@@ -173,8 +173,10 @@ once the previous milestone is accepted. M6 went first because M5 was blocked on
 is the largest, least-bounded piece of work in the phase — the adapter seam is worth proving on a
 codebase that has just stopped changing shape, not while it still is. With M6 accepted and the M5
 trade decided (2026-08-22), the order is M5 → M7, and M7 stays alone in its own sprint.
+S05 built M5 plus the two carried residuals (014, 015) on 2026-08-22; all three are awaiting
+the user’s live acceptance, so M7 is not cut yet.
 
-### M5 — Exact context windows — planned (S05 cut)
+### M5 — Exact context windows — built, acceptance pending (S05, 2026-08-22)
 
 The gauge's denominator is guessed from a lookup table; the 200k-versus-1M case is where the guess
 stops being useful, and it is the case this project hits daily. LiteLLM's community-maintained
@@ -186,17 +188,30 @@ requests" claim in README.md and Settings → Diagnostics is reworded rather tha
 bundled snapshot of the table was offered as a third way and declined — it goes stale inside a
 release, which is exactly the "confident nonsense" the story's fourth acceptance criterion refuses.
 
-Stories: [005](requirements/005-exact-context-windows.md) — `draft`
-Sprints: [S05](sprints/S05/sprint.md) — `planned`; not started
+Stories: [005](requirements/005-exact-context-windows.md) — `in-progress` (built, live acceptance
+pending)
+Sprints: [S05](sprints/S05/sprint.md) — `done`; see [review.md](sprints/S05/review.md) and
+[testplan.md](sprints/S05/testplan.md)
 Gaps/notes:
-- The six questions left open in 005 are all about *presentation*, not about whether the feature
-  exists: whether the gauge says where its denominator came from, what a model missing from the
-  table looks like, what a weeks-stale cache says, whether enabling the switch fetches immediately,
-  what Diagnostics shows once the promise is conditional, and whether the CLI inherits the setting.
-  They go to the user in S05's clarification round.
-- This is the app's first network path. The absolute promise in README.md and Diagnostics is a
-  documented property of the product (it is also the ground for the web-dashboard rejection below),
-  so the rewording is part of the story's acceptance, not follow-up bookkeeping.
+- The six presentation questions were answered by the user in S05's clarification round and are
+  recorded in the story under `## Decisions (Sprint)`: exact numbers are labelled as exact rather
+  than merely un-marked, a model missing from the table keeps its estimate marker, staleness is
+  surfaced in Diagnostics, the first fetch happens immediately on toggle, Diagnostics becomes a
+  state line (on/off, cache age, last refresh outcome), and the CLI honours the same setting.
+- This is the app's first network path. README.md, `docs/CONCEPT.md` and Settings → Diagnostics were
+  reworded as part of the story — the absolute "no network requests" promise is now a conditional
+  one, described in terms of the opt-in.
+- **The N1/N2 boundary tests were narrowed, not deleted.** `test/unit/boundaries.test.ts` banned
+  `fetch(` repo-wide and any write under `core/`; both now carry a one-file allowlist plus an
+  assertion that the allowlisted module imports no network module and never writes below
+  `claudeDir`. The read-only-towards-Claude-Code promise stays absolute.
+- **Follow-up:** subagent chips still render `'estimated'` unconditionally — they were not wired to
+  the exact lookup, so a gauge can say "exact" while a chip on the same screen says "estimated".
+- **Follow-up:** the CLI reads the exact-window cache but never fetches; fetch ownership stays in
+  the main process. Worth confirming this matches what "the CLI honours the setting" was meant to
+  mean.
+- Live acceptance (Settings toggle, Diagnostics state line, offline behaviour, the gauge's
+  exact/estimated marker) has not been performed — the sprint ran headless.
 
 ### M6 — Attribution — ✔ accepted (2026-08-22)
 
@@ -249,14 +264,26 @@ Gaps/notes:
 
 ## Carried follow-ups with a story
 
-Both were "accepted as out of scope" in an earlier sprint review and are picked up in S05 by user
-decision on 2026-08-22, so they stop being roadmap prose:
+Both were "accepted as out of scope" in an earlier sprint review, were picked up in S05 by user
+decision on 2026-08-22 and are now built:
 
-- [014](requirements/014-tray-tile-on-a-light-taskbar.md) — the tray tile is still drawn for a dark
-  taskbar; 007 made only the badge rim theme-aware. `draft`, in [S05](sprints/S05/sprint.md).
-- [015](requirements/015-s04-residuals.md) — a history group total over a >200-match filter
-  silently covers only the fetched page, and the N5/N2 timing tests attach their listener after
-  `start()` resolves. `draft`, in [S05](sprints/S05/sprint.md).
+- [014](requirements/014-tray-tile-on-a-light-taskbar.md) — the tray tile is no longer drawn for a
+  dark taskbar only: `scripts/build-icons.py` derives a light set (`assets/icons/tray-light/`) from
+  the shipped tiles and the runtime picks it off `nativeTheme.shouldUseDarkColors`. `in-progress`
+  (built, live acceptance pending), in [S05](sprints/S05/sprint.md).
+  Gaps/notes: the OKLab distinguishability parity bar was relaxed from `>=` the dark set to
+  `>= 0.97 ×` it — at 16 px the `none`/`stale` pair falls 1.5 % short after a genuine
+  double-darkening defect in the rim pass was fixed, and neither hue can move (one has no status
+  colour, the other is pinned to its token). Whether the light tiles actually read well on a real
+  Windows 11 light taskbar is a human judgement not yet made.
+- [015](requirements/015-s04-residuals.md) — a truncated history group total now carries a `≥`
+  marker and both GUI and CLI print a "Showing 200 of 438 sessions" line; the N5/N2 timing tests
+  attach their listener before `start()`. `in-progress` (built, live acceptance pending), in
+  [S05](sprints/S05/sprint.md).
+  Gaps/notes: real paging remains unbuilt and unscheduled — the marker states the totals are a
+  lower bound, it does not make them complete. The timing fix also exposed and fixed a genuine
+  pre-existing race in `src/core/engine.ts` (initial `refresh('start')` ran before
+  `indexingHistory` was set, so a session ending inside it could emit a spurious `done: true`).
 
 ---
 

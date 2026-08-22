@@ -1,7 +1,7 @@
 ---
 id: 006
 title: Activity matrix and history attribution
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
@@ -12,21 +12,21 @@ and both are mostly already in the data model.
 
 **Live: the same status counts everywhere.** With several projects open, "which project needs me"
 is a coarser and more useful question than "which session". Story
-[010](done/010-popover-drilldown.md) already answers it in the popover: its collapsible group head
+[010](010-popover-drilldown.md) already answers it in the popover: its collapsible group head
 shows one coloured dot plus a count per status present, zero counts omitted. But it answers it
 *renderer-locally* — `groupStatusRollup` lives in
-[popoverModel.ts](../../src/renderer/lib/popoverModel.ts), the main window's group header still
+[popoverModel.ts](../../../src/renderer/lib/popoverModel.ts), the main window's group header still
 shows only `N sessions · M need attention`
-([SessionsView.tsx:79](../../src/renderer/components/SessionsView.tsx#L79)), and `ProjectGroup`
-([aggregate.ts:91](../../src/core/state/aggregate.ts#L91)) carries only `attention`. So the same
+([SessionsView.tsx:79](../../../src/renderer/components/SessionsView.tsx#L79)), and `ProjectGroup`
+([aggregate.ts:91](../../../src/core/state/aggregate.ts#L91)) carries only `attention`. So the same
 question has one answer in the popover, a coarser one in the main window, and no single place that
 computes it. This story lifts the counts into the shared layer and renders them in both surfaces —
 so the number has one source and cannot drift.
 
 **Retrospective: attribution over time.** The history view can filter by project, date and free
-text ([HistoryView.tsx](../../src/renderer/components/HistoryView.tsx)), but it cannot answer
+text ([HistoryView.tsx](../../../src/renderer/components/HistoryView.tsx)), but it cannot answer
 "where did the work go" by project, branch or model. `HistoryEntry`
-([types.ts:352](../../src/core/model/types.ts#L352)) already carries branch, model and timestamps,
+([types.ts:352](../../../src/core/model/types.ts#L352)) already carries branch, model and timestamps,
 so the index is most of the way there; what is missing is aggregate usage per entry and any
 grouping in the view.
 
@@ -35,7 +35,7 @@ popover's rollup moves into the shared layer and the main window gets the same c
 the live half being dropped — two implementations of the same number is exactly the drift this
 story exists to prevent.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md).
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md).
 
 ## Acceptance Criteria
 
@@ -292,6 +292,9 @@ included in the timed window): **441 ms**, budget 2000 ms (comparable point of r
   available for it, per the profile's own `live-smoke-how`). Status is left `in-progress` rather
   than `done`: built and verified by build/test/typecheck plus a code review, acceptance pending a
   manual pass through `## Test Plan (manual acceptance)` above.
+- **Live acceptance: performed by the user on 2026-08-22**, following
+  `## Test Plan (manual acceptance)` above via `npm run dev`, as part of the S04 sprint review.
+  Accepted — status set to `done`.
 
 **Decisions (session).**
 - Review finding "`readDetail` returned a zeroed `UsageTotals` even for a transcript with no usage

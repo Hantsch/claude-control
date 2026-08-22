@@ -23,6 +23,14 @@ that trade is not wanted, the honest outcome is to close this story as rejected 
 labelling the gauge an estimate. The story is not a refactor with a checkbox on top; the
 decision is the story.
 
+**Decision (user, 2026-08-22, S05 planning round): the trade is accepted.** The lookup ships as
+an explicit opt-in, off by default, and the "makes no network requests" claim in README.md and
+Settings → Diagnostics is reworded rather than quietly broken. A bundled snapshot of the table
+was offered as the third way and declined — a table that goes stale inside a release is exactly
+the "confident nonsense" the fourth acceptance criterion refuses. This unblocks M5; what is left
+open below is how the opt-in presents itself and how an exact number is distinguished from a
+guessed one, not whether it exists.
+
 Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md),
 which records the related web-dashboard rejection made on the same promise.
 
@@ -39,9 +47,27 @@ which records the related web-dashboard rejection made on the same promise.
 
 ## Open Questions
 
-- **Is the trade wanted at all?** Opt-in network access plus reworded promise, or close this
-  story as rejected and keep the estimate. This is a product decision and blocks everything
-  below it.
+The blocking product question is answered above. What is left is for the sprint's clarification
+round:
+
+- **Does the gauge say where its denominator came from?** With the setting on and the model
+  found in the table, does the `widened`/estimate marker simply disappear, or does the gauge
+  distinguish "exact, from the fetched table" from "estimated" so a user can tell which number
+  they are looking at? The same question for the tooltip and for the CLI's output.
+- **A model that is not in the table.** A brand-new model absent from the fetched file falls back
+  to today's estimate for that session — is that visible on the row, or silent (the setting is
+  on, so a user may assume every number is now exact)?
+- **A stale cache with no network.** The cache refreshes at most weekly; if a refresh fails for
+  weeks, is the cached window used silently, or does something say the table is old?
+- **Turning the switch on.** Fetch immediately on enable, or wait for the next background tick?
+  Immediate is what a user expects; it also means the first network request happens inside a
+  Settings click.
+- **What Diagnostics shows once the setting exists.** The panel currently states the absolute
+  promise. Does it become a state line (setting on/off, cache age, last refresh outcome), and
+  does a failed fetch surface there the way 013's failed protocol registration now does?
+- **Does the CLI honour the setting?** `npm run cli -- --watch` reads the same core; the setting
+  lives in `settings.ts`, so it would apply — but a CLI making a network request because a GUI
+  switch was flipped is worth stating deliberately rather than inheriting.
 
 ## Plan
 

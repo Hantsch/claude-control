@@ -1,7 +1,7 @@
 # Roadmap
 
 **The** one source of status and planning: where we stand, what comes next, what is not planned
-at all yet. As of: 2026-08-21.
+at all yet. As of: 2026-08-22.
 
 Rules (so this document does not drift):
 
@@ -21,7 +21,7 @@ Rules (so this document does not drift):
 | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | ✔ done |
 | 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ✔ done |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M6 accepted, M5 next (S05), M7 last |
 
 ---
 
@@ -158,7 +158,8 @@ Gaps/notes:
   against `--bg-active`, where the suggested value only reached 2.44:1 against a stated 3:1
   target. The target won over the suggested hex — the pattern for any remaining colour work.
 - No new tray art: only the badge rim became theme-aware. A tray tile that reads badly on a light
-  taskbar is a follow-up story, not part of this one.
+  taskbar was left as a follow-up — now [014](requirements/014-tray-tile-on-a-light-taskbar.md),
+  scheduled in S05.
 
 ---
 
@@ -168,28 +169,44 @@ Design of record stays [CONCEPT.md](CONCEPT.md); the comparison that fed Phase 2
 [concepts/reference-tool-comparison.md](concepts/reference-tool-comparison.md).
 
 Way of working, unchanged: milestones ordered by payoff per hour, stories cut into a sprint only
-once the previous milestone is accepted. M6 goes first because M5 is blocked on a decision and M7
+once the previous milestone is accepted. M6 went first because M5 was blocked on a decision and M7
 is the largest, least-bounded piece of work in the phase — the adapter seam is worth proving on a
-codebase that has just stopped changing shape, not while it still is.
+codebase that has just stopped changing shape, not while it still is. With M6 accepted and the M5
+trade decided (2026-08-22), the order is M5 → M7, and M7 stays alone in its own sprint.
 
-### M5 — Exact context windows — blocked on a product decision
+### M5 — Exact context windows — planned (S05 cut)
 
-Not schedulable until the network-promise trade in
-[005](requirements/005-exact-context-windows.md) is decided: opt-in fetch with reworded README
-and Diagnostics, or close the story as rejected and keep labelling the gauge an estimate.
+The gauge's denominator is guessed from a lookup table; the 200k-versus-1M case is where the guess
+stops being useful, and it is the case this project hits daily. LiteLLM's community-maintained
+window table is what both reference tools use.
 
-Stories: [005](requirements/005-exact-context-windows.md)
+**Unblocked 2026-08-22 by a user decision, not by code.** The trade the story called "the story" is
+accepted: the lookup ships as an explicit opt-in, off by default, and the "makes no network
+requests" claim in README.md and Settings → Diagnostics is reworded rather than quietly broken. A
+bundled snapshot of the table was offered as a third way and declined — it goes stale inside a
+release, which is exactly the "confident nonsense" the story's fourth acceptance criterion refuses.
 
-### M6 — Attribution — built, acceptance pending (S04 built)
+Stories: [005](requirements/005-exact-context-windows.md) — `draft`
+Sprints: [S05](sprints/S05/sprint.md) — `planned`; not started
+Gaps/notes:
+- The six questions left open in 005 are all about *presentation*, not about whether the feature
+  exists: whether the gauge says where its denominator came from, what a model missing from the
+  table looks like, what a weeks-stale cache says, whether enabling the switch fetches immediately,
+  what Diagnostics shows once the promise is conditional, and whether the CLI inherits the setting.
+  They go to the user in S05's clarification round.
+- This is the app's first network path. The absolute promise in README.md and Diagnostics is a
+  documented property of the product (it is also the ground for the web-dashboard rejection below),
+  so the rewording is part of the story's acceptance, not follow-up bookkeeping.
+
+### M6 — Attribution — ✔ accepted (2026-08-22)
 
 Live status counts per project group, and history grouped by project / branch / model with totals.
 Depends on M1 for the group headers it renders into, and inherits a half-built live side from M3.
 
-Stories: [006](requirements/006-activity-and-history-attribution.md) — the milestone, `in-progress`
-(built, live acceptance pending) · [013](requirements/013-s03-residuals.md) — the S01–S03
-residuals, bundled alongside, `in-progress` (built, live acceptance pending)
-Sprints: [S04](sprints/S04/sprint.md) — built; branch `sprint/S04`; see
-[review](sprints/S04/review.md) and [testplan](sprints/S04/testplan.md)
+Stories: [006](requirements/done/006-activity-and-history-attribution.md) — the milestone, done ·
+[013](requirements/done/013-s03-residuals.md) — the S01–S03 residuals, bundled alongside, done
+Sprints: [S04](sprints/done/S04/sprint.md) — see [review](sprints/done/S04/review.md) and
+[testplan](sprints/done/S04/testplan.md)
 Gaps/notes:
 - 010 already shipped the popover's group rollup (coloured dot + count per status, zero counts
   omitted) but *renderer-locally*, in `popoverModel.ts`. S04 lifted it into the shared layer
@@ -208,19 +225,38 @@ Gaps/notes:
   popover as decided, `compareSessions` untouched; `--text-faint` and light `--muted-opacity` clear
   the theme test's contrast targets in both schemes; the subagent list's flat-hierarchy note is no
   longer a non-`listitem` member of `role="list"`.
-- **Live UI acceptance pending for both stories (P2):** the build ran in a headless session with no
-  path to drive the Electron tray app or a screen reader, so both stories are left `in-progress`
-  rather than `done` despite green build/test/typecheck and a passed code review. The user does the
-  manual pass in [testplan.md](sprints/S04/testplan.md) before either is marked accepted.
-- Still not scoped anywhere: new tray tile art for a light taskbar (007 left it as a follow-up;
-  only the badge rim is theme-aware).
+- The build ran headless, so both stories landed as "built, acceptance pending". Live acceptance was
+  worked through by the user from [testplan.md](sprints/done/S04/testplan.md) on 2026-08-22 — M6
+  accepted, both stories `done`.
+- **Carried out of S04, now scoped:** the history view's 200-entry page size means a group total on
+  a >200-match filter silently reflects only the fetched page, with no marker distinguishing it from
+  a complete total. Predates 006 and paging was never in its plan — the `~` partial marker covers
+  missing *usage*, not a truncated *page*. Picked up by
+  [015](requirements/015-s04-residuals.md) in S05, together with the N5/N2 test listener shape the
+  same review flagged.
 
 ### M7 — Second agent — planned (last in the phase)
 
 Codex or Gemini CLI alongside Claude Code, as the first real test of the adapter boundary. Its
-own milestone by construction.
+own milestone by construction — it gets a sprint to itself, not a slot in one.
 
-Stories: [008](requirements/008-second-agent-adapter.md)
+Stories: [008](requirements/008-second-agent-adapter.md) — `draft`
+Gaps/notes:
+- Not cut into S05 by decision on 2026-08-22: the story asks not to be started inside another
+  milestone, and S05 already carries the first network path plus two carried residuals.
+
+---
+
+## Carried follow-ups with a story
+
+Both were "accepted as out of scope" in an earlier sprint review and are picked up in S05 by user
+decision on 2026-08-22, so they stop being roadmap prose:
+
+- [014](requirements/014-tray-tile-on-a-light-taskbar.md) — the tray tile is still drawn for a dark
+  taskbar; 007 made only the badge rim theme-aware. `draft`, in [S05](sprints/S05/sprint.md).
+- [015](requirements/015-s04-residuals.md) — a history group total over a >200-match filter
+  silently covers only the fetched page, and the N5/N2 timing tests attach their listener after
+  `start()` resolves. `draft`, in [S05](sprints/S05/sprint.md).
 
 ---
 
@@ -229,4 +265,4 @@ Stories: [008](requirements/008-second-agent-adapter.md)
 | Topic | State | Next step |
 | --- | --- | --- |
 | Cost display | **Rejected for v1** (CONCEPT.md §2). Groundwork and the seven measured caveats are preserved in [concepts/reference-tool-comparison.md](concepts/reference-tool-comparison.md) so they are not re-derived | none — reopen only if the presentation problem ("notional list rate, not what a subscription bills, not the `/usage` quota") is solved first |
-| Web dashboard | **Rejected.** Contradicts the "no HTTP server, nothing on the network" property in README.md and Settings → Diagnostics; `npm run cli -- --watch` covers the scriptable case | none |
+| Web dashboard | **Rejected.** Contradicts the "no HTTP server, nothing on the network" property in README.md and Settings → Diagnostics; `npm run cli -- --watch` covers the scriptable case. Story 005 narrows that property to an opt-in *outbound* fetch — the rejection stands on the *server* half, which nothing has softened | none — re-read this row once 005 has reworded the promise, so the argument still quotes what the app says |

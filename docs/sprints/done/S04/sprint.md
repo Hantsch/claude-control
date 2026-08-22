@@ -21,6 +21,11 @@ per-group totals. Alongside it, the four points S01–S03 left open are closed.
 
 ## Notes
 
+**Accepted 2026-08-22.** The user worked through [testplan.md](testplan.md) live and accepted both
+stories; 006 and 013 are `done`, M6 is accepted in the roadmap and this sprint is moved to
+`sprints/done/`.
+
+
 First sprint of Phase 3, cut after M3 and M4 were accepted (2026-08-21). Two stories rather than
 the usual three to five, by deliberate decision:
 

@@ -40,3 +40,16 @@ second roadmap.
   and is marked on the row, the portable EXE registers its stable `PORTABLE_EXECUTABLE_FILE`
   protocol path, the popover's initial focus refuses to take focus off Pin or Close, and
   `ShortcutStatus` is declared once; accepted 2026-08-21.
+- 006 — Activity matrix and history attribution · S04 · Moved the per-status group counts out of the
+  popover's renderer-local `groupStatusRollup` into `ProjectGroup.statusCounts` in `aggregate.ts` and
+  rendered them through a shared `StatusRollup` in both the popover (output unchanged) and the main
+  window's group header, and gave `HistoryEntry` a tail-derived `usage`/`usageComplete` that
+  `groupHistory()` sums per project, branch or model into collapsible sections with an explicit
+  not-counted count and a `~` marker on partial totals; N5 measured at 441 ms of a 2000 ms budget;
+  accepted 2026-08-22.
+- 013 — S03 residuals — report what was registered, rank what is unseen · S04 · Diagnostics now
+  reports the `ProtocolRegistration` startup actually wrote (including a visible failure and the real
+  `process.execPath` for a packaged install) instead of recomputing a string, the popover's group
+  order demotes an already-seen `waiting`/`done` below `ended` via `popoverGroupRank()` with
+  `compareSessions` untouched, `--text-faint` and the light `--muted-opacity` clear 3:1 / 4.5:1 on all
+  four surfaces, and the subagent list's flat-hierarchy note left `role="list"`; accepted 2026-08-22.

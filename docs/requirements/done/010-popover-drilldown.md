@@ -100,7 +100,7 @@ Background: [concepts/reference-tool-comparison.md](../../concepts/reference-too
   text — it stays reachable without competing with the branch for row width.~~ answered →
   Decisions (Sprint)
 - ~~**Does the group rollup use dots or counts?** The prototype uses coloured dots with a number
-  (`●1 ●1`). Story [006](../006-activity-and-history-attribution.md) D1/D2 plans per-status counts
+  (`●1 ●1`). Story [006](006-activity-and-history-attribution.md) D1/D2 plans per-status counts
   on `ProjectGroup` for exactly this purpose, in both the popover and the main window. Either
   this story renders a local version and 006 later replaces it, or the rollup is deferred to
   006. Recommendation: **render it here from `group.sessions` directly** (no `ProjectGroup`

@@ -1,8 +1,8 @@
 # S04 — Manual acceptance test plan
 
 Covers the two stories built in this sprint:
-[006](../../requirements/006-activity-and-history-attribution.md) (activity matrix and history
-attribution) and [013](../../requirements/013-s03-residuals.md) (S03 residuals: reported protocol
+[006](../../../requirements/done/006-activity-and-history-attribution.md) (activity matrix and history
+attribution) and [013](../../../requirements/done/013-s03-residuals.md) (S03 residuals: reported protocol
 registration, seen-aware group order, contrast fix, subagent list ARIA fix).
 
 Both stories' own `## Done` sections say the live smoke pass was not performed (headless build

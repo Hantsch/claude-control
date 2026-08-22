@@ -17,7 +17,8 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { badgeRimColor, createBitmap, paintBadge } = await import('../../src/main/tray-icons.ts');
+const { badgeRimColor, createBitmap, paintBadge, renderFallbackTile, LIGHT_STATE_COLORS } =
+  await import('../../src/main/tray-icons.ts');
 
 describe('badgeRimColor', () => {
   it('is near-black for the dark theme and near-white for the light theme', () => {
@@ -68,5 +69,26 @@ describe('paintBadge', () => {
     // Dark rim pixel is near-black, light rim pixel is near-white.
     expect(darkR + darkG + darkB).toBeLessThan(150);
     expect(lightR + lightG + lightB).toBeGreaterThan(500);
+  });
+});
+
+describe('renderFallbackTile', () => {
+  it('uses LIGHT_STATE_COLORS for the light theme (§014 D4)', () => {
+    const size = 32;
+    const cx = size / 2;
+    const cy = size / 2;
+    const i = (Math.round(cy) * size + Math.round(cx)) * 4;
+
+    const lightBitmap = renderFallbackTile('done', size, false);
+    // Bitmap data is premultiplied BGRA (see `blend` above), not RGBA.
+    const b = lightBitmap.data[i] ?? 0;
+    const g = lightBitmap.data[i + 1] ?? 0;
+    const r = lightBitmap.data[i + 2] ?? 0;
+
+    expect([r, g, b]).toEqual([
+      LIGHT_STATE_COLORS.done.r,
+      LIGHT_STATE_COLORS.done.g,
+      LIGHT_STATE_COLORS.done.b,
+    ]);
   });
 });

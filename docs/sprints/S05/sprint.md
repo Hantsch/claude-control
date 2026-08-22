@@ -20,7 +20,7 @@ taskbar only.
 
 - [x] 005 — Exact context windows, and the network promise it costs (built, live acceptance pending)
 - [x] 015 — S04 residuals — a total that admits its page, and a test that cannot miss its event (built, live acceptance pending)
-- [ ] 014 — Tray tile on a light taskbar
+- [x] 014 — Tray tile on a light taskbar (built, live acceptance pending)
 
 ## Notes
 

@@ -104,6 +104,11 @@ Three things about the layout are deliberate:
   pixel box — 16 px per 100 % of display scaling — and resamples whatever it is given. The
   ring is a thin stroke and does not survive that, so `trayPixelSize` picks the tile that
   needs no resampling, and the tray is rebuilt when display scaling changes.
+- **Two tile sets, one per taskbar theme.** `tray-light/` mirrors `tray/` state for state,
+  tuned for a light taskbar; `icon-assets.ts` picks between them from
+  `nativeTheme.shouldUseDarkColors` and rebuilds on a live theme switch (`tray.ts`'s
+  `retheme()`). A missing light tile falls back to the dark one rather than the code-drawn
+  fallback below — that fallback is reserved for a state missing from both sets.
 - **`stale` is derived, not generated.** The art set has five states, the tray has six icons.
   Deriving `stale` from `waiting` gives the two overdue states the same shape in different
   intensities, which is the relationship they have everywhere else (§6.3).

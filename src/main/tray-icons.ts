@@ -32,6 +32,21 @@ export const STATE_COLORS: Record<TrayState, Rgb> = {
   none: { r: 99, g: 99, b: 104 }, // dim outline — nothing running
 };
 
+/**
+ * Light-theme mirror of `STATE_COLORS` (§014 D4) — same hues `styles.css`'s
+ * `prefers-color-scheme: light` block uses for `--status-*`, darkened enough to read on a light
+ * taskbar instead of the dark one these were tuned for. `none` has no `--status-*` light token
+ * (it's a neutral/dim state), so this picks a grey dim enough to still read as "quiet" against
+ * `#f3f3f3` — checked for contrast by `test/unit/trayTileContrast.test.ts`.
+ */
+export const LIGHT_STATE_COLORS: Record<TrayState, Rgb> = {
+  waiting: { r: 160, g: 76, b: 0 },
+  done: { r: 21, g: 127, b: 60 },
+  stale: { r: 143, g: 124, b: 95 },
+  working: { r: 27, g: 95, b: 201 },
+  none: { r: 90, g: 90, b: 96 },
+};
+
 const BADGE_COLOR: Rgb = { r: 255, g: 59, b: 48 };
 const BADGE_TEXT: Rgb = { r: 255, g: 255, b: 255 };
 /** Near-black rim: on a dark taskbar it separates the badge from the state ring beneath it. */
@@ -219,12 +234,17 @@ export function paintBadge(
  * quiet ones, and the working colour around a finished disc for `mixed`. It exists so a
  * missing asset cannot leave the tray blank, not to imitate the art.
  */
-export function renderFallbackTile(icon: TrayIcon, size: number): Bitmap {
+export function renderFallbackTile(
+  icon: TrayIcon,
+  size: number,
+  dark: boolean = nativeTheme.shouldUseDarkColors,
+): Bitmap {
   const bitmap = createBitmap(size, size);
   const cx = size / 2;
   const cy = size / 2;
   const radius = size * 0.34;
   const outline = Math.max(1.5, size * 0.09);
+  const colors = dark ? STATE_COLORS : LIGHT_STATE_COLORS;
 
   switch (icon) {
     case 'none':
@@ -232,24 +252,26 @@ export function renderFallbackTile(icon: TrayIcon, size: number): Bitmap {
       // An outline rather than a disc: present, but not asserting itself. For `none` that
       // means "quiet"; for `stale` it means "running long, probably fine" — the muted colour
       // carries the difference, the hollow shape keeps it from reading as an alarm.
-      ring(bitmap, cx, cy, radius, outline, STATE_COLORS[icon]);
+      ring(bitmap, cx, cy, radius, outline, colors[icon]);
       break;
     case 'waiting':
-      circle(bitmap, cx, cy, radius, STATE_COLORS.waiting);
-      // A notch distinguishes "needs you?" from "done" without relying on colour.
+      circle(bitmap, cx, cy, radius, colors.waiting);
+      // A notch distinguishes "needs you?" from "done" without relying on colour. Its contrast
+      // is against the amber disc beneath it, not the taskbar, so it stays near-black in both
+      // themes — the light-theme amber (rgb(160,76,0)) is still dark enough for it to read.
       circle(bitmap, cx + radius * 0.15, cy, radius * 0.42, { r: 28, g: 28, b: 30 });
       break;
     case 'working':
-      circle(bitmap, cx, cy, radius, STATE_COLORS.working);
+      circle(bitmap, cx, cy, radius, colors.working);
       ring(bitmap, cx, cy, radius * 0.55, Math.max(1, size * 0.06), { r: 255, g: 255, b: 255 });
       break;
     case 'done':
-      circle(bitmap, cx, cy, radius, STATE_COLORS.done);
+      circle(bitmap, cx, cy, radius, colors.done);
       break;
     case 'mixed':
       // Finished, with something still running around it.
-      circle(bitmap, cx, cy, radius * 0.6, STATE_COLORS.done);
-      ring(bitmap, cx, cy, radius, outline, STATE_COLORS.working);
+      circle(bitmap, cx, cy, radius * 0.6, colors.done);
+      ring(bitmap, cx, cy, radius, outline, colors.working);
       break;
   }
 

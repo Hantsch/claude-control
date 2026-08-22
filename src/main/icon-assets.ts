@@ -61,10 +61,18 @@ export function trayImage(icon: TrayIcon, badgeCount: number, size: number): Nat
   return image;
 }
 
+/** Tray tile folder for the OS theme: light taskbars get the light-tuned art, dark keeps today's. */
+function trayFolder(dark: boolean): string {
+  return dark ? 'tray' : 'tray-light';
+}
+
 function buildTrayImage(icon: TrayIcon, label: string | null, size: number): NativeImage {
-  const art = read('tray', String(size), `${icon}.png`);
+  const dark = nativeTheme.shouldUseDarkColors;
+  // A missing light tile falls back to the dark tile rather than the code-drawn fallback —
+  // only if the dark tile is also missing does the fallback kick in below.
+  const art = read(trayFolder(dark), String(size), `${icon}.png`) ?? (dark ? null : read('tray', String(size), `${icon}.png`));
   if (!art) {
-    const fallback = renderFallbackTile(icon, size);
+    const fallback = renderFallbackTile(icon, size, dark);
     if (label) paintBadge(fallback, label);
     return nativeImage.createFromBitmap(fallback.data, { width: size, height: size });
   }

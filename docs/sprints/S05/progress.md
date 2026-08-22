@@ -24,3 +24,12 @@
 - 2026-08-22 15:31 · 015 · D4 timing tests that cannot miss their event · started
 - 2026-08-22 15:38 · 015 · D4 timing tests that cannot miss their event · done
 - 2026-08-22 16:08 · 015 · review (fail) + engine.ts race fix + re-review (pass) + Done section · done
+- 2026-08-22 16:09 · 014 · D1 Light tile set out of npm run icons · started
+- 2026-08-22 16:16 · 014 · D1 Light tile set out of npm run icons · done
+- 2026-08-22 16:16 · 014 · D2 Runtime picks set by theme · started
+- 2026-08-22 16:23 · 014 · D2 Runtime picks set by theme · done
+- 2026-08-22 16:23 · 014 · D4 Fallback tile survives light taskbar · started
+- 2026-08-22 16:32 · 014 · D4 Fallback tile survives light taskbar · done
+- 2026-08-22 17:32 · 014 · D3 fix pixel-sampling contrast test (resume from RED) · started
+- 2026-08-22 17:50 · 014 · D3 fix pixel-sampling contrast test (resume from RED) · done
+- 2026-08-22 18:00 · 014 · review pass (clean agent) + fix badge-test all-sizes bug + add D4 fallback contrast test · done

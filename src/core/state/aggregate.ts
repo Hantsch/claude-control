@@ -62,15 +62,37 @@ const ONGOING_STATUSES = new Set<SessionStatus>(['working', 'waiting', 'stale', 
  *   3. it did something recently — the session you were just in stays reachable for a while
  *      even once you have clicked it away.
  *
+ * `dismissed` is the user's own veto on rules 2 and 3: "Mark as seen" in the popover means
+ * *take this row off the list now*, so it must also beat the recency window — otherwise
+ * dismissing the session you just finished would look like it did nothing for the next half
+ * hour. It cannot veto rule 1: a session that is still running or is blocked on an answer is
+ * not something a dismissal may hide, and the stamp behind `dismissed` re-arms on the next
+ * status change anyway.
+ *
  * What this drops is exactly the case that made the popover useless: finished sessions from
  * hours ago that you have already dealt with. They stay in the main window, which is the
  * complete list, and in history once the process ends.
  */
 export function isTrayWorthy(session: SessionView, now: number, recentMs: number): boolean {
   if (ONGOING_STATUSES.has(session.status)) return true;
+  if (session.dismissed) return false;
   if (needsAttention(session.status) && !session.seen) return true;
   const at = session.lastActivityAt ?? session.startedAt;
   return now - at < recentMs;
+}
+
+/**
+ * Would "Mark as seen" actually take this row off the tray surfaces? Rule 1 of
+ * `isTrayWorthy` outranks a dismissal, so a session that is in flight would come straight
+ * back — the popover greys the item out for those rather than offering a no-op.
+ */
+export function isDismissible(session: SessionView): boolean {
+  return !ONGOING_STATUSES.has(session.status);
+}
+
+/** How many of these rows "Mark all as seen" would remove — the number on that menu item. */
+export function dismissibleCount(sessions: readonly SessionView[]): number {
+  return sessions.filter(isDismissible).length;
 }
 
 /** The tray surfaces' session list — already sorted by urgency (§6.5). */

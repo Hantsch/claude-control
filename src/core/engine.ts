@@ -373,6 +373,20 @@ export class ControlEngine {
   }
 
   /**
+   * Dismiss one session from the tray surfaces — the popover's "Mark as seen". Stronger than
+   * `acknowledge()`: the row leaves the popover and the tray menu immediately instead of
+   * lingering out its recency window, until the session produces news again.
+   */
+  dismiss(id: SessionId): void {
+    if (this.store.dismiss(id)) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /** "Mark all as seen" from the popover — `dismiss()` for every live session. */
+  dismissAll(): void {
+    if (this.store.dismissAll() > 0) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /**
    * Silence (or restore) toasts for one session — "Mute this session" (§6.6 D4). Nothing is
    * re-read; only future notification decisions are affected, so this is deliberately
    * synchronous and re-emits immediately, mirroring `acknowledge()`.
@@ -533,8 +547,9 @@ export class ControlEngine {
       statusSource: derived.statusSource,
       // 0 lets the store stamp the moment the status actually changed.
       statusSince: 0,
-      // The store owns acknowledgement — it is the only thing that survives a re-read.
+      // The store owns acknowledgement and dismissal — the only things that survive a re-read.
       seen: false,
+      dismissed: false,
       // Placeholder: the engine's mute registry, not the store, owns this — `getSnapshot()`
       // decorates the real value onto every view on the way out.
       muted: false,

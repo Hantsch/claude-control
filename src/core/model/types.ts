@@ -341,6 +341,15 @@ export interface SessionView {
    */
   seen: boolean;
   /**
+   * True when the user explicitly dismissed the session from the tray surfaces — the
+   * popover's right-click menu ("Mark as seen" / "Mark all as seen"). It implies `seen`,
+   * but says one thing more: *stop showing me this row*, which beats the recency rule that
+   * otherwise keeps a settled session in the popover for `list.trayRecentMs` after its last
+   * activity (`isTrayWorthy`). Re-arms exactly like `seen` does — the next status change or
+   * new transcript line brings the row back, so a dismissal can never hide live news.
+   */
+  dismissed: boolean;
+  /**
    * True while the user has silenced toasts for this session (§6.6, story 004 D4). In-memory
    * only — a restart always comes back unmuted. Affects `decideNotification` alone: status,
    * sorting, grouping and the tray badge all read this session exactly as if it were unmuted.

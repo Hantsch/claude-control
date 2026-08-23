@@ -18,7 +18,8 @@ export interface TrayPresenterDeps {
   onTogglePopover: (bounds: Electron.Rectangle) => void;
   onOpenWindow: (tab: 'sessions' | 'history' | 'settings') => void;
   onFocusSession: (sessionId: string) => void;
-  onAcknowledgeAll: () => void;
+  /** "Mark all as seen" — dismisses every settled session from the tray surfaces. */
+  onMarkAllSeen: () => void;
   onRefresh: () => void;
   onQuit: () => void;
 }
@@ -123,13 +124,15 @@ export class TrayPresenter {
     }
 
     // The badge has to be dismissible, otherwise the icon claims something is open with no
-    // way for the user to answer it. Offered only when there is something to dismiss.
+    // way for the user to answer it. Offered only when there is something to dismiss. Same
+    // action as the popover's "Mark all as seen": the settled rows leave this menu too, not
+    // just the badge.
     if ((this.state?.attention ?? 0) > 0) {
       items.push(
         { type: 'separator' },
         {
           label: `Mark all as seen (${this.state?.attention ?? 0})`,
-          click: () => this.deps.onAcknowledgeAll(),
+          click: () => this.deps.onMarkAllSeen(),
         },
       );
     }

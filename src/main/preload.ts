@@ -34,6 +34,8 @@ const api: RendererApi & {
   focusSession: (id) => ipcRenderer.invoke(IPC.focusSession, id),
   acknowledge: (id) => ipcRenderer.invoke(IPC.acknowledge, id) as Promise<void>,
   acknowledgeAll: () => ipcRenderer.invoke(IPC.acknowledgeAll) as Promise<void>,
+  dismiss: (id) => ipcRenderer.invoke(IPC.dismiss, id) as Promise<void>,
+  dismissAll: () => ipcRenderer.invoke(IPC.dismissAll) as Promise<void>,
   setSessionMuted: (id, muted) => ipcRenderer.invoke(IPC.setSessionMuted, id, muted) as Promise<void>,
   getSettings: () => ipcRenderer.invoke(IPC.getSettings) as Promise<AppSettings>,
   setSettings: (settings) => ipcRenderer.invoke(IPC.setSettings, settings),

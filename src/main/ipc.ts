@@ -48,6 +48,14 @@ export function registerIpc(deps: IpcDeps): void {
     deps.engine.acknowledgeAll();
   });
 
+  ipcMain.handle(IPC.dismiss, (_event, id: SessionId) => {
+    deps.engine.dismiss(id);
+  });
+
+  ipcMain.handle(IPC.dismissAll, () => {
+    deps.engine.dismissAll();
+  });
+
   ipcMain.handle(IPC.setSessionMuted, (_event, id: SessionId, muted: boolean) => {
     deps.engine.setMuted(id, muted === true);
   });

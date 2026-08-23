@@ -96,7 +96,7 @@ async function bootstrap(): Promise<void> {
     onFocusSession: (sessionId) => {
       void focusSession(sessionId);
     },
-    onAcknowledgeAll: () => engine.acknowledgeAll(),
+    onMarkAllSeen: () => engine.dismissAll(),
     onRefresh: () => {
       void engine.refreshNow();
     },

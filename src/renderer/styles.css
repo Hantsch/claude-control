@@ -1263,6 +1263,40 @@ table.history .title {
   padding: 1px 0 6px;
 }
 
+/* The row's right-click menu. A line in the flow of the list rather than a floating overlay
+   (see `RowMenu` in popover.tsx): the window is sized to its content, so anything overhanging
+   the edge would be clipped. Indented to 48px like `.popover-detail .kv`, so it reads as
+   belonging to the row above it, and boxed like `.notify-menu` so it still reads as a menu. */
+.popover-row-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 6px 4px 48px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.popover-row-menu button {
+  padding: 3px 6px;
+  border-color: transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: left;
+}
+
+.popover-row-menu button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.popover-row-menu button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
 .popover-detail .kv {
   display: flex;
   align-items: baseline;

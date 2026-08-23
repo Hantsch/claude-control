@@ -22,7 +22,9 @@ import {
 import {
   STATUS_SORT_RANK,
   attentionCount,
+  dismissibleCount,
   groupSessions,
+  isDismissible,
   popoverGroupRank,
   selectTraySessions,
   trayIconFor,
@@ -54,6 +56,7 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     statusSource: 'inferred',
     statusSince: 0,
     seen: false,
+    dismissed: false,
     muted: false,
     project: { path: 'c:\\dev\\proj', name: 'proj', key: 'c:/dev/proj' },
     branch: 'main',
@@ -296,6 +299,40 @@ describe('tray aggregation', () => {
 
     const kept = selectTraySessions([seenAndOld, unseenAndOld, seenAndRecent], T0, recentMs);
     expect(kept.map((s) => s.sessionId)).toEqual(['unseen', 'fresh']);
+  });
+
+  it('lets an explicit dismissal beat the recency window', () => {
+    const recentMs = 30 * 60_000;
+    // Acknowledged and recent: rule 3 keeps it around, you were just in it.
+    const justFinished = view({
+      sessionId: 'fresh',
+      status: 'done',
+      seen: true,
+      lastActivityAt: T0 - 60_000,
+    });
+    // The same row after "Mark as seen" in the popover — gone now, not in half an hour.
+    const dismissed = { ...justFinished, sessionId: 'dismissed', dismissed: true };
+    // A dismissal must not hide something that is still in flight: rule 1 outranks it, and the
+    // stamp behind `dismissed` re-arms on the next status change anyway.
+    const stillWorking = view({ sessionId: 'busy', status: 'working', seen: true, dismissed: true });
+
+    const kept = selectTraySessions([justFinished, dismissed, stillWorking], T0, recentMs);
+    expect(kept.map((s) => s.sessionId)).toEqual(['fresh', 'busy']);
+  });
+
+  it('counts what "mark all as seen" would actually remove', () => {
+    const sessions = [
+      view({ sessionId: 'a', status: 'done' }),
+      view({ sessionId: 'b', status: 'unknown' }),
+      // In flight, in any of its four shapes — a dismissal cannot touch these.
+      view({ sessionId: 'c', status: 'working' }),
+      view({ sessionId: 'd', status: 'waiting' }),
+      view({ sessionId: 'e', status: 'stale' }),
+      view({ sessionId: 'f', status: 'queued' }),
+    ];
+    expect(sessions.filter(isDismissible).map((s) => s.sessionId)).toEqual(['a', 'b']);
+    expect(dismissibleCount(sessions)).toBe(2);
+    expect(dismissibleCount([])).toBe(0);
   });
 
   it('falls back to the start time for a session that never recorded activity', () => {
@@ -655,6 +692,47 @@ describe('session store', () => {
     expect(store.acknowledgeAll()).toBe(3);
     expect(store.acknowledgeAll()).toBe(0);
     expect(store.listLive().every((session) => session.seen)).toBe(true);
+  });
+
+  it('dismisses a session, and re-arms it only when real news arrives', () => {
+    const store = new InMemorySessionStore();
+    store.putLive([view({ sessionId: 's1', status: 'done' })], T0);
+
+    expect(store.dismiss('s1')).toBe(true);
+    // A dismissal is an acknowledgement too: the badge clears together with the row.
+    expect(store.getLive('s1')).toMatchObject({ seen: true, dismissed: true });
+    // Dismissing twice changes nothing, so the UI can skip a re-render.
+    expect(store.dismiss('s1')).toBe(false);
+    expect(store.acknowledge('s1')).toBe(false);
+
+    // The 5 s tick re-derives the same status over and over; that must not bring the row back.
+    store.putLive([view({ sessionId: 's1', status: 'done' })], T0 + 5_000);
+    expect(store.getLive('s1')!.dismissed).toBe(true);
+
+    // A new turn in the same status is news, so it comes back — a dismissal can never hide
+    // something that happened after it.
+    store.putLive(
+      [view({ sessionId: 's1', status: 'done', lastActivityAt: T0 + 10_000 })],
+      T0 + 10_000,
+    );
+    expect(store.getLive('s1')).toMatchObject({ seen: false, dismissed: false });
+  });
+
+  it('dismisses every live session at once and reports how many changed', () => {
+    const store = new InMemorySessionStore();
+    store.putLive(
+      [
+        view({ sessionId: 's1', status: 'done' }),
+        view({ sessionId: 's2', status: 'waiting' }),
+        view({ sessionId: 's3', status: 'working' }),
+      ],
+      T0,
+    );
+    expect(store.dismissAll()).toBe(3);
+    expect(store.dismissAll()).toBe(0);
+    // Every row is dismissed in the store; which of them that actually removes from the tray
+    // surfaces is `isTrayWorthy`'s call, not the store's.
+    expect(store.listLive().every((session) => session.dismissed && session.seen)).toBe(true);
   });
 
   it('emits an ended transition for a session that left the registry', () => {

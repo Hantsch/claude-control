@@ -30,6 +30,15 @@ export interface SessionRepository {
   /** Mark every live session as seen. Returns how many rows changed. */
   acknowledgeAll(): number;
 
+  /**
+   * Explicitly dismiss one session from the tray surfaces — "Mark as seen" in the popover.
+   * Implies `acknowledge`, and additionally takes the row out of the popover regardless of
+   * how recent it is (`isTrayWorthy`). Returns true when that changed anything.
+   */
+  dismiss(id: SessionId): boolean;
+  /** "Mark all as seen" — dismiss every live session. Returns how many rows changed. */
+  dismissAll(): number;
+
   putHistory(entries: readonly HistoryEntry[]): void;
   listHistory(query?: HistoryQuery): HistoryEntry[];
   historyCount(query?: HistoryQuery): number;
@@ -50,6 +59,13 @@ interface LiveRecord {
    * re-deriving the same state does not.
    */
   seenAt: number | null;
+  /**
+   * The same stamp for an *explicit* dismissal, or null. Kept apart from `seenAt` because
+   * the two gestures mean different things: clicking a session (or jumping to it) only says
+   * "I have read this", and the tray deliberately keeps such a row around for a while;
+   * "Mark as seen" says "take it off the list now".
+   */
+  dismissedAt: number | null;
 }
 
 /**
@@ -81,9 +97,20 @@ export class InMemorySessionStore implements SessionRepository {
       const changed = !previous || previous.status !== incoming.status;
       const statusSince = changed ? (incoming.statusSince || at) : previous.statusSince;
       const seenAt = previous?.seenAt ?? null;
-      const seen = seenAt !== null && seenAt >= newsStamp(incoming, statusSince);
-      const view: SessionView = { ...incoming, statusSince, seen };
-      next.set(incoming.sessionId, { view, status: incoming.status, statusSince, seenAt });
+      const dismissedAt = previous?.dismissedAt ?? null;
+      const stamp = newsStamp(incoming, statusSince);
+      const seen = seenAt !== null && seenAt >= stamp;
+      // Re-armed by news exactly like `seen`: a dismissed session that produces a new turn
+      // (or changes status) is news again and comes back to the tray surfaces by itself.
+      const dismissed = dismissedAt !== null && dismissedAt >= stamp;
+      const view: SessionView = { ...incoming, statusSince, seen, dismissed };
+      next.set(incoming.sessionId, {
+        view,
+        status: incoming.status,
+        statusSince,
+        seenAt,
+        dismissedAt,
+      });
 
       if (changed) {
         transitions.push({
@@ -139,6 +166,26 @@ export class InMemorySessionStore implements SessionRepository {
     let changed = 0;
     for (const id of this.live.keys()) {
       if (this.acknowledge(id)) changed += 1;
+    }
+    return changed;
+  }
+
+  dismiss(id: SessionId): boolean {
+    const record = this.live.get(id);
+    if (!record) return false;
+    const stamp = newsStamp(record.view, record.statusSince);
+    if (record.dismissedAt !== null && record.dismissedAt >= stamp) return false;
+    // A dismissal is an acknowledgement too, so the badge clears with the row.
+    record.seenAt = stamp;
+    record.dismissedAt = stamp;
+    record.view = { ...record.view, seen: true, dismissed: true };
+    return true;
+  }
+
+  dismissAll(): number {
+    let changed = 0;
+    for (const id of this.live.keys()) {
+      if (this.dismiss(id)) changed += 1;
     }
     return changed;
   }

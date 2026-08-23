@@ -144,6 +144,8 @@ export const IPC = {
   focusSession: 'cc:focus-session',
   acknowledge: 'cc:acknowledge',
   acknowledgeAll: 'cc:acknowledge-all',
+  dismiss: 'cc:dismiss',
+  dismissAll: 'cc:dismiss-all',
   setSessionMuted: 'cc:set-session-muted',
   getSettings: 'cc:get-settings',
   setSettings: 'cc:set-settings',
@@ -176,6 +178,13 @@ export interface RendererApi {
   acknowledge(id: SessionId): Promise<void>;
   /** Mark every live session as seen. */
   acknowledgeAll(): Promise<void>;
+  /**
+   * "Mark as seen" from the popover: acknowledge the session *and* take it off the tray
+   * surfaces right away, until it produces news again.
+   */
+  dismiss(id: SessionId): Promise<void>;
+  /** "Mark all as seen" — `dismiss` for every live session. */
+  dismissAll(): Promise<void>;
   /** Mute or unmute toast notifications for one session (§6.6). */
   setSessionMuted(id: SessionId, muted: boolean): Promise<void>;
   getSettings(): Promise<AppSettings>;

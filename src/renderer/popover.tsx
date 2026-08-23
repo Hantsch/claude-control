@@ -27,7 +27,12 @@ import {
   useState,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { groupSessions, popoverGroupRank } from '../core/state/aggregate.ts';
+import {
+  dismissibleCount,
+  groupSessions,
+  isDismissible,
+  popoverGroupRank,
+} from '../core/state/aggregate.ts';
 import type { NotificationMode } from '../core/model/settings.ts';
 import { applyNotificationMode, notificationMode } from '../core/model/settings.ts';
 import type { AppSettings, AppState, SubagentNode } from '../shared/ipc.ts';
@@ -322,6 +327,93 @@ function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
 }
 
 /**
+ * A session row's right-click menu — the way *one* row gets out of the popover. Clearing the
+ * whole list is the footer's "Mark all as seen" button, not a second item in here.
+ *
+ * In the flow of the list, directly under its row, rather than an absolutely positioned
+ * overlay: the popover window is only as tall as `report()` measures head + rows + footer to
+ * be, so an overhanging menu would simply be clipped at the window edge. Growing the list
+ * instead lets the ResizeObserver resize the window to match — the same constraint
+ * `NotifySwitch` lives under, and the same reason neither uses a native `Menu.popup` (a
+ * second OS-level focus target would close the unpinned popover underneath it).
+ */
+function RowMenu({
+  dismissible,
+  onMarkSeen,
+  onClose,
+}: {
+  /** False while the session is in flight — dismissing it would be a no-op (`isDismissible`). */
+  dismissible: boolean;
+  onMarkSeen: () => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const menu = useRef<HTMLDivElement>(null);
+
+  // Anywhere else inside the popover closes the menu. Capture phase, like `NotifySwitch`'s:
+  // nothing here leaves the renderer, so no `blur` fires and the popover itself stays open.
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent): void => {
+      if (menu.current?.contains(event.target as Node)) return;
+      onClose();
+    };
+    window.addEventListener('mousedown', onPointerDown, true);
+    return () => window.removeEventListener('mousedown', onPointerDown, true);
+  }, [onClose]);
+
+  // Focus the first usable item on open, so the keyboard route in (Shift+F10 or the menu key
+  // on a focused row, both of which fire `contextmenu`) works without reaching for the mouse.
+  useEffect(() => {
+    menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  }, []);
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === 'Escape') {
+      // `preventDefault` matters: the popover's document-level handler skips prevented events,
+      // so Escape closes the menu without also closing the whole popover.
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const items = Array.from(
+      menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [],
+    );
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    const delta = event.key === 'ArrowDown' ? 1 : -1;
+    items[Math.min(Math.max(index + delta, 0), items.length - 1)]?.focus();
+  };
+
+  return (
+    <div
+      className="popover-row-menu"
+      role="menu"
+      ref={menu}
+      onKeyDown={onKeyDown}
+      // The menu sits inside the row's click area in the DOM flow; a click on it must not also
+      // be read as "jump to this session".
+      onClick={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        disabled={!dismissible}
+        title={
+          dismissible
+            ? 'Take this session out of the popover and the tray menu until it does something new'
+            : 'Still in flight — it would come straight back, so there is nothing to dismiss'
+        }
+        onClick={onMarkSeen}
+      >
+        Mark as seen
+      </button>
+    </div>
+  );
+}
+
+/**
  * Every keyboard-reachable node in the list carries a `data-nav-key` (story 010: `g:<projectKey>`
  * for a group head, `s:<sessionId>` for a session row, `a:<nodeId>` for a subagent row), so one
  * selector spans all three kinds and navigation is a flat list in DOM order.
@@ -374,6 +466,9 @@ function Popover(): React.JSX.Element {
   // outside. Main now keeps the popover open on failure precisely so this can say what
   // happened; the message is the focuser's own, never a rephrasing of it.
   const [jumpError, setJumpError] = useState<string | null>(null);
+  // Which session row has its right-click menu open, by `s:<sessionId>` nav key, or null.
+  // Only ever one — opening a second menu closes the first, like a native context menu.
+  const [menuKey, setMenuKey] = useState<string | null>(null);
   const head = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLDivElement>(null);
@@ -409,6 +504,7 @@ function Popover(): React.JSX.Element {
         setOpenNodes(new Set());
         setCollapsedGroups(new Set());
         setJumpError(null);
+        setMenuKey(null);
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -500,6 +596,32 @@ function Popover(): React.JSX.Element {
     row.focus();
     focusedYet.current = true;
   }, []);
+
+  /**
+   * "Mark as seen" (the row's right-click menu). The row is about to unmount together with the
+   * menu button that holds the focus, which would strand it on `document.body` — so re-arm the
+   * initial-focus retry below and let the next engine snapshot put the focus back on the most
+   * urgent remaining row.
+   */
+  const markSeen = useCallback((sessionId: string): void => {
+    setMenuKey(null);
+    focusedYet.current = false;
+    void api.dismiss(sessionId);
+  }, []);
+
+  /**
+   * "Mark all as seen" (the footer button). Same re-arming, but here it usually changes
+   * nothing: the button itself keeps the focus and `shouldFocusTopRow` refuses to pull focus
+   * out of the footer. It matters only when the button disables itself out from under the
+   * focus, which is exactly when landing on the top row is the right answer.
+   */
+  const markAllSeen = useCallback((): void => {
+    setMenuKey(null);
+    focusedYet.current = false;
+    void api.dismissAll();
+  }, []);
+
+  const closeMenu = useCallback((): void => setMenuKey(null), []);
 
   // Initial focus, and again every time the (reused, shown/hidden rather than recreated)
   // popover window regains OS focus — that is how "opening the popover focuses the most
@@ -637,6 +759,8 @@ function Popover(): React.JSX.Element {
 
   const shown = state.traySessions;
   const hidden = state.sessions.length - shown.length;
+  // What "Mark all as seen" would actually remove — everything settled, i.e. not in flight.
+  const dismissible = dismissibleCount(shown);
   const waitingCount = shown.filter((session) => session.status === 'waiting').length;
 
   // Rows are already sorted by urgency within a group (`compareSessions`); groups themselves
@@ -760,6 +884,12 @@ function Popover(): React.JSX.Element {
                   title={session.statusReason}
                   data-nav-key={nodeKey}
                   onClick={() => jumpToSession(session.sessionId)}
+                  // Right-click (and the keyboard's Shift+F10 / menu key, which fire the same
+                  // event on the focused row) opens the row menu instead of the OS one.
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setMenuKey(nodeKey);
+                  }}
                   onKeyDown={(event) => {
                     // Preserve the button-like keyboard behaviour a plain <div role="button">
                     // does not get for free — but only for the row itself: bail out if the
@@ -862,6 +992,13 @@ function Popover(): React.JSX.Element {
                     </span>
                   </span>
                 </div>
+                {menuKey === nodeKey && (
+                  <RowMenu
+                    dismissible={isDismissible(session)}
+                    onMarkSeen={() => markSeen(session.sessionId)}
+                    onClose={closeMenu}
+                  />
+                )}
                 {isOpen && (
                   // Detail block (D4): title + last-said, then the subagent area. Mirrors the
                   // prototype's `.detail` / `.kv` structure — see sessionRow() in
@@ -915,6 +1052,21 @@ function Popover(): React.JSX.Element {
             Open Claude Control
           </button>
           <span className="spacer" />
+          {/* Left of Settings: the way out when a pile of finished sessions has built up,
+              without right-clicking each row. Disabled rather than hidden when there is
+              nothing settled to clear, so the footer's buttons never jump sideways. */}
+          <button
+            type="button"
+            disabled={dismissible === 0}
+            title={
+              dismissible === 0
+                ? 'Nothing settled to clear — everything here is still in flight'
+                : 'Take every settled session out of this list and the tray menu. Anything still running stays, and a new turn brings a session back.'
+            }
+            onClick={markAllSeen}
+          >
+            Mark all as seen{dismissible > 0 ? ` (${dismissible})` : ''}
+          </button>
           <button type="button" onClick={() => void api.openMainWindow('settings')}>
             Settings
           </button>

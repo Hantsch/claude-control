@@ -83,8 +83,8 @@ export function App(): React.JSX.Element {
         {state.attention > 0 && (
           <button
             type="button"
-            title="Clear the tray badge for every session that is currently done or waiting. A new status change brings it back."
-            onClick={() => void api.acknowledgeAll()}
+            title="Clear the tray badge for every session that is currently done or waiting, and take the settled ones out of the tray popover. A new status change brings them back."
+            onClick={() => void api.dismissAll()}
           >
             Mark all as seen
           </button>

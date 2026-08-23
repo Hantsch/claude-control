@@ -243,8 +243,14 @@ async function bootstrap(): Promise<void> {
     // Jumping to a session is the strongest possible "I have seen this", so it clears the
     // badge for it whether the focus itself succeeds or not.
     engine.acknowledge(sessionId);
-    windows.hidePopover();
-    return focuser.focus(session);
+    // Activate *first*, hide after. Windows only grants `SetForegroundWindow` to a process
+    // that owns the foreground window, and hiding the popover hands the foreground straight
+    // back to whatever was underneath — so hiding first made our own call ineligible and the
+    // jump degraded to a taskbar flash, which reads as "the click did nothing". A failed jump
+    // leaves the popover up on purpose: it is the surface that then reports why.
+    const result = await focuser.focus(session);
+    if (result.ok || result.flashed) windows.hidePopover();
+    return result;
   }
 
   /**

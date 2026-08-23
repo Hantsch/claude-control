@@ -91,36 +91,36 @@ including the `enqueue, enqueue, remove` shape that a counting-only rule gets wr
 
 ### Tray icon rendering
 
-The tiles are shipped art in `assets/icons/`, assembled by `npm run icons`
-(`scripts/build-icons.py`, needs Python + Pillow) from the generated art in
-`output/imagegen/claude-monitor`. Beyond the ring colour, each state keeps a distinct ring:
-`working` blue, `waiting` amber, `stale` the same ring desaturated and dimmed, `done` green,
-`mixed` split blue/green, `none` no ring at all — so the states are distinguishable without
-relying on colour alone.
+The tile is drawn in code (`src/main/tray-icons.ts`), at the exact physical size Windows asks
+for, in the same `--status-*` colours the sessions list and the popover use for the same state.
+The tray therefore shows the app's own status dot, not a second icon vocabulary.
 
-Three things about the layout are deliberate:
+Four things about it are deliberate:
 
-- **One tile per physical size** (`tray/16|20|24|32|40|48/`). Windows hands the tray a fixed
-  pixel box — 16 px per 100 % of display scaling — and resamples whatever it is given. The
-  ring is a thin stroke and does not survive that, so `trayPixelSize` picks the tile that
-  needs no resampling, and the tray is rebuilt when display scaling changes.
-- **Two tile sets, one per taskbar theme.** `tray-light/` mirrors `tray/` state for state,
-  tuned for a light taskbar; `icon-assets.ts` picks between them from
-  `nativeTheme.shouldUseDarkColors` and rebuilds on a live theme switch (`tray.ts`'s
-  `retheme()`). A missing light tile falls back to the dark one rather than the code-drawn
-  fallback below — that fallback is reserved for a state missing from both sets.
-- **`stale` is derived, not generated.** The art set has five states, the tray has six icons.
-  Deriving `stale` from `waiting` gives the two overdue states the same shape in different
-  intensities, which is the relationship they have everywhere else (§6.3).
-- **The badge is still drawn in code** (`src/main/tray-icons.ts`: a 3×5 pixel font composited
-  onto Electron's premultiplied BGRA bitmap). It is a function of a live count, so shipping it
-  would mean 6 states × 11 counts × 6 sizes of near-identical art. The same file draws a plain
-  fallback tile, used only if an asset cannot be read, so a missing file degrades the tray
-  instead of blanking it.
+- **The mark fills the box.** Windows hands the tray a fixed pixel box — 16 px per 100 % of
+  display scaling — and 16 px is the whole picture, not a thumbnail of one. The mark is 80 % of
+  that box; `trayPixelSize` reports the physical size and the tile is rendered at it, so nothing
+  is ever resampled, and the tray is rebuilt when display scaling changes.
+- **Shape as well as colour.** `done` is a filled disc, `waiting` the same disc with a notch
+  bitten out of it and its halo around it (the halo `.dot.halo` draws in the window), `working` a
+  disc with a white core, `none` and `stale` hollow rings — small and thin for `none`, full size
+  for `stale` — and `mixed` a `working` ring around a `done` core. Amber against green is the
+  pair colour vision drops first, and it is the pair the badge counts, so it does not rest on hue
+  alone. `test/unit/trayTileContrast.test.ts` measures both channels on the rendered pixels.
+- **Two palettes, one geometry.** `LIGHT_STATE_COLORS` mirrors `STATE_COLORS` in the light
+  scheme's `--status-*` hues, dark enough to read on a light taskbar; `icon-assets.ts` picks
+  between them off `nativeTheme.shouldUseDarkColors` and rebuilds on a live theme switch
+  (`tray.ts`'s `retheme()`). The picture is identical either way — only the ink changes.
+- **The badge is drawn onto the same bitmap** (a 3×5 pixel font composited onto Electron's
+  premultiplied BGRA). It is a function of a live count, so it could never have been shipped art
+  either.
 
-The art also supplies the window icon (`app.ico`, `app.png`) and one toast logo per notifying
-status (`app-waiting.png`, `app-done.png`), so a toast is readable as "finished" or "needs you"
-from its logo alone.
+The tile used to be shipped art instead: `scripts/build-icons.py` cut a generated rounded
+near-black plate with a glowing ring into one PNG per state per tray size, plus a second set
+inverted and re-hued for a light taskbar — 72 files. At the size the tray actually shows, the
+plate ate the box and the state went with it. `npm run icons` still exists, but only for the
+window icon (`app.ico`, `app.png`) and the toast logo per notifying status (`app-waiting.png`,
+`app-done.png`) — art at 256 px, where art works.
 
 ### Window focus: one VS Code process, many windows
 

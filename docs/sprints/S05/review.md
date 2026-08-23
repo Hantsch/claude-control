@@ -60,6 +60,17 @@ Acceptance is a new pixel-sampling test (`test/unit/trayTileContrast.test.ts` + 
 PNG reader in `test/unit/png.ts`) that decodes the shipped tiles and asserts contrast, hue fidelity
 and state distinguishability against the two pinned taskbar greys.
 
+**Superseded on 2026-08-23, after the sprint.** The user rejected the generated tiles outright —
+"very hard to recognise, especially in the tray" — and asked for the icons the rest of the app
+already uses. The tray tile is now drawn in code (`renderTrayTile` in `src/main/tray-icons.ts`)
+from the status-dot vocabulary of `renderer/styles.css`, at the exact physical size Windows asks
+for; `assets/icons/tray/` and `assets/icons/tray-light/` (72 PNGs) and the PNG reader are deleted,
+and `build-icons.py` is down to the window icon and the two toast logos. This story's *behaviour*
+survives — the tray follows `nativeTheme.shouldUseDarkColors`, and `LIGHT_STATE_COLORS` is what it
+switches to — but the derived-art mechanism and its parity bar do not. `trayTileContrast.test.ts`
+now measures rendered bitmaps against an absolute floor per theme instead of measuring the light
+set against the dark one.
+
 ## Findings & decisions
 
 **User decisions taken in the clarification round** (14 questions, all answered before any refine

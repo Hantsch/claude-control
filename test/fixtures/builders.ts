@@ -7,7 +7,7 @@
  * exactly what §4 says must not leave the process.
  */
 
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { epochMsToFileTime } from '../../src/core/registry/liveness.ts';
@@ -274,6 +274,22 @@ export interface FixtureTree {
   ideDir: string;
   /** Write a transcript and return its absolute path. */
   writeTranscript(slug: string, sessionId: string, content: string): Promise<string>;
+  /**
+   * Write one subagent run's sidecar + transcript under `<slug>/<sessionId>/subagents/`,
+   * the layout Claude Code 2.1.241 writes. Returns the transcript's absolute path.
+   */
+  writeSubagent(options: {
+    slug: string;
+    sessionId: string;
+    agentId: string;
+    toolUseId?: string | null;
+    parentAgentId?: string | null;
+    agentType?: string;
+    description?: string;
+    content?: string;
+    /** mtime to stamp on the transcript, when the test cares about "how recent". */
+    at?: number;
+  }): Promise<string>;
   writeRegistry(pid: number, entry: Record<string, unknown>): Promise<string>;
   writeIdeLock(port: number, entry: Record<string, unknown>): Promise<string>;
 }
@@ -313,6 +329,23 @@ export async function makeFixtureTree(prefix = 'cc-fixture-'): Promise<FixtureTr
       await mkdir(dir, { recursive: true });
       const path = join(dir, `${sessionId}.jsonl`);
       await writeFile(path, content, 'utf8');
+      return path;
+    },
+    async writeSubagent(options) {
+      const dir = join(projectsDir, options.slug, options.sessionId, 'subagents');
+      await mkdir(dir, { recursive: true });
+      const stem = `agent-${options.agentId}`;
+      const meta: Record<string, unknown> = {
+        agentType: options.agentType ?? 'general-purpose',
+        description: options.description ?? 'do a thing',
+        spawnDepth: options.parentAgentId ? 2 : 1,
+      };
+      if (options.toolUseId !== null) meta.toolUseId = options.toolUseId ?? `toolu_${options.agentId}`;
+      if (options.parentAgentId) meta.parentAgentId = options.parentAgentId;
+      await writeFile(join(dir, `${stem}.meta.json`), JSON.stringify(meta), 'utf8');
+      const path = join(dir, `${stem}.jsonl`);
+      await writeFile(path, options.content ?? '{"type":"user"}\n', 'utf8');
+      if (options.at !== undefined) await utimes(path, new Date(options.at), new Date(options.at));
       return path;
     },
     async writeRegistry(pid, entry) {

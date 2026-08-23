@@ -942,6 +942,7 @@ describe('mute registry (§6.6, story 004 D4)', () => {
       runStartedAt: null,
       lastAssistantText: null,
       subagents: [],
+      subagentActivityAt: null,
       agentVersion: null,
       read: {
         fileSize: 0,

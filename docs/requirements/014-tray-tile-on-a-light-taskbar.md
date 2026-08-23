@@ -7,6 +7,17 @@ created: 2026-08-22
 
 ## Requirement
 
+> **Partly superseded, 2026-08-23.** The user rejected the generated tiles as unreadable in the
+> tray, and they are gone: `renderTrayTile` in
+> [tray-icons.ts](../../src/main/tray-icons.ts) draws the tile in code from the app's own
+> status-dot vocabulary, at the physical size Windows asks for. What survives from this story is
+> its *behaviour* — the tray follows `nativeTheme.shouldUseDarkColors`, and `LIGHT_STATE_COLORS`
+> (D4) is the light palette it switches to. What is gone is the mechanism: D1's `light_tile()`
+> pass, D2's folder selection and fallback chain, the two `assets/icons/tray*` folders, and D3's
+> parity-against-the-dark-set bar, which had no meaning once both themes came out of one
+> geometry. D3's file lives on, measuring an absolute floor per theme on rendered pixels.
+
+
 The tray tile is the app's only permanently visible surface — everything else is opened on
 demand. Story [007](done/007-light-theme.md) made the app itself light-theme-correct and stopped
 at the tray: only the badge *rim* became theme-aware (`badgeRimColor()` in

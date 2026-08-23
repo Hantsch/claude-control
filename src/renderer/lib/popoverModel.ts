@@ -8,7 +8,7 @@
  */
 
 import type { SubagentMetrics, SubagentNode } from '../../shared/ipc.ts';
-import { SUBAGENT_NO_INTERIM_STATE } from './subagentParts.ts';
+import { SUBAGENT_NO_INTERIM_STATE, subagentActivityLine } from './subagentParts.ts';
 
 export type SubagentStatus = SubagentNode['status'];
 
@@ -100,7 +100,9 @@ export interface SubagentMessage {
  *   `metrics` happens to be non-`null`: a `launched` result already carries `agentId` and
  *   `resolvedModel` (so `metrics` is non-`null`) while the run itself is still going in the
  *   background with no interim report — verified as the *common* case against real agent
- *   results, not an edge case, so this must key off `status` and never off `metrics`.
+ *   results, not an edge case, so this must key off `status` and never off `metrics`. When
+ *   `activity` says the run's own transcript was written to, that line is replaced by one
+ *   that says so: the report is still absent, but "isn't observable" would now be false.
  * - anything else (completed, or a status this transcript could not interpret) → `'none'`.
  *
  * A `'error'` result does *not* suppress the row's model/context chips: story 011 requires
@@ -112,10 +114,12 @@ export function subagentMessage(
   status: SubagentStatus,
   metrics: SubagentMetrics | null,
   errorText: string | null,
+  activity?: { lastActivityAt: number | null; now: number },
 ): SubagentMessage {
   if (status === 'failed' && errorText) return { kind: 'error', text: errorText };
   if (status === 'running' || status === 'launched') {
-    return { kind: 'absent', text: SUBAGENT_NO_INTERIM_STATE };
+    const alive = activity ? subagentActivityLine(activity.lastActivityAt, activity.now) : null;
+    return { kind: 'absent', text: alive ?? SUBAGENT_NO_INTERIM_STATE };
   }
   return { kind: 'none', text: null };
 }

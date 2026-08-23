@@ -268,14 +268,17 @@ Both were "accepted as out of scope" in an earlier sprint review, were picked up
 decision on 2026-08-22 and are now built:
 
 - [014](requirements/014-tray-tile-on-a-light-taskbar.md) — the tray tile is no longer drawn for a
-  dark taskbar only: `scripts/build-icons.py` derives a light set (`assets/icons/tray-light/`) from
-  the shipped tiles and the runtime picks it off `nativeTheme.shouldUseDarkColors`. `in-progress`
-  (built, live acceptance pending), in [S05](sprints/S05/sprint.md).
-  Gaps/notes: the OKLab distinguishability parity bar was relaxed from `>=` the dark set to
-  `>= 0.97 ×` it — at 16 px the `none`/`stale` pair falls 1.5 % short after a genuine
-  double-darkening defect in the rim pass was fixed, and neither hue can move (one has no status
-  colour, the other is pinned to its token). Whether the light tiles actually read well on a real
-  Windows 11 light taskbar is a human judgement not yet made.
+  dark taskbar only: it follows `nativeTheme.shouldUseDarkColors`. `in-progress` (built, live
+  acceptance pending), in [S05](sprints/S05/sprint.md).
+  Gaps/notes: the story built this as a *second art set* (`assets/icons/tray-light/`, derived from
+  the shipped tiles by `scripts/build-icons.py`), and that half is superseded — on 2026-08-23 the
+  user rejected the generated tiles as unreadable in the tray, and the tile is now drawn in code
+  from the app's own status-dot vocabulary (`src/main/tray-icons.ts`), with `LIGHT_STATE_COLORS`
+  as the light palette. The story's *behaviour* survives that change and its parity-bar caveat
+  does not: the two sets share one geometry now, so there is no derived set to hold to the
+  original's standard, and `test/unit/trayTileContrast.test.ts` measures an absolute floor per
+  theme instead. Whether the tile reads well on a real Windows 11 light taskbar is still a human
+  judgement not yet made.
 - [015](requirements/015-s04-residuals.md) — a truncated history group total now carries a `≥`
   marker and both GUI and CLI print a "Showing 200 of 438 sessions" line; the N5/N2 timing tests
   attach their listener before `start()`. `in-progress` (built, live acceptance pending), in

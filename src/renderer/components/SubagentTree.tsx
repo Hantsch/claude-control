@@ -14,6 +14,7 @@ import type { SubagentNode } from '../../shared/ipc.ts';
 import { formatDuration } from '../lib/format.ts';
 import {
   SUBAGENT_NO_INTERIM_STATE,
+  subagentActivityLine,
   buildMetricParts,
   type MetricPart,
 } from '../lib/subagentParts.ts';
@@ -66,7 +67,11 @@ export function SubagentTree({ nodes }: { nodes: SubagentNode[] }): React.JSX.El
             </span>
           )}
           {(node.status === 'running' || node.status === 'launched') && (
-            <span className="meta">{SUBAGENT_NO_INTERIM_STATE}</span>
+            <span className="meta">
+              {/* A run whose own transcript is being written to gets the honest line instead
+                  (see `subagentActivityLine`); the popover renders the same two cases. */}
+              {subagentActivityLine(node.lastActivityAt, Date.now()) ?? SUBAGENT_NO_INTERIM_STATE}
+            </span>
           )}
           <Metrics node={node} />
           {node.children.length > 0 && <SubagentTree nodes={node.children} />}

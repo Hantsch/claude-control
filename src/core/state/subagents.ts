@@ -4,14 +4,15 @@
  * Derived from subagent tool calls in the *parent* transcript: label from the tool input,
  * start time from the record, completion from the paired result.
  *
- * Carried caveat from research: `isSidechain` was `true` on zero records, so a subagent's
- * internal transcript is not interleaved into the parent and its location is unverified.
- * v1 therefore shows each subagent as a node with status, duration and its own run numbers,
- * not an inner timeline — `children` exists in the model but stays empty until that is
- * resolved.
+ * Carried caveat from research: `isSidechain` is `false` on every record of the *parent*
+ * transcript, so a subagent's inner timeline is not interleaved into it. Each subagent is
+ * therefore a node with status, duration and its own run numbers, not an inner timeline —
+ * `children` exists in the model but stays empty until the nesting is read from disk.
  *
  * The run numbers (model, tokens, context, tool count, lines touched) come from the result
- * record, so they appear the moment the subagent finishes and are absent while it runs.
+ * record, so they appear the moment the subagent finishes and are absent while it runs. The
+ * one exception is `lastActivityAt`, which `withSubagentActivity` stamps on from the run's own
+ * transcript file — see `adapters/claude/subagentFiles.ts`.
  */
 
 import type {
@@ -28,6 +29,26 @@ export function buildSubagentTree(calls: readonly ToolCallEvent[], now: number):
     .filter((call) => call.isSubagent)
     .map((call) => toNode(call, now))
     .sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/**
+ * Stamp `lastActivityAt` onto the running nodes from a `tool_use id → newest write` map.
+ *
+ * Kept apart from `buildSubagentTree` on purpose: the tree is a pure function of records, and
+ * the activity times come from the filesystem, which only the adapter may touch (§9). A node
+ * with no entry keeps `null` — "no evidence", never "silent since the epoch".
+ */
+export function withSubagentActivity(
+  nodes: readonly SubagentNode[],
+  activity: ReadonlyMap<string, number>,
+): SubagentNode[] {
+  if (activity.size === 0) return nodes as SubagentNode[];
+  return nodes.map((node) => {
+    const children = withSubagentActivity(node.children, activity);
+    const at = node.status === 'running' ? activity.get(node.id) ?? null : null;
+    if (at === node.lastActivityAt && children === node.children) return node;
+    return { ...node, lastActivityAt: at, children };
+  });
 }
 
 function toNode(call: ToolCallEvent, now: number): SubagentNode {
@@ -51,6 +72,9 @@ function toNode(call: ToolCallEvent, now: number): SubagentNode {
     agentId: result?.agentId ?? null,
     startedAt: call.issuedAt,
     endedAt,
+    // Filled in by `withSubagentActivity` once the adapter has looked at the run's own
+    // transcript; the tree itself has no way to know and must not guess.
+    lastActivityAt: null,
     durationMs,
     status,
     metrics: result && hasNumbers(result) ? toMetrics(result) : null,

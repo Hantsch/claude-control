@@ -135,3 +135,58 @@ describe('findWindowsUpChain', () => {
     expect(result.get(2)).toBeUndefined();
   });
 });
+
+describe('findWindowUpChain', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    execFileMock.mockReset();
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+    vi.resetModules();
+  });
+
+  it('escapes the pipe it rewrites, so window titles survive the round trip', async () => {
+    let script = '';
+    execFileMock.mockImplementation((_cmd, args, _opts, callback) => {
+      script = args[args.length - 1] as string;
+      callback(null, '20400|4917334|2|claude-control - Visual Studio Code\n', '');
+    });
+    const { findWindowUpChain } = await import('../../src/main/focus/processChain.ts');
+
+    const chain = await findWindowUpChain(27936);
+
+    // PowerShell must receive `-replace "\|"`. Handing it the bare `|` makes it a regex that
+    // matches the empty string, and every title came back as `/c/l/a/u/d/e/…` — which then
+    // matched no window, so the focuser fell through to its arbitrary fallback.
+    expect(script).toContain('-replace "\\|", "/"');
+    expect(script).not.toContain('-replace "|", "/"');
+    expect(chain?.title).toBe('claude-control - Visual Studio Code');
+    expect(chain?.pid).toBe(20400);
+  });
+
+  it('reports the window-owning ancestor, not the session process', async () => {
+    execFileMock.mockImplementation((_cmd, _args, _opts, callback) => {
+      callback(null, '20400|4917334|2|sprint.md - second-brain - Visual Studio Code\n', '');
+    });
+    const { findWindowUpChain } = await import('../../src/main/focus/processChain.ts');
+
+    const chain = await findWindowUpChain(23732);
+
+    expect(chain).toEqual({
+      pid: 20400,
+      handle: '4917334',
+      title: 'sprint.md - second-brain - Visual Studio Code',
+      depth: 2,
+    });
+  });
+
+  it('returns null when the chain reported nothing', async () => {
+    execFileMock.mockImplementation((_cmd, _args, _opts, callback) => callback(null, '', ''));
+    const { findWindowUpChain } = await import('../../src/main/focus/processChain.ts');
+    expect(await findWindowUpChain(4242)).toBeNull();
+  });
+});

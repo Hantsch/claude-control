@@ -24,6 +24,13 @@ export interface ChainWindow {
 
 const MAX_HOPS = 8;
 
+/**
+ * `|` separates the fields below, so a title containing one is rewritten to `/` before it is
+ * printed. The escaping is doubled on purpose: `"\\|"` in this string is `"\|"` by the time
+ * PowerShell parses it, and only then is it a literal pipe. Written as `"\|"` here it reaches
+ * PowerShell as the regex `|`, which matches the empty string between every character — and
+ * the titles came back with a `/` inserted between every letter, silently unusable as hints.
+ */
 export async function findWindowUpChain(pid: number): Promise<ChainWindow | null> {
   if (process.platform !== 'win32' || !Number.isInteger(pid) || pid <= 0) return null;
 
@@ -32,7 +39,7 @@ export async function findWindowUpChain(pid: number): Promise<ChainWindow | null
     `for ($i = 0; $i -lt ${MAX_HOPS}; $i++) {`,
     '  $p = Get-Process -Id $id -ErrorAction SilentlyContinue',
     '  if ($p -and $p.MainWindowHandle -ne 0) {',
-    '    "{0}|{1}|{2}|{3}" -f $p.Id, [int64]$p.MainWindowHandle, $i, ($p.MainWindowTitle -replace "\|", "/")',
+    '    "{0}|{1}|{2}|{3}" -f $p.Id, [int64]$p.MainWindowHandle, $i, ($p.MainWindowTitle -replace "\\|", "/")',
     '    break',
     '  }',
     '  $ci = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue',
@@ -87,7 +94,7 @@ export async function findWindowsUpChain(pids: readonly number[]): Promise<Map<n
     '    $p = Get-Process -Id $id -ErrorAction SilentlyContinue',
     '    if ($p -and $p.MainWindowHandle -ne 0) {',
     '      $found = $true',
-    '      "{0}|{1}|{2}|{3}|{4}" -f $start, $p.Id, [int64]$p.MainWindowHandle, $i, ($p.MainWindowTitle -replace "\|", "/")',
+    '      "{0}|{1}|{2}|{3}|{4}" -f $start, $p.Id, [int64]$p.MainWindowHandle, $i, ($p.MainWindowTitle -replace "\\|", "/")',
     '      break',
     '    }',
     '    $ci = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue',

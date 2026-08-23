@@ -26,10 +26,11 @@ import type { ProcessProbe } from '../../registry/liveness.ts';
 import { isAliveSync, procStartMatches } from '../../registry/liveness.ts';
 import { readRegistry, type RegistryEntry } from '../../registry/registry.ts';
 import { deriveHistoricalStatus } from '../../state/machine.ts';
-import { buildSubagentTree } from '../../state/subagents.ts';
+import { buildSubagentTree, withSubagentActivity } from '../../state/subagents.ts';
 import type { AgentAdapter, WatchRoot } from '../types.ts';
 import { readIdeWindows } from './ide.ts';
 import { parseJsonlChunk } from './jsonl.ts';
+import { SubagentActivityReader, subagentDirForTranscript } from './subagentFiles.ts';
 import {
   projectRefForCwd,
   projectRefForSlug,
@@ -89,6 +90,8 @@ export class ClaudeAdapter implements AgentAdapter {
    * "scanned, nothing found within budget" — cached too, so a hopeless case stays cheap.
    */
   private readonly runStarts = new Map<SessionId, number | null>();
+  /** Reads "is this subagent still writing?" off disk — see `subagentFiles.ts`. */
+  private readonly subagentActivity = new SubagentActivityReader();
 
   constructor(options: ClaudeAdapterOptions) {
     this.options = options;
@@ -186,6 +189,7 @@ export class ClaudeAdapter implements AgentAdapter {
         },
       });
       facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
+      await this.applySubagentActivity(ref.sessionId, path, facts);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
       const message = describe(error);
@@ -230,9 +234,47 @@ export class ClaudeAdapter implements AgentAdapter {
     return found;
   }
 
+  /**
+   * Fill in what the *running* subagents have written, which `summarizeRecords` cannot know:
+   * the parent transcript says nothing between an `Agent` call and its result, while the run
+   * itself keeps appending to its own file. One `stat` of the subagent directory plus one per
+   * running run — nothing is opened, so no subagent prompt or output is read (§4).
+   *
+   * Failures are swallowed on purpose: a missing directory is the normal case for an agent
+   * version that writes none, and then `subagentActivityAt` stays `null` and the state machine
+   * behaves exactly as it did before.
+   */
+  private async applySubagentActivity(
+    sessionId: SessionId,
+    path: string,
+    facts: TranscriptTailFacts,
+  ): Promise<void> {
+    const running = facts.subagents.filter((node) => node.status === 'running');
+    if (running.length === 0) return;
+
+    const activity = await this.subagentActivity
+      .newestActivity(sessionId, subagentDirForTranscript(path), running.map((node) => node.id))
+      .catch(() => new Map<string, number>());
+    if (activity.size === 0) return;
+
+    facts.subagents = withSubagentActivity(facts.subagents, activity);
+    // Only the calls the *status* hangs on may move the status: a stalled call from an older
+    // record is shown as "current tool" but is explicitly not part of the rule (§6.2).
+    const pending = new Set(
+      facts.pendingTools.map((tool) => tool.toolUseId).filter((id): id is string => id !== null),
+    );
+    let newest: number | null = null;
+    for (const [toolUseId, at] of activity) {
+      if (!pending.has(toolUseId)) continue;
+      if (newest === null || at > newest) newest = at;
+    }
+    facts.subagentActivityAt = newest;
+  }
+
   /** Drop the cached run start of a session that is gone, so the map cannot grow forever. */
   forgetSession(sessionId: SessionId): void {
     this.runStarts.delete(sessionId);
+    this.subagentActivity.forget(sessionId);
   }
 
   /**
@@ -494,6 +536,7 @@ function emptyFacts(note: string, error: string | null): TranscriptTailFacts {
     runStartedAt: null,
     lastAssistantText: note,
     subagents: [],
+    subagentActivityAt: null,
     agentVersion: null,
     read: {
       fileSize: 0,

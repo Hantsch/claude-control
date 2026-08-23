@@ -194,15 +194,20 @@ expected here, by design.) If the store's total fits within 40 rows, no such lin
 
 ## Story 014 — Tray tile on a light taskbar
 
-### 1. `npm run icons` regenerates only the light set
+> Reworked on 2026-08-23: the generated tiles were rejected as unreadable in the tray, so the
+> tile is drawn in code (`renderTrayTile`) from the app's own status-dot vocabulary and the
+> theme picks a palette rather than a folder. The checks below are the story's original ones,
+> restated against what actually ships.
+
+### 1. `npm run icons` no longer produces tray art
 
 **Steps:**
 1. In a terminal: `npm run icons`.
-2. `git status`.
+2. `git status`, and `ls assets/icons`.
 
-**Expected result:** the command completes without error. `git status` shows changes (if any) only
-under `assets/icons/tray-light/**`; nothing under `assets/icons/tray/`, `app.png`, `app.ico`, or
-`app-*.png` is touched.
+**Expected result:** the command completes without error and reports only `app.ico`, `app.png`,
+`app-waiting.png` and `app-done.png`. `assets/icons` contains those four files and no `tray/` or
+`tray-light/` folder; `git status` shows no new files under `assets/icons/`.
 
 ### 2. Light taskbar — tile legibility and six distinguishable states
 
@@ -217,10 +222,11 @@ dev` after switching.
    `stale`, have both a live and a finished session together for `mixed`, and close everything for
    `none` (idle tray icon).
 
-**Expected result:** the tile has a light ground with a clearly visible edge against the taskbar,
-and each of the six states is legible and distinguishable from the other five at a glance —
-matching the colour each state's dot has in the popover (e.g. `waiting` is amber/orange, `done` is
-green, `working` is blue).
+**Expected result:** each of the six states is legible and distinguishable from the other five at
+a glance, and the mark is the same one the popover shows for that session — same colour (`waiting`
+amber, `done` green, `working` blue, `stale` muted amber, `none` grey), and a shape that differs
+per state: `done` a filled dot, `waiting` a notched dot with a halo, `working` a dot with a white
+core, `none`/`stale` hollow rings, `mixed` a blue ring around a green core.
 
 ### 3. Badge legibility on the light tile
 
@@ -231,16 +237,17 @@ unacknowledged (so a numbered badge appears on the tray icon).
 1. Look at the badge disc and its digit on top of the light tray tile.
 
 **Expected result:** the red badge disc and its white digit both stay clearly readable against the
-light tile — no washed-out edge where the disc meets the tile.
+light tile — no washed-out edge where the disc meets the mark under it.
 
-### 4. Dark taskbar unchanged
+### 4. Dark taskbar
 
 **Steps:**
 1. Switch Windows back to **Dark** mode.
-2. Compare the tray tile to how it looked before this sprint (dark, near-black ground).
+2. Look at the tray tile through the same six states as in check 2.
 
-**Expected result:** the tile looks exactly as it did previously — the dark set was not touched by
-this story.
+**Expected result:** the same six marks, in the dark scheme's brighter status colours. This is
+*not* the picture from before the rework — the near-black plate with the glowing ring is gone on
+both taskbars, which is the point of the change.
 
 ### 5. Live theme flip without restart
 
@@ -250,8 +257,8 @@ this story.
 1. With the app running, switch Windows Settings → Personalization → Colors between **Light** and
    **Dark** two or three times, without restarting the app.
 
-**Expected result:** the tray tile swaps between the light and dark art sets shortly after each
-switch, with no app restart required.
+**Expected result:** the tile swaps between the light and dark palettes shortly after each switch,
+with no app restart required. The shape does not change — only the colours do.
 
 ### 6. Display scaling
 
@@ -261,7 +268,8 @@ switch, with no app restart required.
    look there too, and set it back afterwards.
 
 **Expected result:** the tile stays legible and the six states stay distinguishable at both the
-16 px (100%) and 24 px (150%) tray icon sizes.
+16 px (100%) and 24 px (150%) tray icon sizes, and the mark stays crisp — it is redrawn at the new
+size rather than resampled.
 
 ---
 
@@ -277,15 +285,14 @@ switch, with no app restart required.
    cannot be produced through the UI without either waiting several real days or hand-editing the
    cache file's `fetchedAt` timestamp outside the app — neither is a normal user action, so this
    plan only exercises the "fetched just now" and "never fetched" ends of that line.
-3. **014 — code-drawn fallback tile (`renderFallbackTile`, D4).** This path only runs when the
-   light (or dark) art files are missing from disk. There is no UI action that removes shipped
-   tray art, so this plan cannot exercise the fallback tile live; its light-mode colours
-   (`LIGHT_STATE_COLORS`) and contrast are accepted via `test/unit/tray-icons.test.ts` and
-   `test/unit/trayTileContrast.test.ts` instead.
-4. **014 — pixel-level contrast/hue numbers.** The exact contrast ratios, OKLab distinguishability
-   gap and hue-fidelity tolerance (`PARITY_TOLERANCE`) that D3's acceptance criteria specify are
-   numeric assertions in `test/unit/trayTileContrast.test.ts`; this plan's checks 2/3/6 are a
-   subjective "is it legible/distinguishable" look, the same kind of caveat used for 013-C's
+3. **014 — the fallback-tile check is gone with the art.** The story's D4 was about the tile
+   drawn in code *when the shipped art could not be read*. There is no shipped tray art any more,
+   so that path is the only path: check 2 exercises it directly, and there is nothing left that
+   this plan cannot reach.
+4. **014 — pixel-level contrast numbers.** The exact contrast ratios and the OKLab
+   distinguishability floor (`MIN_SEPARATION`) are numeric assertions in
+   `test/unit/trayTileContrast.test.ts`, measured on the rendered tiles; this plan's checks 2/3/6
+   are a subjective "is it legible/distinguishable" look, the same kind of caveat used for 013-C's
    contrast check in the S04 plan.
 5. **015 — N5/N2 timing-test hygiene (D4).** Purely a test-suite change inside
    `test/unit/pipeline.test.ts` (listener-attach-order race fix), with no user-facing surface at

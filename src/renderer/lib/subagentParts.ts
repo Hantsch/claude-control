@@ -10,7 +10,7 @@
 
 import type { SubagentMetrics } from '../../shared/ipc.ts';
 import { BAND_LABEL, BAND_SYMBOL } from '../../shared/presentation.ts';
-import { formatTokens } from './format.ts';
+import { formatAge, formatTokens } from './format.ts';
 
 export interface MetricPart {
   key: string;
@@ -23,9 +23,26 @@ export interface MetricPart {
  * (story 010 D6, reconciled with story 011 D4). Shared between `popoverModel.ts` and
  * `SubagentTree.tsx` so the two surfaces cannot describe the same run with two different
  * strings — both import this constant rather than hand-typing their own copy.
+ *
+ * Its scope narrowed once subagent transcripts turned out to be on disk: the *report* is
+ * still invisible until the run finishes, but whether the run is alive is not — see
+ * `subagentActivityLine`, which replaces this line for a run whose file is being written to.
  */
 export const SUBAGENT_NO_INTERIM_STATE =
   "No report yet — a subagent's progress isn't observable until it finishes.";
+
+/**
+ * The same slot for a run that is demonstrably still working: `node.lastActivityAt` is the
+ * newest write to its own transcript (or one of its descendants'), so this says the run is
+ * alive without claiming to know *what* it is doing — nothing inside that file is read (§4).
+ *
+ * Returns `null` when there is no such evidence, which is the caller's signal to fall back to
+ * {@link SUBAGENT_NO_INTERIM_STATE}.
+ */
+export function subagentActivityLine(lastActivityAt: number | null, now: number): string | null {
+  if (lastActivityAt === null) return null;
+  return `Still working — wrote ${formatAge(Math.max(0, now - lastActivityAt))}; no report until it finishes.`;
+}
 
 /**
  * One part per fact `metrics` actually carries, in a fixed order: cumulative tokens, context,

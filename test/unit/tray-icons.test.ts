@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { badgeRimColor, createBitmap, paintBadge, renderFallbackTile, LIGHT_STATE_COLORS } =
+const { badgeRimColor, createBitmap, paintBadge, renderTrayTile, LIGHT_STATE_COLORS } =
   await import('../../src/main/tray-icons.ts');
 
 describe('badgeRimColor', () => {
@@ -72,14 +72,14 @@ describe('paintBadge', () => {
   });
 });
 
-describe('renderFallbackTile', () => {
+describe('renderTrayTile', () => {
   it('uses LIGHT_STATE_COLORS for the light theme (§014 D4)', () => {
     const size = 32;
     const cx = size / 2;
     const cy = size / 2;
     const i = (Math.round(cy) * size + Math.round(cx)) * 4;
 
-    const lightBitmap = renderFallbackTile('done', size, false);
+    const lightBitmap = renderTrayTile('done', size, false);
     // Bitmap data is premultiplied BGRA (see `blend` above), not RGBA.
     const b = lightBitmap.data[i] ?? 0;
     const g = lightBitmap.data[i + 1] ?? 0;

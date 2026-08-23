@@ -1,9 +1,14 @@
 /**
- * Story 014 D3 — the light tray tiles' legibility claim, measured by sampling actual pixels
- * instead of trusting `light_tile()`'s intent. Mirrors `test/unit/theme.test.ts`'s approach:
- * WCAG contrast for "readable at all", OKLab distance for "distinguishable from its neighbours",
- * with the *dark* tile set (already shipped and accepted) as the parity threshold rather than an
- * invented number.
+ * The tray tile's legibility claim, measured on the pixels it actually draws rather than trusted
+ * from the constants it draws with. Mirrors `test/unit/theme.test.ts`'s approach: WCAG contrast
+ * for "readable at all", OKLab distance for "distinguishable from its neighbours".
+ *
+ * This file was written for story 014, when the tiles were shipped art and the question was
+ * whether the derived light set held up next to the accepted dark one. The art is gone — the
+ * tiles are rendered by `renderTrayTile` now — so the parity bar it used (light no worse than
+ * dark) went with it: both sets come out of the same geometry and differ only in palette, and
+ * there is no longer an "already accepted" side to measure the other against. What replaced it
+ * is an absolute floor per theme, sized in the comment on `MIN_SEPARATION`.
  *
  * Colour-math functions below are copy-adapted from `theme.test.ts` verbatim in shape (they
  * operate on `#rrggbb` hex strings); this file stays self-contained rather than importing from
@@ -11,8 +16,21 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { decodePng, pixelAt, type DecodedPng } from './png.ts';
-import { LIGHT_STATE_COLORS, type Rgb } from '../../src/main/tray-icons.ts';
+// Type-only, so it is erased before `vi.mock` matters — the module itself is imported below.
+import type { Bitmap } from '../../src/main/tray-icons.ts';
+
+const shouldUseDarkColors = { value: true };
+vi.mock('electron', () => ({
+  nativeTheme: {
+    get shouldUseDarkColors() {
+      return shouldUseDarkColors.value;
+    },
+  },
+}));
+
+const { paintBadge, renderTrayTile, LIGHT_STATE_COLORS } = await import(
+  '../../src/main/tray-icons.ts'
+);
 
 /* ------------------------------------------------------------------ colour math (pure) */
 
@@ -90,141 +108,58 @@ function toHex(r: number, g: number, b: number): string {
   return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
-/** HSV saturation, 0..1 — used to tell a coloured mark pixel from a near-grey ground pixel. */
-function saturationOf(r: number, g: number, b: number): number {
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  return max === 0 ? 0 : (max - min) / max;
-}
-
-/** HSV hue, degrees 0..360. */
-function hueOf(r: number, g: number, b: number): number {
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const d = max - min;
-  if (d === 0) return 0;
-  let h: number;
-  if (max === r) h = ((g - b) / d) % 6;
-  else if (max === g) h = (b - r) / d + 2;
-  else h = (r - g) / d + 4;
-  h *= 60;
-  return h < 0 ? h + 360 : h;
-}
-
-/** Smallest angle between two hues, degrees 0..180. */
-function hueDelta(a: number, b: number): number {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
+/** One pixel of a `Bitmap`, un-premultiplied back to straight RGBA. */
+function pixel(bitmap: Bitmap, x: number, y: number): { r: number; g: number; b: number; a: number } {
+  const i = (y * bitmap.width + x) * 4;
+  const a = bitmap.data[i + 3] ?? 0;
+  if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
+  const scale = 255 / a;
+  return {
+    r: (bitmap.data[i + 2] ?? 0) * scale,
+    g: (bitmap.data[i + 1] ?? 0) * scale,
+    b: (bitmap.data[i] ?? 0) * scale,
+    a,
+  };
 }
 
 /**
- * A tile's "mark" colour — the ring/glyph, as opposed to its ground. Saturated, high-alpha
- * pixels (alpha > 200, the fully-opaque antialiased-edge-free core) are averaged directly; if a
- * state has no saturated pixels at all (the near-grey `none` state, by design), the fallback
- * averages whichever opaque pixels sit furthest from the tile's mean opaque colour — the mark is
- * still the part of the tile that differs from its ground even when neither is saturated.
+ * A tile's "mark" colour: the average of its solid pixels. The tile is transparent outside the
+ * mark — there is no ground to separate it from any more, which is what the old art needed all
+ * the saturation/hue heuristics for — so "solid" is the whole definition. The threshold sits
+ * above the antialiased edge and above the `waiting` halo, which is a deliberate 50 % wash and
+ * would otherwise pull that state's average toward the taskbar.
  */
-function extractMarkColor(png: DecodedPng): Rgb {
-  const opaque: Array<[number, number, number]> = [];
-  for (let y = 0; y < png.height; y += 1) {
-    for (let x = 0; x < png.width; x += 1) {
-      const p = pixelAt(png, x, y);
-      if (p.a > 200) opaque.push([p.r, p.g, p.b]);
+function markColor(bitmap: Bitmap): { r: number; g: number; b: number } {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let y = 0; y < bitmap.height; y += 1) {
+    for (let x = 0; x < bitmap.width; x += 1) {
+      const p = pixel(bitmap, x, y);
+      if (p.a <= 200) continue;
+      r += p.r;
+      g += p.g;
+      b += p.b;
+      n += 1;
     }
   }
-  if (opaque.length === 0) {
-    throw new Error('tile has no opaque pixels at all — cannot extract a mark colour');
-  }
-
-  const average = (pixels: Array<[number, number, number]>): Rgb => {
-    const sum = pixels.reduce((acc, [r, g, b]) => [acc[0] + r, acc[1] + g, acc[2] + b], [0, 0, 0]);
-    return { r: sum[0] / pixels.length, g: sum[1] / pixels.length, b: sum[2] / pixels.length };
-  };
-
-  const saturated = opaque.filter(([r, g, b]) => saturationOf(r, g, b) >= 0.08);
-  if (saturated.length > 0) return average(saturated);
-
-  const mean = average(opaque);
-  const distanceFromMean = ([r, g, b]: [number, number, number]) =>
-    Math.hypot(r - mean.r, g - mean.g, b - mean.b);
-  const distinct = opaque.filter((p) => distanceFromMean(p) > 20);
-  if (distinct.length > 0) return average(distinct);
-
-  // Every opaque pixel is (near) identical — fall back to the single furthest one, so the
-  // assertion still gets a defensible "mark colour" instead of throwing.
-  const furthest = opaque.reduce((best, p) =>
-    distanceFromMean(p) > distanceFromMean(best) ? p : best,
-  );
-  return { r: furthest[0], g: furthest[1], b: furthest[2] };
+  expect(n, 'tile has no solid pixels at all — nothing was drawn').toBeGreaterThan(0);
+  return { r: r / n, g: g / n, b: b / n };
 }
 
-/**
- * `build-icons.py`'s own `GLYPH_RADIUS` — the brand glyph at the tile's centre is deliberately
- * left in the art's own hue by `light_tile()` / `recolor_ring()` ("the glyph keeps its own
- * colour, which is the brand's, not the status'"); only the ring outside this radius is moved
- * onto the state's status hue. A hue-fidelity check has to sample that ring, not the whole tile.
- */
-const GLYPH_RADIUS = 0.3;
-
-/**
- * The state-identifying ring colour, as opposed to `extractMarkColor`'s whole-tile mark: pixels
- * within `GLYPH_RADIUS` of the tile's centre are excluded before averaging. Used only for hue
- * fidelity — `extractMarkColor` stays the right measure for legibility/distinguishability, where
- * the *whole* visible mark (glyph and ring together, since `none`/`mixed` have no separate ring
- * at all) is what a user actually sees.
- *
- * Without this exclusion, the hue-fidelity check was comparing a mix of the ring's exact target
- * hue and the brand glyph's own multi-hued art (measured on tray-light/16/done.png: outside the
- * glyph radius every pixel sits within 1° of the target 142.1°; inside it, hues range from 0° to
- * 350°) — the 27° "miss" it reported was the brand glyph diluting the average, not a wrong ring
- * colour.
- */
-function extractRingColor(png: DecodedPng): Rgb {
-  const centre = (png.width - 1) / 2;
-  const inner = GLYPH_RADIUS * png.width;
-  const opaque: Array<[number, number, number]> = [];
-  for (let y = 0; y < png.height; y += 1) {
-    for (let x = 0; x < png.width; x += 1) {
-      if (Math.hypot(x - centre, y - centre) < inner) continue;
-      const p = pixelAt(png, x, y);
-      if (p.a > 200) opaque.push([p.r, p.g, p.b]);
-    }
+/** How much of the tile the mark covers, 0..1 — the shape signal, independent of hue. */
+function coverage(bitmap: Bitmap): number {
+  let covered = 0;
+  for (let y = 0; y < bitmap.height; y += 1) {
+    for (let x = 0; x < bitmap.width; x += 1) covered += (bitmap.data[(y * bitmap.width + x) * 4 + 3] ?? 0) / 255;
   }
-  if (opaque.length === 0) {
-    throw new Error('tile has no opaque ring pixels outside the glyph radius');
-  }
-
-  const average = (pixels: Array<[number, number, number]>): Rgb => {
-    const sum = pixels.reduce((acc, [r, g, b]) => [acc[0] + r, acc[1] + g, acc[2] + b], [0, 0, 0]);
-    return { r: sum[0] / pixels.length, g: sum[1] / pixels.length, b: sum[2] / pixels.length };
-  };
-
-  const saturated = opaque.filter(([r, g, b]) => saturationOf(r, g, b) >= 0.08);
-  if (saturated.length > 0) return average(saturated);
-  return average(opaque);
+  return covered / (bitmap.width * bitmap.height);
 }
 
-function assetPath(set: 'tray' | 'tray-light', size: number, state: string): string {
-  return new URL(`../../assets/icons/${set}/${size}/${state}.png`, import.meta.url).pathname.replace(
-    /^\/([a-zA-Z]:)/,
-    '$1',
-  );
-}
-
-async function readTile(set: 'tray' | 'tray-light', size: number, state: string): Promise<DecodedPng> {
-  const path = assetPath(set, size, state);
-  const { readFile } = await import('node:fs/promises');
-  let buffer: Buffer;
-  try {
-    buffer = await readFile(path);
-  } catch (error) {
-    throw new Error(`could not read ${set}/${size}/${state}.png at ${path}: ${String(error)}`);
-  }
-  try {
-    return decodePng(buffer);
-  } catch (error) {
-    throw new Error(`could not decode ${set}/${size}/${state}.png at ${path}: ${String(error)}`);
-  }
+function markHex(icon: TrayIcon, size: number, dark: boolean): string {
+  const { r, g, b } = markColor(renderTrayTile(icon, size, dark));
+  return toHex(r, g, b);
 }
 
 /* --------------------------------------------------------------------------- fixtures */
@@ -232,120 +167,83 @@ async function readTile(set: 'tray' | 'tray-light', size: number, state: string)
 const TASKBAR_LIGHT = '#f3f3f3'; // Win11 light taskbar
 const TASKBAR_DARK = '#202020'; // Win11 dark taskbar
 
-const TRAY_SIZES = [16, 20, 24, 32, 40, 48];
+/**
+ * 16 px per 100 % display scaling, up to 300 % — plus 28, which no shipped tile ever existed at.
+ * The tiles are drawn at whatever physical size the display asks for now (`trayPixelSize`), so
+ * the suite has to cover a size that is not a multiple of anything.
+ */
+const TRAY_SIZES = [16, 20, 24, 28, 32, 40, 48];
 const STATES = ['none', 'working', 'waiting', 'done', 'mixed', 'stale'] as const;
-/** States with a dedicated hue in `LIGHT_STATE_COLORS`/`STATE_COLORS` (`mixed` has none — it's
- * a two-colour composite of `done`+`working` — and `none` is deliberately near-grey). */
-const HUED_STATES = ['waiting', 'done', 'working', 'stale'] as const;
-
-/** Hue tolerance for D3's fidelity check: generous enough to absorb PNG antialiasing / the
- * darkening `light_tile()` applies to a hue-correct mark, tight enough to catch an actual wrong
- * hue (e.g. accidentally reusing the dark-scheme colour, which is 20-90° away for every state). */
-const HUE_TOLERANCE_DEG = 15;
-
-describe('tray tile assets decode', () => {
-  it('reads and decodes every dark and light tile', async () => {
-    for (const size of TRAY_SIZES) {
-      for (const state of STATES) {
-        const dark = await readTile('tray', size, state);
-        const light = await readTile('tray-light', size, state);
-        expect(dark.width, `tray/${size}/${state}.png width`).toBe(size);
-        expect(dark.height, `tray/${size}/${state}.png height`).toBe(size);
-        expect(light.width, `tray-light/${size}/${state}.png width`).toBe(size);
-        expect(light.height, `tray-light/${size}/${state}.png height`).toBe(size);
-      }
-    }
-  });
-});
-
-describe('light tile legibility + parity', () => {
-  it('reads at >= 3:1 on the light taskbar, and no worse than dark reads on the dark taskbar', async () => {
-    for (const size of TRAY_SIZES) {
-      for (const state of STATES) {
-        const darkPng = await readTile('tray', size, state);
-        const lightPng = await readTile('tray-light', size, state);
-        const dm = extractMarkColor(darkPng);
-        const lm = extractMarkColor(lightPng);
-        const darkMark = toHex(dm.r, dm.g, dm.b);
-        const lightMark = toHex(lm.r, lm.g, lm.b);
-
-        const lightRatio = contrast(lightMark, TASKBAR_LIGHT);
-        const darkRatio = contrast(darkMark, TASKBAR_DARK);
-
-        expect(
-          lightRatio,
-          `tray-light/${size}/${state}.png mark ${lightMark} on ${TASKBAR_LIGHT}`,
-        ).toBeGreaterThanOrEqual(3);
-        expect(
-          lightRatio,
-          `tray-light/${size}/${state} (${lightRatio.toFixed(2)}:1) worse than ` +
-            `tray/${size}/${state} on dark taskbar (${darkRatio.toFixed(2)}:1)`,
-        ).toBeGreaterThanOrEqual(darkRatio);
-      }
-    }
-  });
-});
+type TrayIcon = (typeof STATES)[number];
 
 /**
- * `theme.test.ts`'s worst-pair parity check (the shape this mirrors) compares exact CSS hex
- * constants against each other — zero quantization, so a hard `>=` is the right bar. Here both
- * sides are pixel-sampled averages of independently 8-bit-rounded raster art (light and dark are
- * two different treatments of the same source, each rounding every pixel of a ~76-200px sample
- * on its own path through HSV<->RGB), so their OKLab gaps carry rounding noise a hex constant
- * never does. A 3% allowance absorbs that noise without hiding a real regression (it would still
- * fail light being *meaningfully* worse, e.g. two states collapsing into one) — sized against the
- * one case that needed it: at 16px, `none` (the brand's own hue, not retargeted — see
- * `LIGHT_STATUS` in `build-icons.py`) and `stale` (locked to the `--status-stale` token by AC 4)
- * measured 0.0192 against dark's 0.0195, a 1.5% shortfall, after `light_tile()`'s rim darkening
- * was fixed to stop double-darkening mark pixels (the fix that closed the *rest* of the original
- * 19% shortfall). Neither state's hue can move further — `none` has no status colour to move to,
- * `stale`'s is pinned — so this last sliver is quantization, not a treatment defect.
+ * Floor for the closest pair of marks in OKLab, per theme and per size.
+ *
+ * Measured, not invented. The tightest pair is `working`/`mixed` on the dark taskbar (0.091 at
+ * 24 px) and `none`/`mixed` on the light one (0.099) — both cases where this metric is at its
+ * least informative, because it averages a composite mark down to one colour: `mixed` is a blue
+ * ring around a green core, and averaging it lands near the blue `working` disc even though the
+ * two look nothing alike. What actually keeps those two apart is shape, which the next test
+ * measures. So this floor is set just under the measured minimum: it is a guard against a
+ * palette change collapsing two states, not the whole distinguishability argument.
+ *
+ * For scale, the shipped art this replaced measured 0.019 for its own worst pair at 16 px — an
+ * order of magnitude closer, because there most of every tile was the same near-black plate.
  */
-const PARITY_TOLERANCE = 0.97;
+const MIN_SEPARATION = 0.085;
 
-describe('light tile distinguishability parity', () => {
-  it('separates the 6 states at least as well as the dark set does, at every size', async () => {
-    // Per-size rather than one representative size: the light and dark sets are drawn at each
-    // size independently by `build-icons.py`, so a regression at one size (e.g. 16px roundoff
-    // collapsing two marks) should not be hidden by averaging across sizes.
+describe('tray tile legibility', () => {
+  it('reads at >= 3:1 against the taskbar it is drawn for, at every size', () => {
     for (const size of TRAY_SIZES) {
-      const darkColours: Array<[string, string]> = [];
-      const lightColours: Array<[string, string]> = [];
       for (const state of STATES) {
-        const darkPng = await readTile('tray', size, state);
-        const lightPng = await readTile('tray-light', size, state);
-        const dm = extractMarkColor(darkPng);
-        const lm = extractMarkColor(lightPng);
-        darkColours.push([state, toHex(dm.r, dm.g, dm.b)]);
-        lightColours.push([state, toHex(lm.r, lm.g, lm.b)]);
+        const dark = markHex(state, size, true);
+        const light = markHex(state, size, false);
+        expect(contrast(dark, TASKBAR_DARK), `${size}px ${state} dark mark ${dark} on ${TASKBAR_DARK}`).toBeGreaterThanOrEqual(3);
+        expect(contrast(light, TASKBAR_LIGHT), `${size}px ${state} light mark ${light} on ${TASKBAR_LIGHT}`).toBeGreaterThanOrEqual(3);
       }
-      const darkWorst = worstPair(darkColours);
-      const lightWorst = worstPair(lightColours);
-      expect(
-        lightWorst.gap,
-        `size ${size}: light's closest pair is ${lightWorst.pair} at ${lightWorst.gap.toFixed(4)}, ` +
-          `dark's is ${darkWorst.pair} at ${darkWorst.gap.toFixed(4)}`,
-      ).toBeGreaterThanOrEqual(darkWorst.gap * PARITY_TOLERANCE);
     }
   });
 });
 
-describe('light tile hue fidelity', () => {
-  it('keeps each hued state within 15° of its LIGHT_STATE_COLORS hue', async () => {
+describe('tray tile distinguishability', () => {
+  it('keeps the 6 states apart in both themes, at every size', () => {
+    // Per-size rather than one representative size: every size is rasterised on its own, and a
+    // regression at 16 px (the size most users see) must not be hidden by averaging.
     for (const size of TRAY_SIZES) {
-      for (const state of HUED_STATES) {
-        const lightPng = await readTile('tray-light', size, state);
-        const mark = extractRingColor(lightPng);
-        const measuredHue = hueOf(mark.r, mark.g, mark.b);
-        const expected = LIGHT_STATE_COLORS[state];
-        const expectedHue = hueOf(expected.r, expected.g, expected.b);
-        const delta = hueDelta(measuredHue, expectedHue);
+      for (const dark of [true, false]) {
+        const colours = STATES.map((state) => [state, markHex(state, size, dark)] as [string, string]);
+        const worst = worstPair(colours);
         expect(
-          delta,
-          `tray-light/${size}/${state}.png mark hue ${measuredHue.toFixed(1)}° vs ` +
-            `LIGHT_STATE_COLORS.${state} hue ${expectedHue.toFixed(1)}° (mark rgb ` +
-            `${Math.round(mark.r)},${Math.round(mark.g)},${Math.round(mark.b)})`,
-        ).toBeLessThanOrEqual(HUE_TOLERANCE_DEG);
+          worst.gap,
+          `${size}px ${dark ? 'dark' : 'light'}: closest pair is ${worst.pair} at ${worst.gap.toFixed(4)}`,
+        ).toBeGreaterThanOrEqual(MIN_SEPARATION);
+      }
+    }
+  });
+
+  it('separates the states this metric cannot, by shape', () => {
+    // Colour alone is not a channel everybody has, and for a composite mark the average above is
+    // not even the right question. Three pairs carry a shape difference on purpose:
+    // `waiting`/`done` (amber vs green — the pair red-green colour vision drops first, and the
+    // two states the badge counts), `none`/`stale` (both muted, both hollow) and `mixed`/`working`
+    // (both blue-dominant). Coverage — how much of the tile is painted — is a crude proxy for
+    // "different shape", but it is the one that cannot be satisfied by a colour change: a notch
+    // bitten out of a disc, a smaller thinner ring, or a ring instead of a disc all move it; a hue
+    // does not.
+    const PAIRS: Array<[TrayIcon, TrayIcon]> = [
+      ['waiting', 'done'],
+      ['none', 'stale'],
+      ['mixed', 'working'],
+    ];
+    for (const size of TRAY_SIZES) {
+      for (const dark of [true, false]) {
+        for (const [lighter, fuller] of PAIRS) {
+          const area = (state: TrayIcon) => coverage(renderTrayTile(state, size, dark));
+          expect(
+            area(lighter),
+            `${size}px ${dark ? 'dark' : 'light'}: ${lighter} covers as much as ${fuller}`,
+          ).toBeLessThan(area(fuller) * 0.9);
+        }
       }
     }
   });
@@ -355,51 +253,23 @@ describe('badge legibility on a light tile', () => {
   // One representative state ("waiting") — the badge geometry and colours are the same code path
   // (`paintBadge`) regardless of which tile it composites over, so this is about the badge's own
   // disc/rim/digit contrast, not about re-checking every state. Size is *not* representative,
-  // though (D3(e) asks for "every shipped tray size"): the rim sample point sits exactly on the
-  // tile's edge (`cx + radius + rim` == `size`, by construction of `cx`/`cy` below), so rounding
-  // can push it one column past the last valid index — silently wrapping into the next row via
-  // the unbounded `y * size + x` index instead of erroring. That happened at 16px and 20px when
-  // this was widened from a single size, which is exactly the kind of small-size roundoff this
-  // suite is watching for elsewhere (see the distinguishability test above) — so `sample` clamps
-  // its coordinates the way `pixelAt` already treats out-of-range reads (§`test/unit/png.ts`),
-  // and every size is checked instead of just one.
-  it('keeps the badge disc, rim and digit each >= 3:1 against their neighbour, at every size', async () => {
-    const shouldUseDarkColors = { value: false };
-    vi.doMock('electron', () => ({
-      nativeTheme: {
-        get shouldUseDarkColors() {
-          return shouldUseDarkColors.value;
-        },
-      },
-    }));
-    const { paintBadge, createBitmap } = await import('../../src/main/tray-icons.ts');
+  // though: the rim sample point sits exactly on the tile's edge (`cx + radius + rim` == `size`,
+  // by construction of `cx`/`cy` below), so rounding can push it one column past the last valid
+  // index — silently wrapping into the next row via the unbounded `y * size + x` index instead of
+  // erroring. That happened at 16 px and 20 px when this was widened from a single size, so
+  // `sample` clamps its coordinates and every size is checked instead of just one.
+  it('keeps the badge disc, rim and digit each >= 3:1 against their neighbour, at every size', () => {
+    shouldUseDarkColors.value = false;
 
     for (const size of TRAY_SIZES) {
-      const png = await readTile('tray-light', size, 'waiting');
-      const bitmap = createBitmap(size, size);
-      // RGBA (straight alpha, from the PNG) → premultiplied BGRA, `Bitmap`'s own format.
-      for (let y = 0; y < size; y += 1) {
-        for (let x = 0; x < size; x += 1) {
-          const p = pixelAt(png, x, y);
-          const i = (y * size + x) * 4;
-          const a = p.a / 255;
-          bitmap.data[i] = Math.round(p.b * a);
-          bitmap.data[i + 1] = Math.round(p.g * a);
-          bitmap.data[i + 2] = Math.round(p.r * a);
-          bitmap.data[i + 3] = p.a;
-        }
-      }
-
+      const bitmap = renderTrayTile('waiting', size, false);
       paintBadge(bitmap, '3', false);
 
       const sample = (x: number, y: number): string => {
-        const cx2 = Math.min(size - 1, Math.max(0, Math.round(x)));
-        const cy2 = Math.min(size - 1, Math.max(0, Math.round(y)));
-        const i = (cy2 * size + cx2) * 4;
-        const b = bitmap.data[i] ?? 0;
-        const g = bitmap.data[i + 1] ?? 0;
-        const r = bitmap.data[i + 2] ?? 0;
-        return toHex(r, g, b);
+        const sx = Math.min(size - 1, Math.max(0, Math.round(x)));
+        const sy = Math.min(size - 1, Math.max(0, Math.round(y)));
+        const p = pixel(bitmap, sx, sy);
+        return toHex(p.r, p.g, p.b);
       };
 
       // Same geometry `paintBadge` itself uses (BADGE_RADIUS/BADGE_RIM/BADGE_GLYPH of the tile,
@@ -412,36 +282,22 @@ describe('badge legibility on a light tile', () => {
 
       // The disc sample must dodge the digit: at BADGE_GLYPH=0.68 of the diameter, the '3'
       // glyph's bounding box covers most of the disc's vertical span and is centred on (cx, cy)
-      // — the obvious sample point. Sampling dead-centre with a label painted there means
-      // sampling the glyph, not the disc (confirmed: it read back #ffffff, the digit's own
-      // colour, not the disc's red). A point offset horizontally at the disc's own height clears
-      // the glyph's bounding box at every shipped size (checked 16-48px) while staying inside
-      // the disc radius.
+      // — the obvious sample point. A point offset horizontally at the disc's own height clears
+      // the glyph's bounding box at every size while staying inside the disc radius.
       const discColour = sample(cx + radius * 0.6, cy);
       const rimColour = sample(cx + radius + rim / 2, cy);
       // Top-left cell of glyph '3' (row "111") is always lit.
-      const digitColour = sample(
-        Math.round(cx - (3 * scale) / 2),
-        Math.round(cy - (5 * scale) / 2),
-      );
+      const digitColour = sample(Math.round(cx - (3 * scale) / 2), Math.round(cy - (5 * scale) / 2));
 
-      expect(
-        contrast(discColour, rimColour),
-        `${size}px disc ${discColour} vs rim ${rimColour}`,
-      ).toBeGreaterThanOrEqual(3);
-      expect(
-        contrast(digitColour, discColour),
-        `${size}px digit ${digitColour} vs disc ${discColour}`,
-      ).toBeGreaterThanOrEqual(3);
+      expect(contrast(discColour, rimColour), `${size}px disc ${discColour} vs rim ${rimColour}`).toBeGreaterThanOrEqual(3);
+      expect(contrast(digitColour, discColour), `${size}px digit ${digitColour} vs disc ${discColour}`).toBeGreaterThanOrEqual(3);
     }
   });
 });
 
-describe('fallback tile survives a light taskbar', () => {
-  // D4's own acceptance line: "contrast of each fallback colour against #f3f3f3 >= 3:1
-  // (asserted in D3's file)". `renderFallbackTile` only runs when the shipped art is missing, so
-  // there is no PNG to decode here — this checks the `LIGHT_STATE_COLORS` constants it draws
-  // with directly, the same way `theme.test.ts` checks CSS tokens rather than rendered pixels.
+describe('light state colours', () => {
+  // The palette the light tiles are drawn from, checked as constants the way `theme.test.ts`
+  // checks CSS tokens — a tile can only read on a light taskbar if the colour it is drawn in does.
   it('keeps every LIGHT_STATE_COLORS entry at >= 3:1 against the light taskbar', () => {
     for (const [state, { r, g, b }] of Object.entries(LIGHT_STATE_COLORS)) {
       const hex = toHex(r, g, b);

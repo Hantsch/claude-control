@@ -186,7 +186,15 @@ function NotifySwitch(): React.JSX.Element {
  * One subagent row inside an expanded session's detail block (story 010 D5). Mirrors the
  * prototype's `agentRow()` — status dot, label, `agentType` pill, then the numbers.
  *
- * `model` and the context chip sit directly on the row (the popover is narrow, so a tooltip
+ * The row is laid out on the *session row's own skeleton* — the same `.l1` grid
+ * and the same `.l2` prose line — so a subagent's context bar, model chip and time land in
+ * exactly the columns its parent uses, instead of drifting wherever a flex row happened to
+ * put them. The one deliberate offset is the status dot: it sits in the session row's index
+ * column (one cell right of the parent's dot), which is the nesting cue, and leaves the
+ * label aligned under the branch. Line 2 carries the run's prose (report / error / the
+ * absent-data note) with the duration right-aligned where the session's age sits.
+ *
+ * `model` and the context chip stay directly on the row (the popover is narrow, so a tooltip
  * would hide exactly the two facts a glance needs); `totalTokens`, `toolUses` and
  * lines-touched move into the duration's tooltip instead, still worded as
  * `buildMetricParts` produces them, so the pairing the acceptance criteria forbid — a bare
@@ -200,8 +208,8 @@ function NotifySwitch(): React.JSX.Element {
  *
  * The model chip and the report's second line are story 011 D4: `node.model` stands in for
  * `buildMetricParts`'s old `model` part (that function no longer produces one at all) so a
- * declared-but-not-yet-run alias can show too, and `node.finalText` gets its own line below
- * the row. Both the chip's provenance title and the report's title are copied verbatim from
+ * declared-but-not-yet-run alias can show too, and `node.finalText` is rendered as the row's
+ * own prose (line 2 since the re-alignment above). Both the chip's provenance title and the report's title are copied verbatim from
  * `SubagentTree.tsx`'s `Metrics()` / report line so the popover and the main window cannot
  * describe the same run differently.
  *
@@ -233,7 +241,11 @@ function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
       ? tooltipParts.map((part) => `${part.text} — ${part.title}`).join(' · ')
       : undefined;
   const context = node.metrics?.context ?? null;
-  const message = subagentMessage(node.status, node.metrics, node.errorText);
+  // The popover re-renders on a 5 s clock, so `Date.now()` here ages the line by itself.
+  const message = subagentMessage(node.status, node.metrics, node.errorText, {
+    lastActivityAt: node.lastActivityAt,
+    now: Date.now(),
+  });
 
   return (
     <div
@@ -242,7 +254,10 @@ function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
       tabIndex={0}
       data-nav-key={`a:${node.id}`}
     >
-      <span className="popover-subagent-main">
+      {/* Line 1 — identity and numbers, on the session row's grid. Cells are placed by CSS
+          (`grid-column`), not by source order: a run with no context or no model yet renders
+          nothing for that cell, and auto-placement would slide every later cell left. */}
+      <span className="l1">
         <span
           className="dot sm"
           style={{ background: `var(${SUBAGENT_STATUS_COLOR_VAR[node.status]})` }}
@@ -251,46 +266,57 @@ function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
         <span className="label" title={node.label}>
           {node.label}
         </span>
-        {node.agentType && <span className="type">{node.agentType}</span>}
-        {modelPart && (
-          <span className="model" title={modelPart.title}>
-            {modelPart.text}
-          </span>
-        )}
         {context && ctxPart && (
-          <span className="ctx-mini" title={ctxPart.title}>
-            <span className="ctx-mini-bar">
+          // Same markup and classes as the session row's `ContextBar`, so the bar starts on
+          // the same pixel — but with `buildMetricParts`'s subagent wording in the tooltip,
+          // which says "when the run finished" where a live session says "right now".
+          <span className="ctx" title={ctxPart.title}>
+            <span className="ctx-bar">
               <span
-                className="ctx-mini-fill"
+                className="ctx-fill"
                 style={{
                   width: `${Math.min(100, Math.round(context.ratio * 100))}%`,
                   background: `var(${BAND_COLOR_VAR[context.band]})`,
                 }}
               />
             </span>
-            <span className="ctx-mini-val">{ctxPart.text}</span>
+            <span className="ctx-value">{ctxPart.text}</span>
           </span>
         )}
-        <span className="spacer" />
+        {modelPart && (
+          <span className="model" title={modelPart.title}>
+            {modelPart.text}
+          </span>
+        )}
+      </span>
+      {/* Line 2 — the prose, indented to the same 42px as the session row's, with the
+          duration right-aligned where that row puts its uptime/age. The `agentType` pill leads
+          the line — the session row's line 2 opens with what kind of work is running too, and
+          off line 1 the label gets the whole column its parent spends on the branch. The
+          subagent's own final
+          report (story 011 D1/D4) lives here — never the parent session's `lastAssistantText`.
+          It is absent while running/launched (D1 leaves `finalText` `null` until the result
+          arrives), which is exactly when `subagentMessage()`'s `absent` case fills the line
+          instead; an error keeps its own span so a failed run that had already reported can
+          show both. */}
+      <span className="l2">
+        {node.agentType && <span className="type">{node.agentType}</span>}
         {message.kind === 'error' && (
           <span className="error" title={message.text ?? undefined}>
             {message.text}
           </span>
         )}
         {message.kind === 'absent' && <span className="faint">{message.text}</span>}
+        {node.finalText && (
+          <span className="txt" title="What the subagent reported back, clipped">
+            {node.finalText}
+          </span>
+        )}
+        <span className="spacer" />
         <span className="duration" title={durationTitle}>
           {formatDuration(node.durationMs)}
         </span>
       </span>
-      {/* The subagent's own final report (story 011 D1/D4) — never the parent session's
-          `lastAssistantText`. Absent while running/launched (D1 leaves `finalText` `null`
-          until the result arrives); `subagentMessage()`'s `absent` case above already states
-          that plainly, so this line renders nothing rather than a second, redundant notice. */}
-      {node.finalText && (
-        <span className="popover-subagent-report" title="What the subagent reported back, clipped">
-          {node.finalText}
-        </span>
-      )}
     </div>
   );
 }
@@ -342,6 +368,12 @@ function Popover(): React.JSX.Element {
   // state does not survive hide"), not on `blur`, so a pinned-but-unfocused popover keeps what
   // was expanded. `collapsedGroups` above gets the same reset.
   const [openNodes, setOpenNodes] = useState<Set<string>>(() => new Set());
+  // Why the last jump did not land, or null. A jump that fails used to be *completely*
+  // silent: main hid the popover and the renderer dropped the `FocusResult` on the floor, so
+  // "no window could be resolved" and "focused the right window" looked identical from the
+  // outside. Main now keeps the popover open on failure precisely so this can say what
+  // happened; the message is the focuser's own, never a rephrasing of it.
+  const [jumpError, setJumpError] = useState<string | null>(null);
   const head = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLDivElement>(null);
@@ -358,11 +390,25 @@ function Popover(): React.JSX.Element {
     setOpenNodes((current) => changedSet(current, nodeKey, change));
   }, []);
 
+  /**
+   * Jump to a session's window (F6). The single entry point for the row click and the row's
+   * Enter/Space, so the mouse and the keyboard cannot report a failure differently. A flash
+   * counts as landed — Windows refused the foreground but the taskbar button is telling the
+   * user where to look, which the popover would only obscure by staying open.
+   */
+  const jumpToSession = useCallback((sessionId: string): void => {
+    setJumpError(null);
+    void api.focusSession(sessionId).then((result) => {
+      setJumpError(result.ok || result.flashed ? null : result.message);
+    });
+  }, []);
+
   useEffect(() => {
     const onVisibilityChange = (): void => {
       if (document.hidden) {
         setOpenNodes(new Set());
         setCollapsedGroups(new Set());
+        setJumpError(null);
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -713,7 +759,7 @@ function Popover(): React.JSX.Element {
                   className={`popover-row${session.muted ? ' muted' : ''}`}
                   title={session.statusReason}
                   data-nav-key={nodeKey}
-                  onClick={() => void api.focusSession(session.sessionId)}
+                  onClick={() => jumpToSession(session.sessionId)}
                   onKeyDown={(event) => {
                     // Preserve the button-like keyboard behaviour a plain <div role="button">
                     // does not get for free — but only for the row itself: bail out if the
@@ -722,7 +768,7 @@ function Popover(): React.JSX.Element {
                     if (event.target !== event.currentTarget) return;
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      void api.focusSession(session.sessionId);
+                      jumpToSession(session.sessionId);
                     }
                   }}
                 >
@@ -855,17 +901,27 @@ function Popover(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="popover-footer" ref={foot}>
-        <button type="button" onClick={() => void api.openMainWindow('sessions')}>
-          Open Claude Control
-        </button>
-        <span className="spacer" />
-        <button type="button" onClick={() => void api.openMainWindow('settings')}>
-          Settings
-        </button>
-        <button type="button" onClick={() => void api.quit()}>
-          Quit
-        </button>
+      {/* `foot` measures everything below the list, so the failure strip lives inside it —
+          otherwise the height reported to main would not include it and the window would
+          clip its own footer. */}
+      <div ref={foot}>
+        {jumpError && (
+          <div className="popover-jump-error" role="status">
+            {jumpError}
+          </div>
+        )}
+        <div className="popover-footer">
+          <button type="button" onClick={() => void api.openMainWindow('sessions')}>
+            Open Claude Control
+          </button>
+          <span className="spacer" />
+          <button type="button" onClick={() => void api.openMainWindow('settings')}>
+            Settings
+          </button>
+          <button type="button" onClick={() => void api.quit()}>
+            Quit
+          </button>
+        </div>
       </div>
     </div>
   );

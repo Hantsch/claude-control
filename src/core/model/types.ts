@@ -163,6 +163,15 @@ export interface SubagentNode {
   startedAt: number;
   /** Null while running and for `launched` runs, whose end is never observable. */
   endedAt: number | null;
+  /**
+   * Newest write to the run's *own* transcript (or one of its descendants'), while it runs —
+   * `null` once it has finished, and whenever no subagent transcript could be found at all.
+   *
+   * This is the one interim fact a running subagent does offer: Claude Code writes each run
+   * to `projects/<slug>/<sessionId>/subagents/agent-<agentId>.jsonl`, so its `mtime` says the
+   * run is alive without anything inside the file being read (§4).
+   */
+  lastActivityAt: number | null;
   durationMs: number | null;
   status: SubagentStatus;
   /** Null while the subagent runs; the numbers only exist once it has finished. */
@@ -265,6 +274,17 @@ export interface TranscriptTailFacts {
   /** Last assistant sentence, used in the `done` toast body (§6.6). */
   lastAssistantText: string | null;
   subagents: SubagentNode[];
+  /**
+   * Newest write by a subagent the *pending* tool call is still waiting on, or `null` when
+   * there is no such evidence — no running subagent, no transcript for it, or an agent
+   * version that does not write one.
+   *
+   * Filled in by the adapter after the records are summarized (it needs the filesystem, which
+   * `summarizeRecords` deliberately does not touch) and read by the state machine: a call
+   * whose subagent is demonstrably still writing is `working`, however far past its own
+   * budget the call is (§6.2).
+   */
+  subagentActivityAt: number | null;
   /** Agent version recorded on the newest record — makes schema drift detectable (§12). */
   agentVersion: string | null;
   /** Diagnostics from the tail read. */

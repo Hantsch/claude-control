@@ -123,7 +123,7 @@ claude-control/
 ├─ test/
 │  ├─ fixtures/           ← anonymized .jsonl + sessions/*.json samples
 │  └─ unit/
-└─ assets/icons/          ← tray icon states
+└─ assets/icons/          ← window + toast icon art (the tray tile is drawn in code)
 ```
 
 ### Stack

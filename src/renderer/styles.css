@@ -1074,7 +1074,8 @@ table.history .title {
    agent icon, which has no data source today. The trailing 18px column is story 012's
    window-unknown badge; it is declared unconditionally so the branch column does not re-width
    as the badge comes and goes. */
-.popover-row .l1 {
+.popover-row .l1,
+.popover-subagent-row .l1 {
   display: grid;
   grid-template-columns: 9px 13px 11px minmax(0, 1fr) 108px 92px 22px 18px;
   align-items: center;
@@ -1083,7 +1084,8 @@ table.history .title {
 
 /* Indented so the prose starts under the branch rather than under the chevron; the reason
    text then runs to the right edge of the popover, ellipsizing only in the extreme. */
-.popover-row .l2 {
+.popover-row .l2,
+.popover-subagent-row .l2 {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1094,7 +1096,8 @@ table.history .title {
   color: var(--text-dim);
 }
 
-.popover-row .l2 .spacer {
+.popover-row .l2 .spacer,
+.popover-subagent-row .l2 .spacer {
   flex: 1;
 }
 
@@ -1257,14 +1260,16 @@ table.history .title {
 /* Expanded session detail (story 010 D4) — mirrors the design prototype's `.detail` / `.kv`
    rules: indented to line up under line 2's prose, not line 1's chevron. */
 .popover-detail {
-  padding: 1px 6px 6px 42px;
+  padding: 1px 0 6px;
 }
 
 .popover-detail .kv {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  padding: 1px 0 4px;
+  /* Indented to 48px — where the session row's own line-2 prose starts (its 6px row padding
+     plus `.l2`'s 42px), so the detail reads as a continuation of that line. */
+  padding: 1px 6px 4px 48px;
   font-size: 11px;
   color: var(--text-dim);
 }
@@ -1285,9 +1290,14 @@ table.history .title {
   color: var(--text-faint);
 }
 
-/* Subagent rows inside an expanded session (story 010 D5) — mirrors the design prototype's
-   `.arow` idiom, renamed to this project's `.popover-*` prefix. One row per
-   `session.subagents` entry, flat (no recursion — `children` is always `[]`). */
+/* Subagent rows inside an expanded session (story 010 D5) — one row per `session.subagents`
+   entry, flat (no recursion — `children` is always `[]`).
+
+   Laid out on the session row's own skeleton rather than the prototype's free-flowing `.arow`
+   flex line: `.l1` reuses that row's grid and `.l2` its indented prose line, so a subagent's
+   context bar, model and time sit in exactly the columns the parent uses. The nesting cue is
+   the status dot alone — it takes the parent's index column, one cell right of the parent's
+   own dot, at 7px instead of 10px. */
 .popover-subagents {
   display: flex;
   flex-direction: column;
@@ -1296,21 +1306,12 @@ table.history .title {
 }
 
 .popover-subagent-row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 3px 5px;
-  border-radius: 5px;
+  display: block;
+  width: 100%;
+  /* Same horizontal padding as `.popover-row`, so both grids start on the same pixel. */
+  padding: 2px 6px 3px;
+  border-radius: 6px;
   font-size: 11px;
-}
-
-/* Line 1 — identity and numbers, unchanged from story 010's single-line row (see below).
-   Split into its own flex child so the report line (story 011 D4) can sit underneath it
-   without disturbing this row's own alignment. */
-.popover-subagent-row .popover-subagent-main {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .popover-subagent-row:hover {
@@ -1322,6 +1323,25 @@ table.history .title {
   outline-offset: -2px;
 }
 
+/* Cells are placed explicitly, never by source order: a running subagent has no context and
+   no model yet, and auto-placement would then slide the remaining cells left out of column. */
+.popover-subagent-row .l1 > .dot {
+  grid-column: 3;
+  justify-self: center;
+}
+
+.popover-subagent-row .l1 > .label {
+  grid-column: 4;
+}
+
+.popover-subagent-row .l1 > .ctx {
+  grid-column: 5;
+}
+
+.popover-subagent-row .l1 > .model {
+  grid-column: 6;
+}
+
 .popover-subagent-row .label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1331,6 +1351,7 @@ table.history .title {
 
 .popover-subagent-row .type {
   font-size: 9.5px;
+  align-self: center;
   color: var(--text-dim);
   background: var(--bg-active);
   border-radius: 999px;
@@ -1339,93 +1360,73 @@ table.history .title {
   flex: none;
 }
 
+/* Right-aligned like `.popover-row .model`, since the two share the column. */
 .popover-subagent-row .model {
   color: var(--text-dim);
   font-size: 10.5px;
-  white-space: nowrap;
-  flex: none;
-}
-
-.popover-subagent-row .spacer {
-  flex: 1 1 auto;
-}
-
-.popover-subagent-row .error {
-  color: var(--band-red);
-  font-size: 10.5px;
+  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: none;
-  max-width: 220px;
 }
 
-.popover-subagent-row .faint {
-  color: var(--text-faint);
+.popover-subagent-row .l2 {
   font-size: 10.5px;
-  font-style: italic;
+}
+
+/* The report, the error and the absent-data note all share line 2 with the duration: they
+   shrink and ellipsize, the duration never does. */
+.popover-subagent-row .l2 .txt,
+.popover-subagent-row .l2 .error {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  flex: none;
 }
 
-.popover-subagent-row .duration {
+.popover-subagent-row .l2 .error {
+  color: var(--band-red);
+  flex: 0 1 auto;
+}
+
+.popover-subagent-row .l2 .faint {
   color: var(--text-faint);
-  font-size: 10.5px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sits where the session row's uptime/age sits, with the same tabular figures. */
+.popover-subagent-row .duration {
+  flex: none;
+  color: var(--text-faint);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  flex: none;
-}
-
-/* Compact context chip for a subagent row — the same visual idiom as the prototype's
-   `.actx`/`.actx-bar`/`.actx-fill`/`.actx-val`, narrower than the session row's `ContextBar`
-   since the subagent row has far less width to spend. */
-.popover-subagent-row .ctx-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-}
-
-.popover-subagent-row .ctx-mini-bar {
-  width: 22px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--bg-active);
-  overflow: hidden;
-}
-
-.popover-subagent-row .ctx-mini-fill {
-  display: block;
-  height: 100%;
-}
-
-.popover-subagent-row .ctx-mini-val {
-  color: var(--text-dim);
-  font-size: 10.5px;
-  white-space: nowrap;
-}
-
-/* The subagent's own final report (story 011 D4), one ellipsized line under the row —
-   `finalText` is already clipped to 120 chars at the adapter boundary (D1), so this never
-   wraps and never grows the row further than that. */
-.popover-subagent-row .popover-subagent-report {
-  color: var(--text-dim);
-  font-size: 10.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-left: 16px;
+  letter-spacing: -0.2px;
 }
 
 /* Flat-hierarchy disclaimer (story 010 D6) — once below the whole subagent list, mirroring
    the prototype's `.flatnote` idiom under this project's `.popover-*` prefix. Sibling of
-   `.popover-subagents`, not a child (story 013 D6 — role="list" must contain only rows). */
+   `.popover-subagents`, not a child (story 013 D6 — role="list" must contain only rows).
+   Indented to the rows' own prose line so it reads as a footnote to them, not a new row. */
 .popover-subagents + .flat-note {
   font-size: 10px;
   color: var(--text-faint);
   font-style: italic;
   opacity: 0.75;
-  padding: 3px 5px 1px;
+  padding: 3px 6px 1px 48px;
+}
+
+/* Why a jump did not land (F6). Sits between the list and the footer buttons, inside the
+   measured footer block, and only exists while there is something to say. */
+.popover-jump-error {
+  padding: 5px 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--status-waiting);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .popover-footer {

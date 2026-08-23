@@ -22,6 +22,7 @@ function node(status: SubagentNode['status'], id: string = status): SubagentNode
     agentId: null,
     startedAt: 0,
     endedAt: null,
+    lastActivityAt: null,
     durationMs: null,
     status,
     metrics: null,
@@ -131,6 +132,22 @@ describe('subagentMessage', () => {
       text: SUBAGENT_NO_INTERIM_STATE,
     });
     expect(subagentMessage('launched', metrics, null)).toEqual({
+      kind: 'absent',
+      text: SUBAGENT_NO_INTERIM_STATE,
+    });
+  });
+
+  it('replaces the line with the run\u2019s own liveness once its transcript is being written', () => {
+    const now = 1_000_000;
+    expect(
+      subagentMessage('running', null, null, { lastActivityAt: now - 12_000, now }),
+    ).toEqual({ kind: 'absent', text: 'Still working \u2014 wrote 12s ago; no report until it finishes.' });
+  });
+
+  it('keeps the old line when there is no activity evidence for the run', () => {
+    // Either an agent version that writes no subagent transcripts, or a run whose file could
+    // not be found — "no evidence" must never be rendered as evidence of silence.
+    expect(subagentMessage('running', null, null, { lastActivityAt: null, now: 1 })).toEqual({
       kind: 'absent',
       text: SUBAGENT_NO_INTERIM_STATE,
     });

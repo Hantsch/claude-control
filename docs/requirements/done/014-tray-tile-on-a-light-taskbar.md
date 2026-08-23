@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Tray tile on a light taskbar
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-22
 ---
 
@@ -9,7 +9,7 @@ created: 2026-08-22
 
 > **Partly superseded, 2026-08-23.** The user rejected the generated tiles as unreadable in the
 > tray, and they are gone: `renderTrayTile` in
-> [tray-icons.ts](../../src/main/tray-icons.ts) draws the tile in code from the app's own
+> [tray-icons.ts](../../../src/main/tray-icons.ts) draws the tile in code from the app's own
 > status-dot vocabulary, at the physical size Windows asks for. What survives from this story is
 > its *behaviour* — the tray follows `nativeTheme.shouldUseDarkColors`, and `LIGHT_STATE_COLORS`
 > (D4) is the light palette it switches to. What is gone is the mechanism: D1's `light_tile()`
@@ -19,18 +19,18 @@ created: 2026-08-22
 
 
 The tray tile is the app's only permanently visible surface — everything else is opened on
-demand. Story [007](done/007-light-theme.md) made the app itself light-theme-correct and stopped
+demand. Story [007](007-light-theme.md) made the app itself light-theme-correct and stopped
 at the tray: only the badge *rim* became theme-aware (`badgeRimColor()` in
-[tray-icons.ts](../../src/main/tray-icons.ts)), because the tile itself is generated art, not a
+[tray-icons.ts](../../../src/main/tray-icons.ts)), because the tile itself is generated art, not a
 token. That leaves the one element a light-desktop user cannot avoid looking at as the one
 element still drawn for a dark taskbar. 007's own note calls it a follow-up rather than a fix.
 
 The art set is generated: `scripts/build-icons.py` maps image-gen masters onto the app's six tray
 icon states and writes one tile per state per physical tray size
-([icon-assets.ts](../../src/main/icon-assets.ts)). So this is not a hand-retouching job — either
+([icon-assets.ts](../../../src/main/icon-assets.ts)). So this is not a hand-retouching job — either
 the pipeline gains a second output set, or the existing one gains a treatment. The runtime is
 already prepared for whichever it is: `trayImage()`'s cache key carries the theme, and
-[tray.ts](../../src/main/tray.ts) already invalidates on `nativeTheme.on('updated')` for the
+[tray.ts](../../../src/main/tray.ts) already invalidates on `nativeTheme.on('updated')` for the
 rim's sake.
 
 What the user should get: on a light taskbar, the tile is as readable as it is on a dark one, the
@@ -249,3 +249,14 @@ box in both taskbar themes.
 
 **Commit message:** `014: light tray tile treatment — fix D3 contrast test (rim double-darkening,
 glyph-diluted hue check, badge sample point) + review fixes`
+
+
+**Accepted 2026-08-23 (user), together with S05.** The behaviour this story is about is live: the
+tile the user looks at all day is the code-drawn one from `renderTrayTile`
+([tray-icons.ts](../../../src/main/tray-icons.ts), commit `8e80270`), on a real Windows taskbar. The
+sprint review said "whether the tiles actually read well at 16 px is a human judgement that has not
+been made" — it has been made since, and it went against the generated art set, which is why that
+half is superseded (see the note at the top of this story). AC 3 (flipping the Windows theme
+without a restart) stays unticked on purpose: it is sound by code inspection and has neither
+automated nor live coverage, so the story closes with that one criterion open rather than ticked on
+a guess.

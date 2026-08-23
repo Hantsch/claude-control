@@ -1,19 +1,19 @@
 ---
 id: 015
 title: S04 residuals — a total that admits its page, and a test that cannot miss its event
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-22
 ---
 
 ## Requirement
 
-The two points [S04's review](../sprints/done/S04/review.md) recorded as "accepted as out of
-scope, not fixed" — bundled the way [012](done/012-s02-residuals.md) and
-[013](done/013-s03-residuals.md) bundled the sprints before them, because separately neither is
+The two points [S04's review](../../sprints/done/S04/review.md) recorded as "accepted as out of
+scope, not fixed" — bundled the way [012](012-s02-residuals.md) and
+[013](013-s03-residuals.md) bundled the sprints before them, because separately neither is
 worth a sprint slot and carrying them forward is how they get forgotten.
 
 **A — a group total that only covers the page it was given.** Story
-[006](done/006-activity-and-history-attribution.md) added per-group usage totals to the history
+[006](006-activity-and-history-attribution.md) added per-group usage totals to the history
 view, and the view fetches a fixed 200-entry page. So a filter matching more than 200 entries
 produces group totals that silently describe the first 200 and nothing marks them as partial. The
 `~` prefix 006 introduced does not cover this: it means "some entries in this group had no usable
@@ -23,7 +23,7 @@ too low — and has no way to see it. The page size predates 006 and paging was 
 which is why the review left it; it is still a number the app should not print unqualified.
 
 **B — a test that can miss the event it waits for.** The N5 cold-start test in
-[pipeline.test.ts](../../test/unit/pipeline.test.ts) attaches its listener *after*
+[pipeline.test.ts](../../../test/unit/pipeline.test.ts) attaches its listener *after*
 `await engine.start()` has resolved, so an event emitted during start is missed and the test
 hangs to its timeout instead of failing fast. It has not flaked yet; the same shape already
 exists in an N2 test in the same file. Nothing user-facing — this is the measurement the N5
@@ -223,3 +223,10 @@ into the suite's timeout.
 ```
 015: truncated history totals (GUI + CLI) and race-proof N5/N2 timing tests
 ```
+
+**Accepted 2026-08-23 (user), together with S05.** The CLI half of the truncation surface was
+live-verified during the build (`Showing 40 of 315 sessions` against the real data directory). The
+GUI half — the `≥` marker on a truncated group total and the count line in the History view — was
+not walked through step by step; it stands on the unit tests and the clean-agent review above.
+Unchanged by this acceptance: real paging remains unbuilt and unscheduled. The marker states that a
+truncated total is a lower bound; it does not make it complete.

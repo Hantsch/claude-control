@@ -53,3 +53,22 @@ second roadmap.
   order demotes an already-seen `waiting`/`done` below `ended` via `popoverGroupRank()` with
   `compareSessions` untouched, `--text-faint` and the light `--muted-opacity` clear 3:1 / 4.5:1 on all
   four surfaces, and the subagent list's flat-hierarchy note left `role="list"`; accepted 2026-08-22.
+- 005 — Exact context windows, and the network promise it costs · S05 · Gave the app its first
+  network path as an opt-in that is off by default — a pure LiteLLM `max_input_tokens`
+  parser/matcher under an aborting fetch with an atomic `%APPDATA%` cache and a refresh ceiling —
+  and made `ContextPressure.windowSource` carry `estimated`/`exact` to gauge, bar, CLI and
+  Diagnostics so no two surfaces can disagree about where a denominator came from; the absolute
+  "no network requests" promise was reworded rather than quietly broken; accepted 2026-08-23
+  (opt-in half not exercised live).
+- 015 — S04 residuals — a total that admits its page, and a test that cannot miss its event ·
+  S05 · Gave a truncated history group total a `≥` prefix and both GUI and CLI a "Showing 200 of 438
+  sessions" line, with marker and wording single-sourced in `presentation.ts` and composing with
+  006's `~`, and moved the N5/N2 timing listeners ahead of `engine.start()` — which exposed and
+  fixed a real pre-existing race where the initial refresh ran before `indexingHistory` was set;
+  accepted 2026-08-23 (History-view half not exercised live).
+- 014 — Tray tile on a light taskbar · S05 · Made the tray tile follow
+  `nativeTheme.shouldUseDarkColors` with `LIGHT_STATE_COLORS` as its light palette; the derived
+  light art set the story built was superseded a day later when the user rejected the generated
+  tiles as unreadable, so the tile is now drawn in code from the app's own status-dot vocabulary
+  and the contrast test measures an absolute floor per theme; accepted 2026-08-23 (AC 3, theme
+  flip without restart, left unticked).

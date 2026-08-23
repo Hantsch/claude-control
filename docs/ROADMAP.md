@@ -1,7 +1,7 @@
 # Roadmap
 
 **The** one source of status and planning: where we stand, what comes next, what is not planned
-at all yet. As of: 2026-08-22.
+at all yet. As of: 2026-08-23.
 
 Rules (so this document does not drift):
 
@@ -21,7 +21,7 @@ Rules (so this document does not drift):
 | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | ✔ done |
 | 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ✔ done |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M6 accepted, M5 built in S05 (acceptance pending), M7 last |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M5 and M6 accepted, M8 cut as S06, M7 last |
 
 ---
 
@@ -158,7 +158,7 @@ Gaps/notes:
   against `--bg-active`, where the suggested value only reached 2.44:1 against a stated 3:1
   target. The target won over the suggested hex — the pattern for any remaining colour work.
 - No new tray art: only the badge rim became theme-aware. A tray tile that reads badly on a light
-  taskbar was left as a follow-up — now [014](requirements/014-tray-tile-on-a-light-taskbar.md),
+  taskbar was left as a follow-up — now [014](requirements/done/014-tray-tile-on-a-light-taskbar.md),
   scheduled in S05.
 
 ---
@@ -172,11 +172,13 @@ Way of working, unchanged: milestones ordered by payoff per hour, stories cut in
 once the previous milestone is accepted. M6 went first because M5 was blocked on a decision and M7
 is the largest, least-bounded piece of work in the phase — the adapter seam is worth proving on a
 codebase that has just stopped changing shape, not while it still is. With M6 accepted and the M5
-trade decided (2026-08-22), the order is M5 → M7, and M7 stays alone in its own sprint.
-S05 built M5 plus the two carried residuals (014, 015) on 2026-08-22; all three are awaiting
-the user’s live acceptance, so M7 is not cut yet.
+trade decided (2026-08-22), the order was M5 → M7, and M7 stays alone in its own sprint.
+S05 built M5 plus the two carried residuals (014, 015) on 2026-08-22, and all three were accepted
+on 2026-08-23. M8 was then cut ahead of M7 — it is not part of this phase's stated goal, it is a
+correction milestone that came out of one day of real use, and it goes first because it is the
+cheap one and because what it fixes is the app making *false* statements, not missing ones.
 
-### M5 — Exact context windows — built, acceptance pending (S05, 2026-08-22)
+### M5 — Exact context windows — ✔ accepted (2026-08-23)
 
 The gauge's denominator is guessed from a lookup table; the 200k-versus-1M case is where the guess
 stops being useful, and it is the case this project hits daily. LiteLLM's community-maintained
@@ -188,10 +190,9 @@ requests" claim in README.md and Settings → Diagnostics is reworded rather tha
 bundled snapshot of the table was offered as a third way and declined — it goes stale inside a
 release, which is exactly the "confident nonsense" the story's fourth acceptance criterion refuses.
 
-Stories: [005](requirements/005-exact-context-windows.md) — `in-progress` (built, live acceptance
-pending)
-Sprints: [S05](sprints/S05/sprint.md) — `done`; see [review.md](sprints/S05/review.md) and
-[testplan.md](sprints/S05/testplan.md)
+Stories: [005](requirements/done/005-exact-context-windows.md) — done
+Sprints: [S05](sprints/done/S05/sprint.md) — `done`; see [review.md](sprints/done/S05/review.md) and
+[testplan.md](sprints/done/S05/testplan.md)
 Gaps/notes:
 - The six presentation questions were answered by the user in S05's clarification round and are
   recorded in the story under `## Decisions (Sprint)`: exact numbers are labelled as exact rather
@@ -210,8 +211,12 @@ Gaps/notes:
 - **Follow-up:** the CLI reads the exact-window cache but never fetches; fetch ownership stays in
   the main process. Worth confirming this matches what "the CLI honours the setting" was meant to
   mean.
-- Live acceptance (Settings toggle, Diagnostics state line, offline behaviour, the gauge's
-  exact/estimated marker) has not been performed — the sprint ran headless.
+- **Accepted 2026-08-23 without the full live pass.** The user closed S05 and all three stories by
+  decision rather than by walking `testplan.md` step by step. Live-confirmed from daily use is the
+  *default* half: the setting has never been switched on, so the app makes no outbound request and
+  the gauge renders the estimate wording in the real UI. Not exercised live: the toggle, the first
+  fetch, the Diagnostics state line, the offline path and the `exact` marker — those stand on unit
+  tests and the clean-agent review. Both follow-ups above are unaffected and stay open.
 
 ### M6 — Attribution — ✔ accepted (2026-08-22)
 
@@ -247,8 +252,30 @@ Gaps/notes:
   a >200-match filter silently reflects only the fetched page, with no marker distinguishing it from
   a complete total. Predates 006 and paging was never in its plan — the `~` partial marker covers
   missing *usage*, not a truncated *page*. Picked up by
-  [015](requirements/015-s04-residuals.md) in S05, together with the N5/N2 test listener shape the
+  [015](requirements/done/015-s04-residuals.md) in S05, together with the N5/N2 test listener shape the
   same review flagged.
+
+### M8 — Trust the live list — planned (S06, cut 2026-08-23)
+
+Not from a concept: found by the user on 2026-08-23, watching two sprints run in parallel and not
+being able to tell from the app what was happening. Three separate ways the live surfaces are
+wrong or silent about what is running — a session that has handed its work to a subagent reads
+`done` while the subagent writes for another forty minutes, a popover row names only its branch so
+two projects on `sprint/NN` are indistinguishable, and two filters remove live sessions with no
+count anywhere to say they did.
+
+Stories: [016](requirements/016-subagent-work-counts-as-session-activity.md) — `draft` ·
+[017](requirements/017-popover-row-names-its-project.md) — `draft` ·
+[018](requirements/018-a-hidden-session-says-it-is-hidden.md) — `draft`
+Sprints: [S06](sprints/S06/sprint.md) — `planned`
+Gaps/notes:
+- 016 carries the milestone: the only story here that touches `core/`, and the only one producing
+  a false statement rather than a missing one. Its open product question — own status for a
+  delegating session, or `working` with a different reason — reaches into tray colour, badge,
+  notification rules and CLI, so it belongs in the sprint's clarification round.
+- WSL sessions are invisible to the Windows app (it reads exactly one `.claude` root, and a WSL
+  PID is not checkable with `process.kill` from Windows anyway). Found the same day, dismissed by
+  the user as an edge case — no story, recorded here so it is not re-derived.
 
 ### M7 — Second agent — planned (last in the phase)
 
@@ -259,17 +286,19 @@ Stories: [008](requirements/008-second-agent-adapter.md) — `draft`
 Gaps/notes:
 - Not cut into S05 by decision on 2026-08-22: the story asks not to be started inside another
   milestone, and S05 already carries the first network path plus two carried residuals.
+- Not cut into S06 by decision on 2026-08-23, for the same reason: S06 is a three-story correction
+  sprint, and M7 keeps its own.
 
 ---
 
 ## Carried follow-ups with a story
 
 Both were "accepted as out of scope" in an earlier sprint review, were picked up in S05 by user
-decision on 2026-08-22 and are now built:
+decision on 2026-08-22, and are done — accepted with the sprint on 2026-08-23:
 
-- [014](requirements/014-tray-tile-on-a-light-taskbar.md) — the tray tile is no longer drawn for a
-  dark taskbar only: it follows `nativeTheme.shouldUseDarkColors`. `in-progress` (built, live
-  acceptance pending), in [S05](sprints/S05/sprint.md).
+- [014](requirements/done/014-tray-tile-on-a-light-taskbar.md) — the tray tile is no longer drawn for a
+  dark taskbar only: it follows `nativeTheme.shouldUseDarkColors`. Done, in
+  [S05](sprints/done/S05/sprint.md).
   Gaps/notes: the story built this as a *second art set* (`assets/icons/tray-light/`, derived from
   the shipped tiles by `scripts/build-icons.py`), and that half is superseded — on 2026-08-23 the
   user rejected the generated tiles as unreadable in the tray, and the tile is now drawn in code
@@ -277,12 +306,14 @@ decision on 2026-08-22 and are now built:
   as the light palette. The story's *behaviour* survives that change and its parity-bar caveat
   does not: the two sets share one geometry now, so there is no derived set to hold to the
   original's standard, and `test/unit/trayTileContrast.test.ts` measures an absolute floor per
-  theme instead. Whether the tile reads well on a real Windows 11 light taskbar is still a human
-  judgement not yet made.
-- [015](requirements/015-s04-residuals.md) — a truncated history group total now carries a `≥`
+  theme instead. The human judgement the story was waiting for has been made since: the user runs
+  the code-drawn tile daily, and it is the rejection of the generated set that produced it. AC 3
+  (flipping the Windows theme without a restart) was closed unticked — sound by inspection, no
+  automated or live coverage.
+- [015](requirements/done/015-s04-residuals.md) — a truncated history group total now carries a `≥`
   marker and both GUI and CLI print a "Showing 200 of 438 sessions" line; the N5/N2 timing tests
-  attach their listener before `start()`. `in-progress` (built, live acceptance pending), in
-  [S05](sprints/S05/sprint.md).
+  attach their listener before `start()`. Done, in [S05](sprints/done/S05/sprint.md); the CLI half
+  was live-verified during the build, the History-view half was not.
   Gaps/notes: real paging remains unbuilt and unscheduled — the marker states the totals are a
   lower bound, it does not make them complete. The timing fix also exposed and fixed a genuine
   pre-existing race in `src/core/engine.ts` (initial `refresh('start')` ran before

@@ -1,7 +1,7 @@
 ---
 id: 005
 title: Exact context windows — and the network promise it costs
-status: in-progress # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-13
 ---
 
@@ -9,7 +9,7 @@ created: 2026-08-13
 
 The context gauge exists so you can intervene before auto-compaction degrades a session. Its
 denominator is currently guessed from a lookup table — the `widened` flag on `ContextPressure`
-([types.ts:54](../../src/core/model/types.ts#L54)) exists precisely to admit that. The
+([types.ts:54](../../../src/core/model/types.ts#L54)) exists precisely to admit that. The
 200k-versus-1M case is where a guess stops being useful, and it is the case this project hits
 daily. Both reference tools solve it the same way: LiteLLM's community-maintained
 `model_prices_and_context_window.json`, which supplies each model's context window.
@@ -31,7 +31,7 @@ the "confident nonsense" the fourth acceptance criterion refuses. This unblocks 
 open below is how the opt-in presents itself and how an exact number is distinguished from a
 guessed one, not whether it exists.
 
-Background: [concepts/reference-tool-comparison.md](../concepts/reference-tool-comparison.md),
+Background: [concepts/reference-tool-comparison.md](../../concepts/reference-tool-comparison.md),
 which records the related web-dashboard rejection made on the same promise.
 
 ## Acceptance Criteria
@@ -94,7 +94,7 @@ Sprint-round decisions taken during refine (no user marker — these are mine):
 - **Setting shape `contextWindows: { useOnlineTable: boolean }`, default `false`** — no
   `SETTINGS_SCHEMA_VERSION` bump, because an absent field already merges to the default.
 - **Cache file** `<userData>/model-windows.json` (`{ version, fetchedAt, source, windows }`),
-  written atomically (temp + rename) mirroring [main/settings.ts](../../src/main/settings.ts).
+  written atomically (temp + rename) mirroring [main/settings.ts](../../../src/main/settings.ts).
 - **Refresh policy:** ceiling of 7 days; the check runs at most every 6 h and only fires a fetch
   when the cache is older than the ceiling; a failed fetch is not retried for 1 h. Startup
   schedules the check and never awaits it (AC2).
@@ -150,10 +150,10 @@ unit tests.
 
 - [x] **D1 — The reworded promise and the switch itself (no network yet).**
       `contextWindows: { useOnlineTable: boolean }` (default `false`) in
-      [settings.ts](../../src/core/model/settings.ts) incl. `mergeSettings` validation; reworded
+      [settings.ts](../../../src/core/model/settings.ts) incl. `mergeSettings` validation; reworded
       claim in `README.md` ("What it does not do"), `docs/CONCEPT.md` (N1 row + the §1 line), the
       Diagnostics footer in
-      [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx) and the
+      [SettingsView.tsx](../../../src/renderer/components/SettingsView.tsx) and the
       `disable-http-cache` comment in `src/main/index.ts`. Wording: no listening socket, no
       telemetry, nothing ever sent — and exactly one outbound request, only while the setting is
       on. *Accept:* the text says what the app does when the setting is on; `mergeSettings({})`
@@ -162,12 +162,12 @@ unit tests.
       payload into `{ model: window }` from `max_input_tokens` only (skip entries without it, ignore
       every price field); `lookupWindow(table, model)` case-insensitive, exact →
       provider-prefix-stripped → longest prefix, mirroring `windowForModel` in
-      [contextPressure.ts](../../src/core/state/contextPressure.ts). No IO, no bundled numbers.
+      [contextPressure.ts](../../../src/core/state/contextPressure.ts). No IO, no bundled numbers.
       *Accept:* new `test/unit/modelWindows.test.ts` with a small fixture payload covers
       `anthropic/…` keys, entries without `max_input_tokens`, and unknown model → `null`.
 - [x] **D3 — Fetch + `%APPDATA%` cache (`src/core/context/windowSource.ts`, new).** `fetch` with a
       10 s abort; atomic write of `model-windows.json` into a caller-supplied data dir (mirror the
-      temp+rename in [main/settings.ts](../../src/main/settings.ts)); read-on-construct;
+      temp+rename in [main/settings.ts](../../../src/main/settings.ts)); read-on-construct;
       `refresh({ force })` honouring ceiling, cadence and failure backoff; `status():
       ModelWindowStatus` (enabled, entryCount, fetchedAt, ageMs, last outcome + message). Never
       throws, never blocks. Also narrow the two rules in `test/unit/boundaries.test.ts` to allowlist
@@ -176,16 +176,16 @@ unit tests.
       cold fetch, cache hit inside the ceiling, forced refresh, HTTP error and offline — plus a
       green `boundaries.test.ts`.
 - [x] **D4 — Consumption in core.** `ContextPressure.windowSource: 'estimated' | 'exact'` in
-      [types.ts](../../src/core/model/types.ts); `pressureFor` / `ContextWindowEstimator` in
-      [contextPressure.ts](../../src/core/state/contextPressure.ts) take an optional exact lookup;
+      [types.ts](../../../src/core/model/types.ts); `pressureFor` / `ContextWindowEstimator` in
+      [contextPressure.ts](../../../src/core/state/contextPressure.ts) take an optional exact lookup;
       `widened` forces `'estimated'`; wiring in `src/core/engine.ts` and `src/core/createEngine.ts`
       (incl. `updateSettings`). *Accept:* with no lookup every existing pressure test still passes
       and reports `'estimated'`; with a lookup the exact window is used and reported `'exact'`; a
       widened session stays `'estimated'`.
 - [x] **D5 — Renderer provenance labelling.**
-      [ContextGauge.tsx](../../src/renderer/components/ContextGauge.tsx),
-      [ContextBar.tsx](../../src/renderer/components/ContextBar.tsx) and
-      [subagentParts.ts](../../src/renderer/lib/subagentParts.ts) render provenance both ways —
+      [ContextGauge.tsx](../../../src/renderer/components/ContextGauge.tsx),
+      [ContextBar.tsx](../../../src/renderer/components/ContextBar.tsx) and
+      [subagentParts.ts](../../../src/renderer/lib/subagentParts.ts) render provenance both ways —
       "Exact: window from the fetched model table" against today's estimate wording; the marker
       never just disappears. *Accept:* `test/unit/subagentParts.test.ts` extended; gauge/bar title
       assertions for both values.
@@ -197,13 +197,13 @@ unit tests.
       fetches immediately inside the IPC call and resolves with the outcome; startup never awaits
       it.
 - [x] **D7 — Settings UI: switch + Diagnostics state line.** Checkbox in
-      [SettingsView.tsx](../../src/renderer/components/SettingsView.tsx) with an explanatory line
+      [SettingsView.tsx](../../../src/renderer/components/SettingsView.tsx) with an explanatory line
       (which URL, how often, that it is the only request the app makes), the inline outcome right
       after toggling on, and the Diagnostics state line "Exact context windows: on/off · N models ·
       fetched 3 d ago · last refresh ok/failed", styled like the `protocolTarget` line at
       `SettingsView.tsx:386-392` (failure uses the `warning` class). *Accept:* toggling on shows
       success or failure without leaving the tab; off reads "off — no network requests".
-- [x] **D8 — CLI honours the setting.** [src/cli/index.ts](../../src/cli/index.ts) loads the
+- [x] **D8 — CLI honours the setting.** [src/cli/index.ts](../../../src/cli/index.ts) loads the
       persisted `settings.json` (resolver per Decisions; explicit flags still win), wires the window
       source into `createEngine`, and marks provenance in the `ctx=` column (`~` estimated, `=`
       exact) with a legend line. *Accept:* `test/unit/cli.test.ts` extended for both markers; with
@@ -310,3 +310,14 @@ UI surface) and this session has no way to drive the Electron tray UI. Status is
 `in-progress`; `## Test Plan (manual acceptance)` above already has the exact steps. Handing over
 for a human (or a session with `npm run dev` access) to run through those 6 steps before setting
 `status: done`.
+
+**Accepted 2026-08-23 (user), together with S05.** Closed on the user's instruction rather than by
+a step-by-step walk through the test plan above. What is confirmed in the real UI comes from daily
+use: the app runs on the user's Windows box with `contextWindows.useOnlineTable` never switched on,
+so the *default* half of this story is live — no outbound request is made, and gauge and detail
+pane render the estimate wording. The opt-in half (the Settings toggle, the first fetch, the
+Diagnostics state line, the offline path and the `exact` marker) has not been exercised in a
+running app; it stands on the unit tests and the clean-agent review recorded above. The two
+follow-ups above are untouched by this acceptance and stay open: subagent chips render
+`'estimated'` unconditionally even when the gauge beside them reads `'exact'`, and the CLI reads
+the cache but never refreshes it.

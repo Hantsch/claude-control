@@ -1,10 +1,10 @@
 # S05 — Manual acceptance test plan
 
 Covers the three stories built in this sprint:
-[005](../../requirements/005-exact-context-windows.md) (opt-in exact context windows from
-LiteLLM's table), [015](../../requirements/015-s04-residuals.md) (S04 residuals: truncated
+[005](../../../requirements/done/005-exact-context-windows.md) (opt-in exact context windows from
+LiteLLM's table), [015](../../../requirements/done/015-s04-residuals.md) (S04 residuals: truncated
 history totals + timing-test hygiene) and
-[014](../../requirements/014-tray-tile-on-a-light-taskbar.md) (light-taskbar tray tile).
+[014](../../../requirements/done/014-tray-tile-on-a-light-taskbar.md) (light-taskbar tray tile).
 
 All three stories' `## Done` sections say the live smoke pass was not performed (headless build
 session, `live-smoke-required: true`). This plan is that pass.

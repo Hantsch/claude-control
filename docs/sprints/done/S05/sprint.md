@@ -18,9 +18,9 @@ taskbar only.
 
 <!-- Order = the order the build phase works through. Dependent stories go last. -->
 
-- [x] 005 — Exact context windows, and the network promise it costs (built, live acceptance pending)
-- [x] 015 — S04 residuals — a total that admits its page, and a test that cannot miss its event (built, live acceptance pending)
-- [x] 014 — Tray tile on a light taskbar (built, live acceptance pending)
+- [x] 005 — Exact context windows, and the network promise it costs (accepted 2026-08-23)
+- [x] 015 — S04 residuals — a total that admits its page, and a test that cannot miss its event (accepted 2026-08-23)
+- [x] 014 — Tray tile on a light taskbar (accepted 2026-08-23)
 
 ## Notes
 
@@ -50,3 +50,16 @@ Cut on 2026-08-22, after S04 was accepted and M6 closed.
 
 Not scoped here: M7 / story 008 (second agent adapter) — the largest, least-bounded piece of the
 phase, deliberately alone in a later sprint.
+
+## Closed
+
+Accepted by the user on 2026-08-23 and moved to `done/` together with all three stories. The
+acceptance was a decision, not a walk through `testplan.md` step by step — what is live-confirmed
+and what is not is recorded per story in each `## Done` section. In short: 005's default (off)
+half runs in the real app and its opt-in half does not; 014's tile is what the user looks at all
+day, which is also how its generated-art half came to be superseded; 015's CLI half was checked
+live during the build and its History-view half was not.
+
+Carried out of the sprint, unchanged by the acceptance: 005's subagent chips still render
+`'estimated'` unconditionally, 005's CLI reads the exact-window cache but never refreshes it,
+014's AC 3 (theme flip without a restart) is unticked, and 015's real paging is unbuilt.

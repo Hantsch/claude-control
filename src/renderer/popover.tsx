@@ -481,6 +481,13 @@ function Popover(): React.JSX.Element {
   // Which session row has its right-click menu open, by `s:<sessionId>` nav key, or null.
   // Only ever one — opening a second menu closes the first, like a native context menu.
   const [menuKey, setMenuKey] = useState<string | null>(null);
+  // True while a manual refresh is in flight. Only reason it exists: a forced re-read is the
+  // one refresh that skips the mtime shortcut, so with several live sessions it takes long
+  // enough that a button with no feedback reads as "nothing happened" and gets clicked again.
+  const [refreshing, setRefreshing] = useState(false);
+  // The same fact as `refreshing`, readable synchronously: `refreshNow` is a stable callback
+  // and must reject a second click without taking the state value as a dependency.
+  const refreshingRef = useRef(false);
   const head = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLDivElement>(null);
@@ -645,6 +652,28 @@ function Popover(): React.JSX.Element {
   }, []);
 
   const closeMenu = useCallback((): void => setMenuKey(null), []);
+
+  /**
+   * The head's refresh button: a forced re-read of every live transcript, ignoring the
+   * size+mtime shortcut the 5 s tick relies on. The new snapshot arrives through the normal
+   * `onStateChanged` push, so there is nothing to apply here — only the in-flight flag.
+   *
+   * `api.refresh()` resolves once the engine's serialized refresh chain has run this pass, so
+   * the flag clears after the work, not after the IPC hop. A failed refresh clears it too:
+   * leaving the button disabled would turn one bad read into a dead control.
+   */
+  const refreshNow = useCallback((): void => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    void api
+      .refresh()
+      .catch(() => undefined)
+      .finally(() => {
+        refreshingRef.current = false;
+        setRefreshing(false);
+      });
+  }, []);
 
   // Initial focus, and again every time the (reused, shown/hidden rather than recreated)
   // popover window regains OS focus — that is how "opening the popover focuses the most
@@ -816,6 +845,29 @@ function Popover(): React.JSX.Element {
         </span>
         <span className="spacer" />
         <NotifySwitch />
+        <button
+          type="button"
+          className={`icon-button${refreshing ? ' busy' : ''}`}
+          // The engine already pushes every snapshot, so this is not how the list normally
+          // stays current — it is the answer to "is what I am looking at actually now?".
+          // Hence the age in the tooltip: it makes the snapshot's freshness checkable
+          // *before* clicking, which a bare button cannot.
+          // `state.at` is 0 until the first snapshot arrives (`EMPTY_STATE`), which would
+          // otherwise date the empty list to 1970.
+          title={
+            state.at > 0
+              ? `Refresh — re-read every transcript now (snapshot ${formatAge(Date.now() - state.at)})`
+              : 'Refresh — re-read every transcript now'
+          }
+          aria-label="Refresh"
+          // Not `disabled`: a disabled button drops the keyboard focus it is holding onto
+          // `document.body`, and the double-click it would prevent is already swallowed by
+          // `refreshNow`'s own in-flight guard.
+          aria-busy={refreshing}
+          onClick={refreshNow}
+        >
+          <RefreshIcon />
+        </button>
         <button
           type="button"
           className={`icon-button${pinned ? ' on' : ''}`}
@@ -1086,20 +1138,20 @@ function Popover(): React.JSX.Element {
           </button>
           <span className="spacer" />
           {/* Left of Settings: the way out when a pile of finished sessions has built up,
-              without right-clicking each row. Disabled rather than hidden when there is
-              nothing settled to clear, so the footer's buttons never jump sideways. */}
-          <button
-            type="button"
-            disabled={dismissible === 0}
-            title={
-              dismissible === 0
-                ? 'Nothing settled to clear — everything here is still in flight'
-                : 'Take every settled session out of this list and the tray menu. Anything still running stays, and a new turn brings a session back.'
-            }
-            onClick={markAllSeen}
-          >
-            Mark all as seen{dismissible > 0 ? ` (${dismissible})` : ''}
-          </button>
+              without right-clicking each row. Hidden, not disabled, when there is nothing
+              settled to clear: it used to stay in place so the footer's buttons could not
+              jump sideways, but a permanently greyed-out control reads as a broken one, and
+              the buttons to its right are anchored to the footer's right edge anyway — only
+              this button's own slot disappears. */}
+          {dismissible > 0 && (
+            <button
+              type="button"
+              title="Take every settled session out of this list and the tray menu. Anything still running stays, and a new turn brings a session back."
+              onClick={markAllSeen}
+            >
+              Mark all as seen ({dismissible})
+            </button>
+          )}
           <button type="button" onClick={() => void api.openMainWindow('settings')}>
             Settings
           </button>
@@ -1109,6 +1161,25 @@ function Popover(): React.JSX.Element {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * A circular arrow, drawn for the same reason as `PinIcon`. The gap at the top is where the
+ * arrow head sits, so the shape still reads as "reload" while it spins (`.icon-button.busy`).
+ */
+function RefreshIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <path
+        d="M13.2 8a5.2 5.2 0 1 1-1.7-3.85"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path d="M13.4 1.9v3.1h-3.1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

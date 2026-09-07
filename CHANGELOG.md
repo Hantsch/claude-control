@@ -11,6 +11,18 @@ while that section is empty, and promotes it to the new version section on relea
 
 <!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
 
+- **An aborted turn is its own status.** Interrupting a session (Esc) leaves a `user` record
+  behind, which read as "a prompt was just submitted" → `working`. Because `working` means a
+  turn is in flight, the row could never leave the popover and "Mark as seen" refused to touch
+  it. Such a session now reads `interrupted`: it never notifies, never counts towards the
+  badge, and leaves the popover the ordinary way. The marker no longer becomes the row's label
+  or resets the run clock either.
+- **Refresh in the popover** (⟳ in its header) forces a re-read of every live transcript, for
+  when you want the list confirmed rather than watched. Its tooltip says how old the current
+  snapshot is.
+- **"Mark all as seen" is hidden instead of greyed out** when there is nothing settled to
+  clear.
+
 ## 1.0.0 — 2026-09-07
 
 - First public release.
@@ -45,4 +57,3 @@ while that section is empty, and promotes it to the new version section on relea
   "Hide sessions already done at start" turns it off; history is unaffected.
 - **Show in Claude Control** in a popover row's right-click menu: opens the main window on that
   session, whose detail now shows the **session ID with a copy button**.
-

@@ -17,6 +17,7 @@
   --status-stale: #ac8e68;
   --status-queued: #bf5af2;
   --status-starting: #64d2ff;
+  --status-interrupted: #ff6b8a;
   --status-ended: #5a5a60;
   --status-unknown: #7a7a80;
 
@@ -69,6 +70,7 @@
     --status-stale: #8f7c5f;
     --status-queued: #8f2fae;
     --status-starting: #0f7f92;
+    --status-interrupted: #a3234f;
     --status-ended: #2f2f36;
     --status-unknown: #4f5460;
 
@@ -908,6 +910,22 @@ table.history .title {
   color: var(--accent);
   border-color: var(--border);
   background: var(--bg-active);
+}
+
+/* Refresh in flight. The button stays enabled (it must keep its focus), so the spin is the
+   only signal that the click landed — and the only reason a forced re-read needs one is that
+   it skips the mtime shortcut and can take a moment with several live sessions. */
+.popover-head .icon-button.busy svg {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Notification quick-switch: same weight as the icon buttons next to it, just wider. */

@@ -11,9 +11,14 @@
  *           && quiet >= T_work(tool) && tool is fast           → waiting
  *           && quiet >= T_work(tool) && tool is slow           → stale
  *   R.type == "user"  (a real prompt, or a tool result)        → working
+ *   R.type == "user"  && R is an interrupt marker              → interrupted
  *   enqueue seen with no matching dequeue                      → queued
  *   no R at all, whole transcript seen, read ok                → starting
  *   no R at all, read failed or window too small               → unknown
+ *
+ * The interrupt rule is the one addition to the concept's list. `[Request interrupted by
+ * user]` is a `user` record, so the plain rule above read an aborted turn as one that had
+ * just started and left the session at `working` for good — see `model/status.ts`.
  *
  * `R` is the newest *semantic* record: bookkeeping types are filtered out before this runs
  * (237 of 290 files end in a bookkeeping record — RESEARCH.md §2).
@@ -189,6 +194,12 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
     reason = last.stopReason
       ? `assistant record with stop_reason=${last.stopReason}`
       : 'assistant record without stop_reason';
+  } else if (last.kind === 'interrupt') {
+    // The turn was aborted (Esc). Nothing is running, nothing finished, and the user already
+    // knows — so this is neither `working` (which would pin the row to the popover forever,
+    // undismissible) nor `done` (which would claim a result and fire a toast).
+    status = 'interrupted';
+    reason = 'the turn was interrupted — the session is idle at its prompt';
   } else {
     status = 'working';
     reason = last.kind === 'prompt' ? 'prompt submitted, model is starting' : 'tool result returned';

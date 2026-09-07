@@ -1,0 +1,35 @@
+- 2026-08-22 14:48 · 005 · D1 The reworded promise and the switch itself · started
+- 2026-08-22 14:50 · 005 · D1 The reworded promise and the switch itself · done
+- 2026-08-22 14:50 · 005 · D2 Pure model→window table · started
+- 2026-08-22 14:51 · 005 · D2 Pure model→window table · done
+- 2026-08-22 14:51 · 005 · D3 Fetch + APPDATA cache · started
+- 2026-08-22 15:00 · 005 · D3 Fetch + APPDATA cache · done
+- 2026-08-22 15:00 · 005 · D4 Consumption in core · started
+- 2026-08-22 15:04 · 005 · D4 Consumption in core · done
+- 2026-08-22 15:04 · 005 · D5 Renderer provenance labelling · started
+- 2026-08-22 15:04 · 005 · D6 Main wiring + IPC surface · started
+- 2026-08-22 15:04 · 005 · D8 CLI honours the setting · started
+- 2026-08-22 15:09 · 005 · D5 Renderer provenance labelling · done
+- 2026-08-22 15:09 · 005 · D6 Main wiring + IPC surface · done
+- 2026-08-22 15:09 · 005 · D8 CLI honours the setting · done
+- 2026-08-22 15:09 · 005 · D7 Settings UI switch + Diagnostics state line · started
+- 2026-08-22 15:11 · 005 · D7 Settings UI switch + Diagnostics state line · done
+- 2026-08-22 15:23 · 005 · review + fixes + Done section · done
+- 2026-08-22 15:25 · 015 · D1 the truncated flag and the shared wording · started
+- 2026-08-22 15:25 · 015 · D1 the truncated flag and the shared wording · done
+- 2026-08-22 15:26 · 015 · D2 the history view says what it is showing · started
+- 2026-08-22 15:26 · 015 · D2 the history view says what it is showing · done
+- 2026-08-22 15:29 · 015 · D3 the CLI qualifies its list the same way · started
+- 2026-08-22 15:29 · 015 · D3 the CLI qualifies its list the same way · done
+- 2026-08-22 15:31 · 015 · D4 timing tests that cannot miss their event · started
+- 2026-08-22 15:38 · 015 · D4 timing tests that cannot miss their event · done
+- 2026-08-22 16:08 · 015 · review (fail) + engine.ts race fix + re-review (pass) + Done section · done
+- 2026-08-22 16:09 · 014 · D1 Light tile set out of npm run icons · started
+- 2026-08-22 16:16 · 014 · D1 Light tile set out of npm run icons · done
+- 2026-08-22 16:16 · 014 · D2 Runtime picks set by theme · started
+- 2026-08-22 16:23 · 014 · D2 Runtime picks set by theme · done
+- 2026-08-22 16:23 · 014 · D4 Fallback tile survives light taskbar · started
+- 2026-08-22 16:32 · 014 · D4 Fallback tile survives light taskbar · done
+- 2026-08-22 17:32 · 014 · D3 fix pixel-sampling contrast test (resume from RED) · started
+- 2026-08-22 17:50 · 014 · D3 fix pixel-sampling contrast test (resume from RED) · done
+- 2026-08-22 18:00 · 014 · review pass (clean agent) + fix badge-test all-sizes bug + add D4 fallback contrast test · done

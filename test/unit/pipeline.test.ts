@@ -23,6 +23,7 @@ import { epochMsToFileTime } from '../../src/core/registry/liveness.ts';
 import type { StatusTransition } from '../../src/core/model/types.ts';
 import {
   T0,
+  agentResult,
   assistant,
   aiTitle,
   fileHistorySnapshot,
@@ -97,6 +98,44 @@ describe('discovery and status through the adapter', () => {
     expect(snapshot.facts.last?.stopReason).toBe('end_turn');
     expect(snapshot.facts.aiTitle).toBe('Fixture title');
     expect(snapshot.project.name).toBe('claude-control');
+  });
+
+  it('finds the generated title even when it sits outside the tail window', async () => {
+    // What every long-running session looks like: `ai-title` is written once, early, and by
+    // the time the popover asks it is far behind the tail window — the case that used to
+    // leave every row labelled with the registry's derived slug instead.
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(
+      LIVE_PID,
+      registryEntry({ pid: LIVE_PID, sessionId: 'sess-titled', name: 'claude-control-7e' }),
+    );
+    const padding = Array.from({ length: 40 }, (_, index) =>
+      assistant({ uuid: `pad${index}`, at: 2_000 + index, text: 'x'.repeat(400) }),
+    );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-titled',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a1', at: 1_000, text: 'Starting.' }),
+        aiTitle('Sprint 14', 1_100),
+        ...padding,
+        lastPrompt('u1'),
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter({
+      paths: resolveClaudePaths(tree.root),
+      // Small enough that the title is provably behind it — 40 × 400 chars of padding follow.
+      tailWindowBytes: 1024,
+      maxTailWindowBytes: 1024,
+      probe: new FakeProbe(new Set([LIVE_PID])),
+      thresholds: DEFAULT_THRESHOLDS,
+    });
+    const snapshot = await adapter.readStatus((await adapter.discoverLiveSessions())[0]!);
+
+    expect(snapshot.facts.read.startOffset).toBeGreaterThan(0);
+    expect(snapshot.facts.aiTitle).toBe('Sprint 14');
   });
 
   it('parses the optional agent-reported registry fields when present', async () => {
@@ -262,8 +301,149 @@ describe('discovery and status through the adapter', () => {
     expect(detail.events).toHaveLength(4);
     expect(detail.subagents).toHaveLength(1);
     expect(detail.subagents[0]!.status).toBe('completed');
-    expect(detail.usage.cacheReadTokens).toBeGreaterThan(0);
+    expect(detail.usage!.cacheReadTokens).toBeGreaterThan(0);
     expect(detail.title).toBe('Past session');
+  });
+
+  it('sums per-entry usage from the tail records and marks it complete (D4)', async () => {
+    const tree = await makeFixtureTree();
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-usage',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a1', at: 1_000, usage: { input: 1, cacheRead: 2, cacheCreation: 3, output: 4 } }),
+        assistant({
+          uuid: 'a2',
+          at: 2_000,
+          stopReason: 'end_turn',
+          text: 'done',
+          usage: { input: 10, cacheRead: 20, cacheCreation: 30, output: 40 },
+        }),
+      ]),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const entry = await adapter.readHistoryEntry(path);
+
+    expect(entry!.usage).toEqual({
+      inputTokens: 11,
+      cacheReadTokens: 22,
+      cacheCreationTokens: 33,
+      outputTokens: 44,
+    });
+    // The whole file fits the tail window, so the sum is a total, not a lower bound.
+    expect(entry!.usageComplete).toBe(true);
+  });
+
+  it('flags usage as incomplete when the tail window misses the start of the file (D4)', async () => {
+    const tree = await makeFixtureTree();
+    // Filler between the two assistant records, wide enough that the 64 KB tail window
+    // cannot reach the first one — the boundary `usageComplete` is supposed to detect.
+    const filler = `${JSON.stringify(fileHistorySnapshot(0))}
+`.repeat(1_200);
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-usage-partial',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a-old', at: 1_000, usage: { input: 900_000, cacheRead: 0, cacheCreation: 0, output: 900_000 } }),
+      ]) +
+        filler +
+        toJsonl([
+          assistant({
+            uuid: 'a-new',
+            at: 2_000,
+            stopReason: 'end_turn',
+            text: 'done',
+            usage: { input: 7, cacheRead: 0, cacheCreation: 0, output: 5 },
+          }),
+        ]),
+    );
+
+    expect((await stat(path)).size).toBeGreaterThan(64 * 1024);
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const entry = await adapter.readHistoryEntry(path);
+
+    expect(entry!.usageComplete).toBe(false);
+    // Only the records inside the window are counted; the old one is out of reach.
+    expect(entry!.usage).toEqual({
+      inputTokens: 7,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      outputTokens: 5,
+    });
+  });
+
+  it('fills in exact usage on the stored history entry after a detail read (D5)', async () => {
+    const tree = await makeFixtureTree();
+    // Same shape as the "flags usage as incomplete" fixture above: the tail window can't
+    // reach the old record, so the index only sees a partial sum until a full read happens.
+    const filler = `${JSON.stringify(fileHistorySnapshot(0))}
+`.repeat(1_200);
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-usage-lazy',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a-old', at: 1_000, usage: { input: 900_000, cacheRead: 0, cacheCreation: 0, output: 900_000 } }),
+      ]) +
+        filler +
+        toJsonl([
+          assistant({
+            uuid: 'a-new',
+            at: 2_000,
+            stopReason: 'end_turn',
+            text: 'done',
+            usage: { input: 7, cacheRead: 0, cacheCreation: 0, output: 5 },
+          }),
+        ]),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const engine = new ControlEngine({
+      adapter,
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
+    });
+
+    const done = historyDone(engine);
+    await engine.start();
+    await done;
+
+    const indexed = engine.listHistory().entries.find((entry) => entry.sessionId === 'sess-usage-lazy');
+    expect(indexed!.usageComplete).toBe(false);
+
+    const historyEvents: { count: number; done: boolean }[] = [];
+    engine.on('history', (info) => historyEvents.push(info));
+
+    const detail = await engine.getDetail('sess-usage-lazy');
+
+    // The full parse behind `getDetail` knows the exact totals — including the old record
+    // the tail-only index couldn't reach — so the stored entry is upgraded in place.
+    const upgraded = engine.listHistory().entries.find((entry) => entry.sessionId === 'sess-usage-lazy');
+    expect(upgraded!.usage).toEqual(detail.usage);
+    expect(upgraded!.usageComplete).toBe(true);
+    // Consumers (the history view) learn about the upgrade the same way they learn about
+    // fresh indexing: a `history-changed` broadcast, not a silent in-place mutation.
+    expect(historyEvents).toContainEqual({ count: engine.listHistory().total, done: true });
+
+    await engine.stop();
+  });
+
+  it('reports null usage for a transcript that carries no usage records (D4)', async () => {
+    const tree = await makeFixtureTree();
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-no-usage',
+      toJsonl([prompt('u1', 0), prompt('u2', 1_000), lastPrompt('u2')]),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set()));
+    const entry = await adapter.readHistoryEntry(path);
+
+    // Null, not a zeroed total: "nothing reported" must not read as "zero tokens".
+    expect(entry!.usage).toBeNull();
   });
 
   it('honours the abort signal while indexing', async () => {
@@ -292,6 +472,16 @@ describe('discovery and status through the adapter', () => {
 });
 
 describe('engine', () => {
+  /**
+   * For tests whose fixture session seeds as `done`: `hideDoneOnStart` (on by default) would
+   * take that row off every surface, which is its own test below and not what these are about.
+   */
+  const SHOWING_SETTLED = {
+    ...DEFAULT_SETTINGS,
+    indexHistoryOnStart: false,
+    list: { hideDoneOnStart: false },
+  };
+
   it('produces a view model with tray state, badge and grouping', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-a', name: 'cc-a' }));
@@ -304,7 +494,7 @@ describe('engine', () => {
     const now = () => T0 + 2_000;
     const engine = new ControlEngine({
       adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      settings: mergeSettings(SHOWING_SETTLED),
       now,
       // No file watching in this test; the snapshot is what is under test.
       createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
@@ -375,7 +565,7 @@ describe('engine', () => {
     let clock = T0 + 2_000;
     const engine = new ControlEngine({
       adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      settings: mergeSettings(SHOWING_SETTLED),
       now: () => clock,
       createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
     });
@@ -401,6 +591,67 @@ describe('engine', () => {
       'utf8',
     );
     await engine.refreshNow();
+    expect(engine.getSnapshot().attention).toBe(1);
+
+    await engine.stop();
+  });
+
+  it('hides a session that was already done at start until it does something new', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-old', name: 'cc-old' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    // A turn that ended long before the app was started.
+    const path = await tree.writeTranscript(
+      slug,
+      'sess-old',
+      toJsonl([
+        prompt('u1', 0, 'the thing from before'),
+        assistant({ uuid: 'a1', at: 1_000, stopReason: 'end_turn', text: 'Done.' }),
+      ]),
+    );
+
+    let clock = T0 + 10 * 60_000;
+    const makeEngine = (hide: boolean): ControlEngine =>
+      new ControlEngine({
+        adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+        settings: mergeSettings({
+          ...DEFAULT_SETTINGS,
+          indexHistoryOnStart: false,
+          list: { hideDoneOnStart: hide },
+        }),
+        now: () => clock,
+        createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+      });
+
+    // With the filter off it is an ordinary `done` row that lights the tray.
+    const showing = makeEngine(false);
+    await showing.start();
+    expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['done']);
+    expect(showing.getSnapshot().attention).toBe(1);
+    await showing.stop();
+
+    const engine = makeEngine(true);
+    await engine.start();
+    expect(engine.getSnapshot().sessions).toHaveLength(0);
+    expect(engine.getSnapshot().groups).toHaveLength(0);
+    expect(engine.getSnapshot().trayState).toBe('none');
+    expect(engine.getSnapshot().attention).toBe(0);
+    // Re-reading the same transcript keeps it hidden — nothing happened since.
+    await engine.refreshNow();
+    expect(engine.getSnapshot().sessions).toHaveLength(0);
+
+    // A new turn is news: the row comes back by itself, badge included.
+    clock = T0 + 20 * 60_000;
+    await appendFile(
+      path,
+      toJsonl([
+        prompt('u2', 15 * 60_000, 'one more thing'),
+        assistant({ uuid: 'a2', at: 16 * 60_000, stopReason: 'end_turn', text: 'Also done.' }),
+      ]),
+      'utf8',
+    );
+    await engine.refreshNow();
+    expect(engine.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['sess-old']);
     expect(engine.getSnapshot().attention).toBe(1);
 
     await engine.stop();
@@ -476,7 +727,7 @@ describe('engine', () => {
     const now = () => T0 + 120_000;
     const engine = new ControlEngine({
       adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      settings: mergeSettings(SHOWING_SETTLED),
       now,
       createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
     });
@@ -609,6 +860,11 @@ describe('engine', () => {
       await tree.writeTranscript(slug, `history-${i}`, bulk + tail);
     }
 
+    // A multi-kilobyte subagent report, as D1's `finalTextOf` now reads out of every agent
+    // result's `content` — worst case, every live tail carries one, so the extra reading work
+    // is inside this budget too, not just the byte count of the transcript.
+    const longReport = 'report line filling out a multi-kilobyte final message. '.repeat(80);
+
     // Six live sessions, as measured, each with its own big transcript.
     const liveIds = ['live-0', 'live-1', 'live-2', 'live-3', 'live-4', 'live-5'];
     for (const [index, sessionId] of liveIds.entries()) {
@@ -622,7 +878,17 @@ describe('engine', () => {
         sessionId,
         bulk +
           toJsonl([
-            assistant({ uuid: `x${index}`, at: 0, tools: [{ id: 't1', name: 'Bash' }], cwd }),
+            assistant({
+              uuid: `x${index}`,
+              at: 0,
+              tools: [{ id: 't1', name: 'Bash' }, { id: `agent-${index}`, name: 'Agent' }],
+              cwd,
+            }),
+            agentResult(`ar${index}`, 1, {
+              assistantUuid: `x${index}`,
+              toolUseId: `agent-${index}`,
+              content: [{ type: 'text', text: longReport }],
+            }),
             lastPrompt(`x${index}`),
           ]),
       );
@@ -636,21 +902,59 @@ describe('engine', () => {
         tree,
         new FakeProbe(new Set(liveIds.map((_, index) => LIVE_PID + index))),
       ),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      // D8: history indexing (and its usage summation over each tail's assistant
+      // records — see `readHistoryEntry` in the Claude adapter) now runs inside the
+      // cold-start budget too, not just live-tier resolution.
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
     });
 
     // Guard the premise of the test: the tree really is of the measured order of magnitude.
     const bytes = await treeSize(tree.projectsDir);
     expect(bytes).toBeGreaterThan(0.9 * totalMb * 1024 * 1024);
 
+    // Subscribed before `start()` (015 D4) so an event emitted while `start()` is still
+    // running cannot be missed; the measured window below is unchanged.
+    const done = historyDone(engine);
     const started = Date.now();
     await engine.start();
+    // `start()` fires history indexing in the background without awaiting it, so the
+    // budget has to wait for the 'history' done event too, or it would only measure
+    // live-tier resolution and never touch the usage-summation path at all.
+    await done;
     const elapsed = Date.now() - started;
     const snapshot = engine.getSnapshot();
 
     // Only the live sessions with an alive PID resolve; readStatus verifies with signal 0,
     // so sessions whose fabricated PID is not running are reported as ended.
     expect(snapshot.sessions.length).toBe(liveIds.length);
+
+    // Guard the premise of the multi-KB `longReport` above: at least one session's subagent
+    // tree node must actually have extracted a `finalText` from it, clipped to `ROW_TEXT_CHARS`
+    // (120) with the `…` marker — otherwise this timing measurement would silently go vacuous
+    // if the extraction path (`finalTextOf`) broke or stopped being reached.
+    const finalTexts = snapshot.sessions.flatMap((session) =>
+      session.subagents.map((node) => node.finalText),
+    );
+    const extracted = finalTexts.find((text): text is string => text !== null);
+    expect(extracted).toBeDefined();
+    expect(extracted).toMatch(/…$/);
+    expect(extracted?.length).toBeLessThanOrEqual(120);
+    expect(extracted?.length).toBeGreaterThan(100);
+
+    // Guard the premise of the D8 usage-summation timing: at least one indexed history
+    // entry must actually carry non-null usage summed from its tail's assistant records
+    // (default `assistant()` fixture usage, see builders.ts) — otherwise this measurement
+    // would silently go vacuous if `readHistoryEntry`'s summation broke or was skipped.
+    const historyUsages = engine
+      .listHistory()
+      .entries.map((entry) => entry.usage)
+      .filter((usage): usage is NonNullable<typeof usage> => usage !== null);
+    expect(historyUsages.length).toBeGreaterThan(0);
+    expect(historyUsages[0]!.inputTokens).toBeGreaterThan(0);
+
+    // eslint-disable-next-line no-console -- N5 budget is measured, not just asserted; the
+    // number needs to be readable from test output for the story's Done section.
+    console.log(`[N5] cold start with history indexing and usage summation: ${elapsed}ms`);
     expect(elapsed).toBeLessThan(2_000);
     await engine.stop();
   }, 180_000);
@@ -720,12 +1024,9 @@ describe('engine', () => {
       settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
     });
 
+    const done = historyDone(engine);
     await engine.start();
-    await new Promise<void>((resolve) => {
-      engine.on('history', (info) => {
-        if (info.done) resolve();
-      });
-    });
+    await done;
     // Detail reads are the only full parses; they must not touch the file either.
     for (const entry of engine.listHistory().entries) {
       await engine.getDetail(entry.sessionId);
@@ -737,6 +1038,35 @@ describe('engine', () => {
     expect(after).toEqual(before);
   });
 });
+
+/**
+ * Resolves when the engine reports its history index as done — subscribed *before*
+ * `engine.start()` is called, so an event emitted while `start()` is still running cannot be
+ * missed (015 D4). Use as `const done = historyDone(engine); await engine.start(); await done;`.
+ *
+ * The timeout is a fail-fast net well below vitest's own (30 s default, 180 s on N5): an
+ * event that never comes fails with this message instead of running into the test timeout.
+ */
+function historyDone(engine: ControlEngine, timeoutMs = 10_000): Promise<void> {
+  const waited = new Promise<void>((resolve, reject) => {
+    const listener = (info: { count: number; done: boolean }): void => {
+      if (!info.done) return;
+      clearTimeout(timer);
+      engine.off('history', listener);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      engine.off('history', listener);
+      reject(new Error(`historyDone: no history 'done' event within ${timeoutMs}ms`));
+    }, timeoutMs);
+    engine.on('history', listener);
+  });
+  // The promise is created before `await engine.start()`, so a timeout could reject while
+  // nothing awaits it yet; a no-op handler keeps that from surfacing as an unhandled
+  // rejection instead of the readable failure at the `await done` site.
+  waited.catch(() => {});
+  return waited;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

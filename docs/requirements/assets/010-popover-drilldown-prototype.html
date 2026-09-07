@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>claude-control · Popover B v2 — Subagent-Kontext</title>
+<style>
+:root {
+  --bg: #111113; --bg-raised: #17171a; --bg-hover: #1e1e22; --bg-active: #26262b;
+  --border: #2a2a30; --text: #e8e8ea; --text-dim: #9a9aa2; --text-faint: #6a6a72;
+  --accent: #7c8cff;
+  --status-waiting: #ff9f0a; --status-done: #30d158; --status-working: #0a84ff;
+  --status-stale: #ac8e68; --status-queued: #bf5af2; --status-starting: #64d2ff;
+  --status-ended: #5a5a60; --status-unknown: #7a7a80;
+  --band-green: #30d158; --band-yellow: #ffd60a; --band-red: #ff453a; --band-critical: #ff2d55;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 26px 28px 60px;
+  background: #0a0a0c; color: var(--text);
+  font: 13px/1.45 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  user-select: none;
+}
+h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+.lead { color: var(--text-dim); font-size: 12px; margin: 0 0 18px; max-width: 760px; }
+.lead b { color: var(--text); }
+.toolbar { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; flex-wrap: wrap; }
+.toolbar button {
+  font: inherit; font-size: 11.5px; color: var(--text-dim); background: var(--bg-raised);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+.toolbar button:hover { color: var(--text); background: var(--bg-hover); }
+.toolbar button.on { color: var(--accent); border-color: var(--accent); }
+.toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.toolbar .hint { color: var(--text-faint); font-size: 11px; }
+.layout { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+
+/* ------------------------------------------------ Popover-Shell */
+.popover {
+  display: flex; flex-direction: column; width: 620px;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  background: var(--bg-raised);
+}
+.popover-head {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 10px;
+  border-bottom: 1px solid var(--border); background: var(--bg); flex: none;
+}
+.popover-head .title { font-size: 12px; font-weight: 600; }
+.popover-head .count { font-size: 11px; color: var(--text-faint); }
+.popover-head .spacer { flex: 1; }
+.popover-head .live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
+.popover-head button {
+  font: inherit; color: var(--text-dim); background: transparent;
+  border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+}
+.popover-head .icon-button {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; font-size: 12px; line-height: 1; flex: none;
+}
+.popover-head .notify-button { padding: 2px 6px; height: 22px; font-size: 11px; line-height: 1; white-space: nowrap; }
+.popover-list { overflow-x: hidden; overflow-y: auto; max-height: 522px; }
+.popover-list.capped { border-bottom: 1px dashed var(--status-waiting); }
+.popover-rows { padding: 4px; }
+.popover-footer {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-top: 1px solid var(--border); background: var(--bg); flex: none;
+}
+.popover-footer button {
+  font: inherit; color: inherit; background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer; white-space: nowrap;
+}
+.popover-footer .spacer { flex: 1; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.dot.halo { box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) 35%, transparent); }
+.dot.sm { width: 7px; height: 7px; }
+.dot.xs { width: 6px; height: 6px; }
+
+.ctx { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ctx-bar { flex: 1; min-width: 0; height: 6px; border-radius: 3px; background: var(--bg-active); overflow: hidden; }
+.ctx-fill { display: block; height: 100%; }
+.ctx-value { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ------------------------------------------------ Gruppen-Kopf (Ebene 0) */
+.group-head {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 6px 6px 5px; margin-top: 2px;
+  background: transparent; border: none; border-radius: 6px;
+  color: var(--text); font: inherit; font-size: 11.5px; cursor: pointer; text-align: left;
+}
+.group-head:hover { background: var(--bg-hover); }
+.group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chev {
+  color: var(--text-faint); font-size: 8px; width: 9px; flex: none; text-align: center;
+  transition: transform .12s ease; display: inline-block;
+}
+.chev.open { transform: rotate(90deg); }
+.chev.leaf { opacity: 0; }
+.group-head .name { font-weight: 600; letter-spacing: .01em; }
+.group-head .attention { font-size: 10.5px; color: var(--status-waiting); }
+.group-head .spacer { flex: 1; }
+.group-head .n { font-size: 11px; color: var(--text-faint); }
+.group-head .rollup { display: inline-flex; gap: 5px; align-items: center; }
+
+/* ------------------------------------------------ Session-Zeile (Ebene 1) */
+.srow {
+  display: block; width: 100%; padding: 4px 6px 5px;
+  background: transparent; border: none; border-radius: 6px;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.srow:hover { background: var(--bg-hover); }
+.srow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.srow.open { background: var(--bg-hover); }
+.srow .l1 {
+  display: grid; align-items: center; gap: 8px;
+  grid-template-columns: 9px 13px 11px minmax(0,1fr) 108px 92px 14px;
+}
+.srow .l2 {
+  display: flex; align-items: center; gap: 7px;
+  padding-left: 42px; margin-top: 2px; font-size: 11px; color: var(--text-dim); overflow: hidden;
+}
+.srow .l2 .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .l2 .spacer { flex: 1; }
+.srow .glyph { font-size: 11px; text-align: center; flex: none; }
+.srow .idx { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; text-align: right; }
+.srow .branch { font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .model { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.srow .agenticon { font-size: 11px; text-align: center; color: var(--text-faint); flex: none; }
+.srow .age { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.sub { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.sub .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--bg-active); display: inline-block; }
+.sub .pip.on { background: var(--status-done); }
+.sub .pip.run { background: var(--status-working); }
+.sub .pip.fail { background: var(--band-red); }
+.sub .cnt { font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------ Detail-Block (Ebene 2) */
+.detail { padding: 1px 6px 6px 42px; }
+.detail .kv { font-size: 11px; color: var(--text-faint); display: flex; gap: 6px; padding: 1px 0 4px; }
+.detail .kv .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtree { border-left: 1px solid var(--border); padding-left: 9px; margin-left: 1px; }
+.subtree .subtree { margin-top: 2px; }
+.flatnote {
+  font-size: 10px; color: var(--text-faint); font-style: italic;
+  padding: 3px 5px 1px; opacity: .75;
+}
+
+.arow {
+  display: block; width: 100%; padding: 3px 5px 4px;
+  background: transparent; border: none; border-radius: 5px;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.arow:hover { background: var(--bg-active); }
+.arow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.arow .a1 { display: grid; align-items: center; gap: 7px; grid-template-columns: 9px 7px minmax(0,1fr) auto; }
+.arow .label { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arow .type {
+  font-size: 10px; color: var(--text-dim); background: var(--bg-active);
+  border-radius: 999px; padding: 1px 6px; white-space: nowrap;
+}
+.arow .num {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.actx { display: inline-flex; align-items: center; gap: 4px; }
+.actx-bar { width: 26px; height: 5px; border-radius: 3px; background: var(--bg-active); overflow: hidden; }
+.actx-fill { display: block; height: 100%; }
+.actx-val { color: var(--text-dim); }
+.amodel { color: var(--text-dim); white-space: nowrap; }
+.amodel .inh {
+  color: var(--text-faint); font-size: 9px; padding-left: 2px; vertical-align: 1px;
+}
+.arow .a2 { display: flex; align-items: baseline; gap: 8px; padding-left: 23px; margin-top: 1px; }
+.arow .msg {
+  flex: 1; min-width: 0; font-size: 10.5px; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arow .msg.na { font-style: italic; opacity: .8; }
+.arow .msg.err { color: var(--band-red); font-style: normal; }
+
+/* ------------------------------------------------ Datenherkunft-Overlay */
+body.prov .p-parse { outline: 1px dashed var(--status-waiting); outline-offset: 1px; border-radius: 3px; }
+body.prov .p-none  { outline: 1px dashed var(--band-red); outline-offset: 1px; border-radius: 3px; }
+body.prov .p-new   { outline: 1px dashed var(--accent); outline-offset: 1px; border-radius: 3px; }
+
+/* ------------------------------------------------ Seitenpanel */
+.panel { width: 400px; font-size: 11.5px; color: var(--text-dim); }
+.panel h3 { font-size: 12px; color: var(--text); margin: 0 0 6px; font-weight: 600; }
+.panel p { margin: 0 0 12px; }
+.panel .meter {
+  font-variant-numeric: tabular-nums; color: var(--text);
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; margin: 0 0 14px; font-size: 11.5px;
+}
+.panel .meter .row { display: flex; justify-content: space-between; padding: 1px 0; }
+.panel .meter .warn { color: var(--status-waiting); }
+.panel .meter .ok { color: var(--status-done); }
+.panel .legend { display: grid; gap: 5px; margin: 0 0 14px; }
+.panel .legend div { display: flex; gap: 8px; align-items: baseline; }
+.panel .legend .sw { width: 26px; flex: none; height: 0; border-top: 1px dashed; margin-top: 7px; }
+.panel .legend .a { border-color: var(--accent); color: var(--accent); }
+.panel .legend .w { border-color: var(--status-waiting); color: var(--status-waiting); }
+.panel .legend .r { border-color: var(--band-red); color: var(--band-red); }
+.panel code { color: var(--text); background: var(--bg-active); padding: 1px 5px; border-radius: 4px; font-size: 10.5px; }
+.panel .log {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 11px; color: var(--text-faint); min-height: 54px;
+  font-variant-numeric: tabular-nums;
+}
+.panel .log b { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Popover — Variante B v4: Subagent-Modell + Kontext, 620 px</h1>
+<p class="lead">
+Clickdummy. <b>Chevrons klicken</b> — Projekt → Session → Subagent → verschachtelter Subagent.
+Klick auf Label/Branch = „Jump" (wird rechts protokolliert). Tastatur: <b>↑↓</b> bewegen,
+<b>→</b> aufklappen, <b>←</b> zuklappen, <b>Enter</b> = Jump.
+<b>v2:</b> Kontext pro fertigem Subagent als eingefrorener Mini-Balken (<code>ctx&nbsp;%</code>),
+klar getrennt von <code>tok</code> (kumulativ, ≠ Kontext). Verschachtelung entfernt — die Daten
+liefern sie nicht (<code>children: []</code>).
+</p>
+
+<div class="toolbar">
+  <button id="t-prov">Datenherkunft zeigen</button>
+  <span class="sep"></span>
+  <button id="t-expand">Alles aufklappen</button>
+  <button id="t-collapse">Alles zuklappen</button>
+  <button id="t-reset">Standardzustand</button>
+  <span class="sep"></span>
+  <span class="hint">Fenster-Maximum 560 px (windows.ts:19) — Höhe rechts live gemessen</span>
+</div>
+
+<div class="layout">
+  <div id="host"></div>
+  <div class="panel">
+    <div class="meter" id="meter"></div>
+    <h3>Datenherkunft</h3>
+    <div class="legend">
+      <div><span class="sw a"></span><span><b class="a">blau</b> — Feld existiert, aber noch nicht im Popover (z.&nbsp;B. <code>subagents[]</code>, <code>lastAssistantText</code>)</span></div>
+      <div><span class="sw w"></span><span><b class="w">orange</b> — steckt im Transkript, wird noch <b>nicht geparst</b>: die Endnachricht eines fertigen Subagents (<code>Agent</code>-Result <code>content</code>)</span></div>
+      <div><span class="sw r"></span><span><b class="r">rot</b> — <b>nicht verfügbar</b> bzw. nur ableitbar. Ein <i>laufender</i> Subagent hat keinen Zwischenstand (<code>isSidechain</code> = 0 Records, RESEARCH §2); sein Modell ist geerbt (<code>≈</code>), nicht gemeldet</span></div>
+    </div>
+    <h3>Interaktionsprotokoll</h3>
+    <div class="log" id="log">—</div>
+  </div>
+</div>
+
+<script>
+/* ================================================================ Daten */
+const K = n => n == null ? '—' : (n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/,'') + 'K' : String(n));
+const band = r => r < .5 ? 'green' : r < .75 ? 'yellow' : r < .9 ? 'red' : 'critical';
+const GLYPH = { waiting:'⌛', working:'↗', done:'✓', stale:'◌', queued:'⇥' };
+const LABEL = { waiting:'needs you', working:'working', done:'done', stale:'stale', queued:'queued' };
+const A_COLOR = { running:'--status-working', launched:'--status-starting', completed:'--status-done', failed:'--band-red', unknown:'--status-unknown' };
+
+const DATA = [
+  { key:'claude-control', project:'claude-control', sessions:[
+    { id:'s1', i:1, status:'waiting', branch:'sprint/S02', title:'Popover reachability',
+      reason:'Bash — „npm run dev" ausführen? Der Befehl startet electron-vite im Watch-Modus und braucht Netzzugriff',
+      model:'Opus 5 · 1M', rawModel:'claude-opus-5[1m]', agent:'🤖',
+      used:48600, win:200000, age:'2m ago', uptime:'↑3h 12m',
+      last:'Autostart-Registrierung eingebaut, teste jetzt den globalen Hotkey.',
+      subs:[] },
+    { id:'s2', i:2, status:'working', branch:'main', title:'Icons nacharbeiten', tool:'Edit',
+      model:'Sonnet 5', rawModel:'claude-sonnet-5', agent:'🤖',
+      used:18900, win:200000, age:'just now', uptime:'',
+      last:'Refactored the tray icon builder into reusable steps.',
+      subs:[
+        { id:'a1', label:'Tray-Tiles gegen helle Taskbar prüfen', type:'general-purpose',
+          status:'completed', dur:'4m 12s', tokens:38400, tools:14, model:'Sonnet 5',
+          lines:'+62 −9', ctxUsed:31200, ctxWin:200000,
+          msg:'Alle vier Tiles halten den Kontrast, nur das Badge bei 16 px kippt gegen #f3f3f3.', subs:[] },
+        { id:'a2', label:'Kontrast-Pass über Statusfarben', type:'Explore',
+          status:'running', dur:'1m 48s', tokens:null, tools:null,
+          model:'Sonnet 5', modelSource:'inherited',
+          ctxUsed:null, ctxWin:null, msg:null, subs:[] },
+        { id:'a2a', label:'Band-Farben gegen WCAG prüfen', type:'general-purpose',
+          status:'completed', dur:'52s', tokens:12100, tools:6, model:'Haiku 4.5',
+          ctxUsed:11400, ctxWin:200000,
+          msg:'--band-yellow fällt auf hellem Grund unter 3:1 — braucht #b58900.', subs:[] },
+        { id:'a2b', label:'Session-Doku querlesen', type:'general-purpose',
+          status:'launched', dur:'—', tokens:null, tools:null,
+          model:'Haiku 4.5', modelSource:'declared',
+          ctxUsed:null, ctxWin:null, msg:null, subs:[] },
+        { id:'a3', label:'build-icons.py Regression', type:'general-purpose',
+          status:'failed', dur:'12s', tokens:2400, tools:1, model:'Sonnet 5',
+          ctxUsed:null, ctxWin:null, msg:null, err:'Error: Agent terminated early due to an API error: 529 Overloaded', subs:[] },
+      ]},
+  ]},
+  { key:'Hantsch-MMO', project:'Hantsch-MMO', sessions:[
+    { id:'s3', i:1, status:'working', branch:'feature/checkout-form', title:'G0 freigegeben', tool:'Bash',
+      model:'Opus 5 · 1M', rawModel:'claude-opus-5[1m]', agent:'🤖',
+      used:125600, win:200000, age:'12s ago', uptime:'↑1h 04m',
+      last:'Alle Migrationen laufen durch, ein Test ist noch rot.',
+      subs:[
+        { id:'a4', label:'Checkout-Steps refactoren', type:'deliverable-hard',
+          status:'completed', dur:'11m 06s', tokens:184300, tools:57, model:'Opus 5 · 1M',
+          lines:'+412 −188', ctxUsed:178900, ctxWin:1000000,
+          msg:'Formular in vier wiederverwendbare Steps zerlegt, Validierung zentralisiert.', subs:[] },
+        { id:'a5', label:'Migrations-Smoke gegen Staging', type:'general-purpose',
+          status:'completed', dur:'2m 31s', tokens:41200, tools:19, model:'Sonnet 5',
+          lines:'+8 −2', ctxUsed:37800, ctxWin:200000,
+          msg:'19 Migrationen grün, checkout_items_v3 braucht noch einen Index.', subs:[] },
+      ]},
+    { id:'s4', i:2, status:'stale', branch:'main', title:'Repo-Audit', tool:'Agent',
+      model:'Sonnet 5', rawModel:'claude-sonnet-5', agent:'⏸',
+      used:8200, win:200000, age:'42m ago', uptime:'↑6h 30m',
+      last:'Ich sehe mir jetzt die Adapter-Grenze an.',
+      subs:[
+        { id:'a6', label:'Adapter-Grenze auditieren', type:'Explore',
+          status:'launched', dur:'—', tokens:null, tools:null,
+          model:'Sonnet 5', modelSource:'inherited',
+          ctxUsed:null, ctxWin:null, msg:null, subs:[] },
+      ]},
+  ]},
+  { key:'ai-diary', project:'ai-diary', sessions:[
+    { id:'s5', i:1, status:'done', branch:'main', title:'AI scrum sprint 02',
+      model:'Opus 5 · 1M', rawModel:'claude-opus-5[1m]', agent:'🤖',
+      used:96400, win:200000, age:'6m ago', uptime:'↑2h 11m',
+      last:'Sprint S02 ist geplant, beide Stories haben offene Fragen.',
+      subs:[] },
+  ]},
+];
+
+const total = DATA.reduce((n,g) => n + g.sessions.length, 0);
+const waiting = DATA.reduce((n,g) => n + g.sessions.filter(s => s.status==='waiting').length, 0);
+
+/* ================================================================ Zustand */
+const DEFAULT_OPEN = () => new Set(DATA.map(g => 'g:' + g.key));   // Gruppen offen, Sessions zu
+let open = DEFAULT_OPEN();
+let provenance = false;
+
+const flat = (node, out) => { out.push(node); (node.subs||[]).forEach(c => flat(c, out)); return out; };
+const allKeys = () => {
+  const k = [];
+  DATA.forEach(g => { k.push('g:'+g.key);
+    g.sessions.forEach(s => { k.push('s:'+s.id); flat(s,[]).slice(1).forEach(a => k.push('a:'+a.id)); }); });
+  return k;
+};
+const countSubs = s => flat(s, []).length - 1;
+
+/* ================================================================ Bausteine */
+const dot = (status, cls) => `<span class="dot ${cls||''}${status==='waiting'?' halo':''}" style="background:var(--status-${status})"></span>`;
+const adot = (status) => `<span class="dot xs" style="background:var(${A_COLOR[status]})"></span>`;
+const chev = (isOpen, leaf) => `<span class="chev${isOpen?' open':''}${leaf?' leaf':''}">▶</span>`;
+
+/** Kontext eines *fertigen* Subagents: Endstand, kein Live-Wert — daher als
+ *  eingefrorener Mini-Balken mit eigener Beschriftung, klar getrennt von `tok`. */
+function actx(a) {
+  if (a.ctxUsed == null) return '';
+  const r = a.ctxUsed / a.ctxWin, p = Math.round(r*100);
+  return `<span class="actx p-new" title="Kontext beim Abschluss des Runs — Schätzung: ${K(a.ctxUsed)} von angenommen ${K(a.ctxWin)} (${p} %). Endstand, steigt nicht mehr.">
+    <span class="actx-bar"><span class="actx-fill" style="width:${p}%;background:var(--band-${band(r)})"></span></span>
+    <span class="actx-val">ctx ${p}%</span></span>`;
+}
+
+/** Modell des Subagents. Drei Herkünfte, drei Genauigkeiten:
+ *   resolved  — `resolvedModel` aus dem Result, exakt inkl. [1m]. Nur bei fertigen Runs.
+ *   declared  — `model` im Agent-Tool-Input, exakt, aber heute nicht geparst.
+ *   inherited — nicht gesetzt ⇒ erbt das Session-Modell. Abgeleitet, wie statusSource: 'inferred'.
+ */
+function amodel(a) {
+  if (!a.model) return '';
+  const src = a.modelSource || 'resolved';
+  const cls = src === 'resolved' ? 'p-new' : src === 'declared' ? 'p-parse' : 'p-none';
+  const title = src === 'resolved'
+    ? `Modell, auf das der Run tatsächlich auflöste (resolvedModel aus dem Agent-Result) — exakt`
+    : src === 'declared'
+      ? `Im Agent-Aufruf explizit gesetztes Modell (input.model) — exakt, wird heute nicht geparst`
+      : `Kein Modell im Aufruf gesetzt ⇒ erbt das Modell der Session — abgeleitet, nicht gemeldet`;
+  return `<span class="amodel ${cls}" title="${title}">${a.model}${src==='inherited'?'<span class="inh">≈</span>':''}</span>`;
+}
+
+function ctx(s) {
+  const r = s.used / s.win, p = Math.round(r*100);
+  return `<span class="ctx" title="${K(s.used)} von geschätzt ${K(s.win)} (${p} %) — Schätzung">
+    <span class="ctx-bar"><span class="ctx-fill" style="width:${p}%;background:var(--band-${band(r)})"></span></span>
+    <span class="ctx-value">${K(s.used)}</span></span>`;
+}
+
+function pips(s) {
+  const nodes = flat(s, []).slice(1);
+  if (!nodes.length) return '';
+  const done = nodes.filter(n => n.status==='completed').length;
+  const fail = nodes.filter(n => n.status==='failed').length;
+  let out = '';
+  nodes.forEach(n => {
+    const c = n.status==='completed' ? 'on' : n.status==='failed' ? 'fail'
+            : (n.status==='running'||n.status==='launched') ? 'run' : '';
+    out += `<span class="pip ${c}"></span>`;
+  });
+  return `<span class="sub p-new" title="${nodes.length} Subagents — ${done} fertig${fail?`, ${fail} fehlgeschlagen`:''}. Aufklappen für Details.">
+    ${out}<span class="cnt">${done}/${nodes.length}</span></span>`;
+}
+
+function rollup(g) {
+  const counts = {};
+  g.sessions.forEach(s => { counts[s.status] = (counts[s.status]||0) + 1; });
+  return `<span class="rollup">${Object.entries(counts)
+    .map(([st,n]) => `<span title="${n}× ${LABEL[st]}">${dot(st,'xs')}<span class="cnt" style="font-size:10.5px;color:var(--text-faint)"> ${n}</span></span>`)
+    .join('')}</span>`;
+}
+
+/** Ein Subagent-Knoten, rekursiv. */
+function agentRow(a, depth) {
+  const isOpen = open.has('a:'+a.id);
+  const hasKids = (a.subs||[]).length > 0;
+  const running = a.status==='running' || a.status==='launched';
+
+  let msg;
+  if (a.err) msg = `<span class="msg err p-parse" title="errorText — wird bereits geparst">${a.err}</span>`;
+  else if (running) msg = `<span class="msg na p-none" title="Nicht verfügbar: ein laufender Subagent schreibt kein Transkript in die Parent-Datei (isSidechain = 0 Records, RESEARCH §2). Erst das Ergebnis bringt Text.">läuft seit ${a.dur} — kein Zwischenstand verfügbar</span>`;
+  else msg = `<span class="msg p-parse" title="Endnachricht aus dem Agent-Result (content) — im Transkript vorhanden, wird heute nicht geparst (types.ts:100)">${a.msg}</span>`;
+
+  const nums = running
+    ? `<span class="num">${amodel(a)}<span>${a.dur}</span></span>`
+    : `<span class="num">${amodel(a)}${actx(a)}<span class="p-new" title="${K(a.tokens)} tok verbraucht (kumulativ über alle Turns — NICHT die Kontextgröße) · ${a.tools} Tool-Aufrufe${a.lines?' · '+a.lines+' Zeilen':''}">${a.dur}</span></span>`;
+
+  return `<div>
+    <div class="arow" tabindex="0" data-key="a:${a.id}" data-kind="agent" data-label="${a.label}">
+      <span class="a1">
+        ${chev(isOpen, !hasKids)}
+        ${adot(a.status)}
+        <span class="label">${a.label}</span>
+        <span class="type p-new">${a.type}</span>
+      </span>
+      <span class="a2">${msg}${nums}</span>
+    </div>
+    ${isOpen && hasKids ? `<div class="subtree">${a.subs.map(c => agentRow(c, depth+1)).join('')}</div>` : ''}
+  </div>`;
+}
+
+function sessionRow(s) {
+  const isOpen = open.has('s:'+s.id);
+  const n = countSubs(s);
+  return `<div>
+    <div class="srow${isOpen?' open':''}" tabindex="0" data-key="s:${s.id}" data-kind="session" data-label="${s.branch}">
+      <span class="l1">
+        ${chev(isOpen, false)}
+        <span class="glyph" style="color:var(--status-${s.status})">${GLYPH[s.status]}</span>
+        <span class="idx">${s.i}</span>
+        <span class="branch">${s.branch}</span>
+        ${ctx(s)}
+        <span class="model">${s.model}</span>
+        <span class="agenticon" title="${s.agent==='⏸'?'pausiert':'Claude Code'}">${s.agent}</span>
+      </span>
+      <span class="l2">
+        ${dot(s.status,'sm')}
+        <span class="txt"${s.status==='waiting'?' style="color:var(--status-waiting)"':''}>${
+          s.status==='waiting' ? s.reason : LABEL[s.status] + (s.tool ? ' · '+s.tool : '')}</span>
+        ${pips(s)}
+        <span class="spacer"></span>
+        <span class="age">${s.uptime ? s.uptime+' · ' : ''}${s.age}</span>
+      </span>
+    </div>
+    ${isOpen ? `<div class="detail">
+      <div class="kv"><span class="txt p-new" title="lastAssistantText — liegt im SessionView, wird im Popover nicht gezeigt">„${s.last}"</span></div>
+      ${n ? `<div class="subtree">${s.subs.map(a => agentRow(a,0)).join('')}
+          <div class="flatnote p-none" title="buildSubagentTree setzt children: [] hart — isSidechain war auf 0 Records true, die innere Timeline eines Subagents ist unbekannt (RESEARCH §2)">flache Liste — ein Subagent, der selbst Subagents startet, ist nicht als Elternteil erkennbar</div></div>`
+          : `<div class="kv" style="color:var(--text-faint)">keine Subagents</div>`}
+    </div>` : ''}
+  </div>`;
+}
+
+function render() {
+  const rows = DATA.map(g => {
+    const isOpen = open.has('g:'+g.key);
+    const w = g.sessions.filter(s => s.status==='waiting').length;
+    return `<div class="group-head" tabindex="0" data-key="g:${g.key}" data-kind="group" data-label="${g.project}">
+        ${chev(isOpen,false)}
+        <span class="name">${g.project}</span>
+        ${w ? `<span class="attention">${w} wartet</span>` : ''}
+        <span class="spacer"></span>
+        ${rollup(g)}
+        <span class="n">${g.sessions.length===1?'1 session':g.sessions.length+' sessions'}</span>
+      </div>
+      ${isOpen ? g.sessions.map(sessionRow).join('') : ''}`;
+  }).join('');
+
+  document.getElementById('host').innerHTML = `<div class="popover">
+    <div class="popover-head">
+      <span class="title">Claude Control</span>
+      <span class="count">${total} sessions${waiting?` <span style="color:var(--status-waiting)">(${waiting} waiting)</span>`:''}</span>
+      <span class="spacer"></span>
+      <span class="live">${dot('done','sm')}watching</span>
+      <button class="notify-button">notify: all ▾</button>
+      <button class="icon-button">📌</button>
+      <button class="icon-button">✕</button>
+    </div>
+    <div class="popover-list"><div class="popover-rows">${rows}</div></div>
+    <div class="popover-footer">
+      <button>Open Claude Control</button><span class="spacer"></span>
+      <button>Settings</button><button>Quit</button>
+    </div>
+  </div>`;
+  measure();
+}
+
+/* ================================================================ Höhenmessung */
+function measure() {
+  const pop = document.querySelector('.popover');
+  const list = document.querySelector('.popover-list');
+  const rows = document.querySelector('.popover-rows');
+  const chrome = pop.offsetHeight - list.offsetHeight;
+  const wanted = chrome + rows.offsetHeight + 2;
+  const capped = wanted > 560;
+  list.classList.toggle('capped', capped);
+  const openN = [...open].filter(k => !k.startsWith('g:')).length;
+  document.getElementById('meter').innerHTML = `
+    <div class="row"><span>gewünschte Höhe</span><span class="${capped?'warn':'ok'}">${wanted} px</span></div>
+    <div class="row"><span>Fenster-Maximum</span><span>560 px</span></div>
+    <div class="row"><span>Zustand</span><span class="${capped?'warn':'ok'}">${capped?'scrollt ('+(wanted-560)+' px zu viel)':'passt ohne Scrollen'}</span></div>
+    <div class="row"><span>aufgeklappte Knoten</span><span>${openN}</span></div>`;
+}
+
+/* ================================================================ Interaktion */
+const log = [];
+function say(msg) {
+  log.unshift(msg);
+  document.getElementById('log').innerHTML = log.slice(0,4).map((m,i) =>
+    i===0 ? `<b>${m}</b>` : m).join('<br>');
+}
+
+function toggle(key, force) {
+  const isOpen = open.has(key);
+  const want = force === undefined ? !isOpen : force;
+  if (want) open.add(key); else open.delete(key);
+  return want;
+}
+
+document.addEventListener('click', e => {
+  const node = e.target.closest('[data-key]');
+  if (!node) return;
+  const key = node.dataset.key, kind = node.dataset.kind, label = node.dataset.label;
+  const onChevron = !!e.target.closest('.chev');
+  const leaf = e.target.closest('.chev')?.classList.contains('leaf');
+
+  // Klick auf Label/Branch = Jump; Klick auf Chevron = auf-/zuklappen.
+  if (onChevron && !leaf) {
+    const nowOpen = toggle(key);
+    say(`${nowOpen?'aufgeklappt':'zugeklappt'}: ${label}`);
+    render();
+    document.querySelector(`[data-key="${key}"]`)?.focus();
+    return;
+  }
+  if (kind === 'group') { const o = toggle(key); say(`${o?'aufgeklappt':'zugeklappt'}: ${label}`); render(); return; }
+  if (kind === 'session') say(`Jump → Session „${label}" (api.focusSession)`);
+  if (kind === 'agent') say(`Subagent „${label}" — im Popover kein Ziel zum Springen`);
+});
+
+document.addEventListener('keydown', e => {
+  const items = [...document.querySelectorAll('[data-key]')];
+  const i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const next = Math.min(Math.max(i + (e.key==='ArrowDown'?1:-1), 0), items.length-1);
+    items[next===-1?0:next]?.focus();
+  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    if (i < 0) return;
+    e.preventDefault();
+    const key = items[i].dataset.key;
+    const want = e.key === 'ArrowRight';
+    if (open.has(key) === want) return;
+    toggle(key, want);
+    say(`${want?'aufgeklappt':'zugeklappt'}: ${items[i].dataset.label} (Tastatur)`);
+    render();
+    document.querySelector(`[data-key="${key}"]`)?.focus();
+  } else if (e.key === 'Enter' && i >= 0) {
+    e.preventDefault();
+    items[i].click();
+  }
+});
+
+document.getElementById('t-prov').onclick = e => {
+  provenance = !provenance;
+  document.body.classList.toggle('prov', provenance);
+  e.target.classList.toggle('on', provenance);
+};
+document.getElementById('t-expand').onclick = () => { open = new Set(allKeys()); say('alles aufgeklappt'); render(); };
+document.getElementById('t-collapse').onclick = () => { open = new Set(); say('alles zugeklappt'); render(); };
+document.getElementById('t-reset').onclick = () => { open = DEFAULT_OPEN(); say('Standardzustand'); render(); };
+
+render();
+say('Standardzustand — Gruppen offen, Sessions zu');
+</script>
+</body>
+</html>

@@ -77,6 +77,59 @@ export interface FocusResult {
   cwd: string;
 }
 
+/**
+ * Payload of the `cc:navigate` message the main window listens on: which tab to show and,
+ * for "Show in Claude Control" on a popover row, which session to select once it is there.
+ * An object rather than the bare tab string it used to be, so the two travel together — the
+ * window may still be opening when the request is made, and a second message would race it.
+ */
+export interface NavigateTarget {
+  tab: 'sessions' | 'history' | 'settings';
+  /** Session to select on arrival; `null` leaves the current selection alone. */
+  sessionId: SessionId | null;
+}
+
+/** Shape returned by `ShortcutManager.status()` (§main/shortcuts.ts). */
+export interface ShortcutStatus {
+  accelerator: string;
+  registered: boolean;
+  error: string | null;
+}
+
+/**
+ * Outcome of registering `claude-control://` with `app.setAsDefaultProtocolClient` (D4/D1 of
+ * story 013) — a discriminated union rather than a formatted string, so a failure can be told
+ * apart from a path by callers (e.g. Settings → Diagnostics). Defined here, not in
+ * `main/toast-protocol.ts`, because this file is also part of the renderer's TS project
+ * (`tsconfig.web.json`), which cannot reference anything under `main/`.
+ */
+export type ProtocolRegistration =
+  | { state: 'registered'; path: string; args: string[] }
+  | { state: 'failed'; path: string; reason: string }
+  | { state: 'unsupported' };
+
+/** What the last model-window refresh attempt in this process did. `'never'` = none yet. */
+export type RefreshOutcome = 'ok' | 'failed' | 'never';
+
+/**
+ * Mirrors `core/context/windowSource.ts`'s `ModelWindowStatus` (story 005, D3) — duplicated
+ * rather than imported because `core/context` touches the filesystem and network and is
+ * therefore excluded from `tsconfig.web.json`'s boundary (see that file's own comment); this
+ * file is also part of the renderer's TS project, same reasoning as `ProtocolRegistration`
+ * above. Keep the two shapes in sync by hand.
+ */
+export interface ModelWindowStatus {
+  enabled: boolean;
+  entryCount: number;
+  fetchedAt: number | null;
+  ageMs: number | null;
+  stale: boolean;
+  lastOutcome: RefreshOutcome;
+  lastAttemptAt: number | null;
+  lastError?: string;
+  source: string;
+}
+
 export interface DiagnosticsInfo {
   claudeDir: string;
   adapterId: string;
@@ -85,6 +138,14 @@ export interface DiagnosticsInfo {
   /** Whether native window focus is available (koffi loaded) — §7. */
   focusBackend: string;
   platform: string;
+  /**
+   * The exe path registered for `claude-control://` toast buttons (D4/D5) — e.g. Jump or Mute
+   * this session on Windows. Lets a user tell whether it still points at a portable EXE that
+   * has since moved or been deleted.
+   */
+  protocolTarget: ProtocolRegistration;
+  /** Status of the opt-in exact-context-window table (story 005, D3/D6). Null with no data dir. */
+  modelWindows: ModelWindowStatus | null;
 }
 
 export const IPC = {
@@ -95,9 +156,13 @@ export const IPC = {
   focusSession: 'cc:focus-session',
   acknowledge: 'cc:acknowledge',
   acknowledgeAll: 'cc:acknowledge-all',
+  dismiss: 'cc:dismiss',
+  dismissAll: 'cc:dismiss-all',
+  setSessionMuted: 'cc:set-session-muted',
   getSettings: 'cc:get-settings',
   setSettings: 'cc:set-settings',
   resetSettings: 'cc:reset-settings',
+  getShortcutStatus: 'cc:get-shortcut-status',
   refresh: 'cc:refresh',
   reindexHistory: 'cc:reindex-history',
   copyText: 'cc:copy-text',
@@ -106,11 +171,13 @@ export const IPC = {
   closePopover: 'cc:close-popover',
   diagnostics: 'cc:diagnostics',
   quit: 'cc:quit',
+  refreshModelWindows: 'cc:refresh-model-windows',
 
   // main → renderer (send)
   stateChanged: 'cc:state-changed',
   historyChanged: 'cc:history-changed',
   settingsChanged: 'cc:settings-changed',
+  shortcutStatusChanged: 'cc:shortcut-status',
 } as const;
 
 /** Shape exposed on `window.claudeControl` by the preload script. */
@@ -123,18 +190,32 @@ export interface RendererApi {
   acknowledge(id: SessionId): Promise<void>;
   /** Mark every live session as seen. */
   acknowledgeAll(): Promise<void>;
+  /**
+   * "Mark as seen" from the popover: acknowledge the session *and* take it off the tray
+   * surfaces right away, until it produces news again.
+   */
+  dismiss(id: SessionId): Promise<void>;
+  /** "Mark all as seen" — `dismiss` for every live session. */
+  dismissAll(): Promise<void>;
+  /** Mute or unmute toast notifications for one session (§6.6). */
+  setSessionMuted(id: SessionId, muted: boolean): Promise<void>;
   getSettings(): Promise<AppSettings>;
   setSettings(settings: AppSettings): Promise<AppSettings>;
   resetSettings(): Promise<AppSettings>;
+  getShortcutStatus(): Promise<ShortcutStatus>;
   refresh(): Promise<void>;
   reindexHistory(): Promise<void>;
   copyText(text: string): Promise<void>;
   revealPath(path: string): Promise<void>;
-  openMainWindow(tab?: 'sessions' | 'history' | 'settings'): Promise<void>;
+  /** `sessionId` selects that session in the Sessions tab once the window is up. */
+  openMainWindow(tab?: 'sessions' | 'history' | 'settings', sessionId?: SessionId): Promise<void>;
   closePopover(): Promise<void>;
   diagnostics(): Promise<DiagnosticsInfo>;
   quit(): Promise<void>;
+  /** Forces an immediate fetch of the exact-context-window table (Settings toggle, D6). */
+  refreshModelWindows(): Promise<ModelWindowStatus | null>;
   onStateChanged(listener: (state: AppState) => void): () => void;
   onHistoryChanged(listener: (info: { count: number; done: boolean }) => void): () => void;
   onSettingsChanged(listener: (settings: AppSettings) => void): () => void;
+  onShortcutStatusChanged(listener: (status: ShortcutStatus) => void): () => void;
 }

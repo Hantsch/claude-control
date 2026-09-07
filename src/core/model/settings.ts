@@ -76,6 +76,10 @@ export interface ReadingSettings {
 export interface UiSettings {
   /** Popover stays open on blur and keeps the position it was dragged to (§8). */
   popoverPinned: boolean;
+  /** Launch the app on OS login. */
+  autostart: boolean;
+  /** Global keyboard shortcut to open the popover; `''` disables it. */
+  globalShortcut: string;
 }
 
 export interface ListSettings {
@@ -87,6 +91,28 @@ export interface ListSettings {
    */
   hideUnusedSessions: boolean;
   /**
+   * Drop a windowless registry entry from the live surfaces when another live session in
+   * the same folder (`cwd`) still has a terminal window open. A session whose window was
+   * closed but whose process lingers (§4) is an orphan of the one still open in that folder,
+   * not a second thing to watch — but only once the real thing can be told apart from it, so
+   * a probe that has not answered yet, or is not wired up at all, must never drop anyone.
+   * History is unaffected — this only hides them while live, exactly like `hideUnusedSessions`.
+   */
+  hideOrphanSessions: boolean;
+  /**
+   * Drop sessions that were already `done` when the app started from the live surfaces.
+   *
+   * A turn that finished before we were watching is not news: it is the same reason §6.6
+   * seeds statuses silently instead of firing a toast for every session that happens to be
+   * sitting at `done` on launch. Without this, a fresh start opens onto a list of finished
+   * work the user has already dealt with, and the tray badge claims all of it needs them.
+   *
+   * The session is hidden, not forgotten: the moment it produces news — a new turn, a status
+   * change, a new transcript line — it comes back on its own, exactly like a dismissal
+   * re-arms (`SessionView.dismissed`). History is unaffected.
+   */
+  hideDoneOnStart: boolean;
+  /**
    * How long a quiet session stays interesting to the *tray* surfaces (popover, tray menu).
    *
    * The tray is the glance surface: it should answer "what needs me right now", and a
@@ -96,6 +122,15 @@ export interface ListSettings {
    * live session (§6.5).
    */
   trayRecentMs: number;
+}
+
+export interface ContextWindowsSettings {
+  /**
+   * Opt-in for fetching the LiteLLM model→context-window table over the network. Off by
+   * default: with this `false`, the app makes no outbound request and the gauge keeps using
+   * today's estimated window. Turning it on is the only thing that ever sends a request.
+   */
+  useOnlineTable: boolean;
 }
 
 export interface AppSettings {
@@ -112,6 +147,8 @@ export interface AppSettings {
   ui: UiSettings;
   /** Start the history index in the background after the live tier is on screen (§5.1). */
   indexHistoryOnStart: boolean;
+  /** Opt-in exact context-window lookup (005). Read by `core/`. */
+  contextWindows: ContextWindowsSettings;
 }
 
 /**
@@ -179,12 +216,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   list: {
     hideUnusedSessions: true,
+    hideOrphanSessions: true,
+    hideDoneOnStart: true,
     trayRecentMs: 30 * 60_000,
   },
   ui: {
     popoverPinned: false,
+    autostart: false,
+    globalShortcut: 'Ctrl+Alt+C',
   },
   indexHistoryOnStart: true,
+  contextWindows: {
+    useOnlineTable: false,
+  },
 };
 
 /** `T_work` for a specific tool, falling back to the default (§6.3). */
@@ -243,6 +287,7 @@ export function mergeSettings(partial: unknown): AppSettings {
     reading: { ...DEFAULT_SETTINGS.reading },
     list: { ...DEFAULT_SETTINGS.list },
     ui: { ...DEFAULT_SETTINGS.ui },
+    contextWindows: { ...DEFAULT_SETTINGS.contextWindows },
   };
   if (!partial || typeof partial !== 'object') return base;
   const p = migrate(partial as Record<string, unknown>);
@@ -283,12 +328,21 @@ export function mergeSettings(partial: unknown): AppSettings {
   const l = p.list as Record<string, unknown> | undefined;
   if (l && typeof l === 'object') {
     if (typeof l.hideUnusedSessions === 'boolean') base.list.hideUnusedSessions = l.hideUnusedSessions;
+    if (typeof l.hideOrphanSessions === 'boolean') base.list.hideOrphanSessions = l.hideOrphanSessions;
+    if (typeof l.hideDoneOnStart === 'boolean') base.list.hideDoneOnStart = l.hideDoneOnStart;
     if (isPositive(l.trayRecentMs)) base.list.trayRecentMs = l.trayRecentMs;
   }
 
   const u = p.ui as Record<string, unknown> | undefined;
   if (u && typeof u === 'object') {
     if (typeof u.popoverPinned === 'boolean') base.ui.popoverPinned = u.popoverPinned;
+    if (typeof u.autostart === 'boolean') base.ui.autostart = u.autostart;
+    if (typeof u.globalShortcut === 'string') base.ui.globalShortcut = u.globalShortcut;
+  }
+
+  const cw = p.contextWindows as Record<string, unknown> | undefined;
+  if (cw && typeof cw === 'object') {
+    if (typeof cw.useOnlineTable === 'boolean') base.contextWindows.useOnlineTable = cw.useOnlineTable;
   }
 
   if (base.reading.maxTailWindowBytes < base.reading.tailWindowBytes) {

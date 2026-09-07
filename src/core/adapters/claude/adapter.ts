@@ -26,10 +26,11 @@ import type { ProcessProbe } from '../../registry/liveness.ts';
 import { isAliveSync, procStartMatches } from '../../registry/liveness.ts';
 import { readRegistry, type RegistryEntry } from '../../registry/registry.ts';
 import { deriveHistoricalStatus } from '../../state/machine.ts';
-import { buildSubagentTree } from '../../state/subagents.ts';
+import { buildSubagentTree, withSubagentActivity } from '../../state/subagents.ts';
 import type { AgentAdapter, WatchRoot } from '../types.ts';
 import { readIdeWindows } from './ide.ts';
 import { parseJsonlChunk } from './jsonl.ts';
+import { SubagentActivityReader, subagentDirForTranscript } from './subagentFiles.ts';
 import {
   projectRefForCwd,
   projectRefForSlug,
@@ -40,6 +41,8 @@ import {
   type ClaudePaths,
 } from './paths.ts';
 import {
+  aiTitleOf,
+  isAiTitleRecord,
   isAssistantRecord,
   isPromptRecord,
   isSemanticRecord,
@@ -62,6 +65,19 @@ const HISTORY_TAIL_BYTES = 64 * 1024;
  */
 const RUN_START_SCAN_BYTES = 4 * 1024 * 1024;
 const RUN_START_CHUNK_BYTES = 256 * 1024;
+/**
+ * Budget for the one-off scan that finds a session's generated title (the `ai-title`
+ * record). Claude Code writes it once, early, and only again when the title changes — so on
+ * any session that has been running for a while it sits far outside the tail window, and
+ * without this the popover falls back to the registry's derived slug (`q2-launcher-7e`)
+ * instead of the title VS Code puts on the Claude Code panel.
+ *
+ * Backwards first, because the *newest* record is the current title; the head read is the
+ * complement for a transcript too large for that scan to reach the record's end of the file.
+ */
+const AI_TITLE_SCAN_BYTES = 4 * 1024 * 1024;
+const AI_TITLE_CHUNK_BYTES = 256 * 1024;
+const AI_TITLE_HEAD_BYTES = 512 * 1024;
 /** Upper bound on timeline events returned by `readDetail`, to keep the IPC payload sane. */
 const DETAIL_EVENT_LIMIT = 10_000;
 /** Directory listing cache TTL — project directories change rarely. */
@@ -89,6 +105,15 @@ export class ClaudeAdapter implements AgentAdapter {
    * "scanned, nothing found within budget" — cached too, so a hopeless case stays cheap.
    */
   private readonly runStarts = new Map<SessionId, number | null>();
+  /**
+   * Generated title per session, for the (normal) case where the `ai-title` record is no
+   * longer in the tail window. Same contract as `runStarts`: scanned once, `null` cached
+   * too, and refreshed for free whenever the tail *does* carry one — which is what a title
+   * written or changed while the app is watching looks like.
+   */
+  private readonly aiTitles = new Map<SessionId, string | null>();
+  /** Reads "is this subagent still writing?" off disk — see `subagentFiles.ts`. */
+  private readonly subagentActivity = new SubagentActivityReader();
 
   constructor(options: ClaudeAdapterOptions) {
     this.options = options;
@@ -186,6 +211,8 @@ export class ClaudeAdapter implements AgentAdapter {
         },
       });
       facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
+      facts.aiTitle = await this.resolveAiTitle(ref.sessionId, path, facts.aiTitle);
+      await this.applySubagentActivity(ref.sessionId, path, facts);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
       const message = describe(error);
@@ -230,9 +257,85 @@ export class ClaudeAdapter implements AgentAdapter {
     return found;
   }
 
+  /**
+   * Same shape as `resolveRunStart`: the tail window wins and refreshes the cache, otherwise
+   * the cached answer, otherwise one scan. A failed read leaves the title missing rather than
+   * failing the status read — the slug fallback is still a usable label.
+   */
+  private async resolveAiTitle(
+    sessionId: SessionId,
+    path: string,
+    fromTail: string | null,
+  ): Promise<string | null> {
+    if (fromTail !== null) {
+      this.aiTitles.set(sessionId, fromTail);
+      return fromTail;
+    }
+    const cached = this.aiTitles.get(sessionId);
+    if (cached !== undefined) return cached;
+
+    let found: string | null = null;
+    try {
+      const hit = await scanRecordsFromEnd(path, isAiTitleRecord, {
+        chunkBytes: AI_TITLE_CHUNK_BYTES,
+        maxBytes: AI_TITLE_SCAN_BYTES,
+      });
+      found = hit.record ? aiTitleOf(hit.record) : null;
+      // Only worth a second read when the scan gave up short of the start of the file: the
+      // record it is after lives at *that* end, so a bounded head read is the complement.
+      if (found === null && !hit.reachedStart) {
+        const head = await readHead(path, AI_TITLE_HEAD_BYTES);
+        found = firstAiTitle(head.records);
+      }
+    } catch {
+      // Same rule as the tail read: a failed read is a missing fact, not an error.
+    }
+    this.aiTitles.set(sessionId, found);
+    return found;
+  }
+
+  /**
+   * Fill in what the *running* subagents have written, which `summarizeRecords` cannot know:
+   * the parent transcript says nothing between an `Agent` call and its result, while the run
+   * itself keeps appending to its own file. One `stat` of the subagent directory plus one per
+   * running run — nothing is opened, so no subagent prompt or output is read (§4).
+   *
+   * Failures are swallowed on purpose: a missing directory is the normal case for an agent
+   * version that writes none, and then `subagentActivityAt` stays `null` and the state machine
+   * behaves exactly as it did before.
+   */
+  private async applySubagentActivity(
+    sessionId: SessionId,
+    path: string,
+    facts: TranscriptTailFacts,
+  ): Promise<void> {
+    const running = facts.subagents.filter((node) => node.status === 'running');
+    if (running.length === 0) return;
+
+    const activity = await this.subagentActivity
+      .newestActivity(sessionId, subagentDirForTranscript(path), running.map((node) => node.id))
+      .catch(() => new Map<string, number>());
+    if (activity.size === 0) return;
+
+    facts.subagents = withSubagentActivity(facts.subagents, activity);
+    // Only the calls the *status* hangs on may move the status: a stalled call from an older
+    // record is shown as "current tool" but is explicitly not part of the rule (§6.2).
+    const pending = new Set(
+      facts.pendingTools.map((tool) => tool.toolUseId).filter((id): id is string => id !== null),
+    );
+    let newest: number | null = null;
+    for (const [toolUseId, at] of activity) {
+      if (!pending.has(toolUseId)) continue;
+      if (newest === null || at > newest) newest = at;
+    }
+    facts.subagentActivityAt = newest;
+  }
+
   /** Drop the cached run start of a session that is gone, so the map cannot grow forever. */
   forgetSession(sessionId: SessionId): void {
     this.runStarts.delete(sessionId);
+    this.aiTitles.delete(sessionId);
+    this.subagentActivity.forget(sessionId);
   }
 
   /**
@@ -316,6 +419,11 @@ export class ClaudeAdapter implements AgentAdapter {
       endedAt,
       finalStatus: deriveHistoricalStatus(facts, this.options.thresholds),
       messageCountEstimate: estimateRecordCount(info.size, head),
+      usage: sumUsage(tail.records),
+      // `startOffset === 0` is the only signal that the window reached the start of the
+      // file, so the sum above is the whole transcript. Not `tail.exhausted` — that says
+      // whether the *semantic* predicate ever matched and is silent about coverage.
+      usageComplete: tail.startOffset === 0,
       fileSize: info.size,
       mtimeMs: info.mtimeMs,
     };
@@ -338,6 +446,7 @@ export class ClaudeAdapter implements AgentAdapter {
       cacheCreationTokens: 0,
       outputTokens: 0,
     };
+    let usageFound = false;
     let title: string | null = null;
     let startedAt: number | null = null;
     let endedAt: number | null = null;
@@ -353,10 +462,7 @@ export class ClaudeAdapter implements AgentAdapter {
         if (!record) continue;
 
         if (typeof record.gitBranch === 'string' && record.gitBranch) branches.add(record.gitBranch);
-        if (record.type === 'ai-title') {
-          const value = typeof record.title === 'string' ? record.title : null;
-          if (value) title = value;
-        }
+        if (isAiTitleRecord(record)) title = aiTitleOf(record);
         if (!isSemanticRecord(record)) continue;
 
         records.push(record);
@@ -370,6 +476,7 @@ export class ClaudeAdapter implements AgentAdapter {
           if (typeof model === 'string' && model) models.add(model);
           const recordUsage = usageOf(record);
           if (recordUsage) {
+            usageFound = true;
             usage.inputTokens += recordUsage.inputTokens;
             usage.cacheReadTokens += recordUsage.cacheReadTokens;
             usage.cacheCreationTokens += recordUsage.cacheCreationTokens;
@@ -406,7 +513,8 @@ export class ClaudeAdapter implements AgentAdapter {
       models: [...models],
       startedAt,
       endedAt,
-      usage,
+      // `null` rather than a zeroed total when nothing reported usage — see `sumUsage`.
+      usage: usageFound ? usage : null,
       events,
       subagents: buildSubagentTree(collectToolCalls(records), this.now()),
       truncated,
@@ -486,6 +594,7 @@ function emptyFacts(note: string, error: string | null): TranscriptTailFacts {
     runStartedAt: null,
     lastAssistantText: note,
     subagents: [],
+    subagentActivityAt: null,
     agentVersion: null,
     read: {
       fileSize: 0,
@@ -519,15 +628,20 @@ function projectForHistory(
 }
 
 function headTitle(records: readonly TranscriptRecord[]): string | null {
-  for (const record of records) {
-    if (record.type === 'ai-title' && typeof record.title === 'string' && record.title.trim()) {
-      return record.title.trim();
-    }
-  }
+  const title = firstAiTitle(records);
+  if (title) return title;
   for (const record of records) {
     if (record.type !== 'user') continue;
     const text = cleanPromptText(recordText(record));
     if (text) return text.slice(0, 120);
+  }
+  return null;
+}
+
+/** First usable `ai-title` in reading order. The field name varies — see `aiTitleOf`. */
+function firstAiTitle(records: readonly TranscriptRecord[]): string | null {
+  for (const record of records) {
+    if (isAiTitleRecord(record)) return aiTitleOf(record);
   }
   return null;
 }
@@ -538,6 +652,34 @@ function headModel(records: readonly TranscriptRecord[]): string | null {
     if (typeof model === 'string' && model && model !== '<synthetic>') return model;
   }
   return null;
+}
+
+/**
+ * Token usage over records the caller already holds — no read of its own, because this runs
+ * inside the history index's hot path (N5).
+ *
+ * Returns `null` rather than a zeroed total when nothing reported usage: "we saw no usage
+ * records" and "the model burned zero tokens" must not look alike in the UI.
+ */
+function sumUsage(records: readonly TranscriptRecord[]): UsageTotals | null {
+  const totals: UsageTotals = {
+    inputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    outputTokens: 0,
+  };
+  let found = false;
+  for (const record of records) {
+    if (!isAssistantRecord(record)) continue;
+    const usage = usageOf(record);
+    if (!usage) continue;
+    found = true;
+    totals.inputTokens += usage.inputTokens;
+    totals.cacheReadTokens += usage.cacheReadTokens;
+    totals.cacheCreationTokens += usage.cacheCreationTokens;
+    totals.outputTokens += usage.outputTokens;
+  }
+  return found ? totals : null;
 }
 
 /** Records ≈ file size / average record size in the head chunk. Explicitly an estimate. */

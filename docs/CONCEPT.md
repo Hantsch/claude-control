@@ -16,7 +16,9 @@ to look for it: **is any session waiting for me right now?** Secondarily it answ
 have my sessions been doing* over time.
 
 It is a read-only observer. It never writes to Claude Code's state, never sends input to a
-session, and never touches the network.
+session, has no listening socket, sends no telemetry, and by default touches the network not at
+all — the one exception is the opt-in exact-context-window lookup, which makes exactly one
+outbound request while turned on and none otherwise.
 
 ---
 
@@ -42,7 +44,7 @@ session, and never touches the network.
 
 | # | Requirement |
 |---|-------------|
-| N1 | Local machine only. No listening socket, no outbound requests, no telemetry |
+| N1 | Local machine only. No listening socket, no telemetry, no outbound requests by default — the opt-in exact-context-window lookup is the sole exception, making exactly one outbound request only while it is on |
 | N2 | Read-only with respect to all Claude Code data |
 | N3 | Portable EXE, started manually. No installer, no autostart in v1 |
 | N4 | Detection latency for a status change: under ~2 s |
@@ -121,7 +123,7 @@ claude-control/
 ├─ test/
 │  ├─ fixtures/           ← anonymized .jsonl + sessions/*.json samples
 │  └─ unit/
-└─ assets/icons/          ← tray icon states
+└─ assets/icons/          ← window + toast icon art (the tray tile is drawn in code)
 ```
 
 ### Stack

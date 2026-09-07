@@ -1,15 +1,20 @@
 # AI Scrum — Project Profile
 
 <!--
-  Managed by the ai-scrum plugin. Safe to edit by hand — `/ai-scrum:setup` only
+  Written by `/ai-scrum:setup` (ai-scrum plugin). Safe to edit by hand — setup only
   rewrites values you confirm, and never touches your `## Notes`.
 
   This file holds FACTS the workflow commands need verbatim (verify commands, paths,
   branch strategy). Project RULES and architecture guardrails stay in CLAUDE.md —
   the commands read both.
+
+  The workflow itself lives in this repository: `.claude/commands/{refine,build,sprint,
+  roadmap,concept}.md` plus `.claude/agents/{deliverable-hard,story-review-hard}.md`.
+  Everyone who clones the repo can use it; the plugin is only needed to install or
+  update those files (`/ai-scrum:setup`). Hashes of the managed copies: .claude/ai-scrum.lock
 -->
 
-ai-scrum-version: 2.1.1
+ai-scrum-version: 3.0.0
 project: claude-control
 
 ## Verify
@@ -21,6 +26,20 @@ build: npm run build
 test: npm test
 lint: none
 typecheck: npm run typecheck
+e2e: none
+<!--
+  `e2e` is the acceptance gate for user-facing stories: an acceptance criterion that
+  describes something the user does is proven here, through the real surface. It is a
+  separate entry because it is usually slower than `test` and lives in its own suite.
+  `none` means the project has no such harness yet — see `ui-acceptance-required` below
+  for what the workflow then does instead.
+
+  This is an Electron tray app (window + native tray) with no browser-automation harness
+  today (no Playwright/Cypress config, no e2e script) — confirmed with the user on
+  2026-09-07. Acceptance for user-facing criteria is covered one level down (renderer/CLI
+  tests) until such a harness is built; that gap is named in the story and sprint review,
+  not quietly turned into a manual step.
+-->
 
 ## Conventions
 
@@ -34,6 +53,7 @@ story-id-format: NNN <!-- three digits + slug, e.g. 042-npc-haggling.md -->
 sprint-id-format: SNN <!-- e.g. S07 -->
 
 changelog-path: none
+
 <!--
   Optional. Path to a USER-FACING changelog (e.g. version.md, CHANGELOG.md) — not the
   git history. When set, /build and /sprint require an entry for every user-facing
@@ -49,30 +69,63 @@ changelog-path: none
 
 ## Branching
 
-branch-base: main <!-- branch a sprint is cut from -->
+branch-base: dev <!-- branch a sprint is cut from -->
 sprint-branch-pattern: sprint/{id}
-auto-commit-per-story: true <!-- /ai-scrum:sprint commits once per story ON THE SPRINT BRANCH only -->
-protected-branches: main <!-- never commit here, never push, never merge -->
+auto-commit-per-story: true <!-- /sprint commits once per story ON THE SPRINT BRANCH only -->
+protected-branches: dev, main <!-- never commit here, never push, never merge -->
 
 ## Acceptance
 
+**Acceptance is the test suite, not a person with a click list.** Every acceptance
+criterion is proven by an automated test that the workflow writes as part of the story.
+A story is done when its criteria's tests pass and the clean-agent review is through —
+there is no separate manual gate, no "built, acceptance pending", no user tick.
+What a walk-through afterwards finds becomes a new story.
+
+ac-tests-required: true
+<!--
+  true  = P1 applies: every acceptance criterion needs a named automated test before
+          `status: ready` (`/refine` writes the AC → test mapping) and a passing one
+          before `status: done` (`/build` re-checks it). A criterion that genuinely
+          cannot be automated is declared as `manual residue` with a reason and does
+          not block anything — see below.
+  false = the mapping is advisory; the workflow only asks for tests where the story
+          itself does. Use this for throwaway or spike projects.
+-->
+
 ui-acceptance-required: true
 <!--
-  true  = P1 applies: every user-facing capability needs a real path through the
-          actual UI. An acceptance or test-plan step for a user action that requires
-          a console command or a direct internal call is a story gap, not a valid
-          test. Pure engine/backend stories without a UI are exempt.
+  true  = a criterion that describes something the USER does is proven through the
+          real surface — the `e2e` command from `## Verify`. A console command, a
+          direct call into an internal module, or a renderer test with a faked
+          backend does not count as a substitute for the real path. Criteria without
+          a surface (core logic, IPC, parsing) are covered by `test`.
+          If `e2e` is `none`, the harness does not exist yet: `/refine` then plans it
+          as the story's first deliverable, or, when that is out of scope, covers the
+          criterion at the next level down AND names the gap in the story and the
+          sprint review. It never quietly becomes a manual step.
+  false = for a library, CLI, mod or service without a user-facing surface.
 -->
 
-live-smoke-required: true
+manual-residue-allowed: true
 <!--
-  true  = P2 applies: for a story with visible UI, a green build/test run is not
-          enough — the real flow must be driven through the running app before the
-          story may be set to done. If the session cannot do that, the story stays
-          in-progress and is handed over as "built, acceptance pending".
+  true  = a criterion that cannot be automated for a real reason (an OS signature
+          dialog, a specific piece of hardware, an external paid service) is marked
+          in the story as `manual residue: <reason>`. It is listed in the sprint
+          review and, if the project generates one, in `testplan.md` — the only
+          things left that anyone walks by hand. It does NOT hold the story or the
+          sprint open.
+  false = such a criterion has to be reformulated or dropped in refine.
 -->
 
-live-smoke-how: npm run dev (electron-vite dev) to launch the tray app, then drive/inspect it via src/cli/index.ts and log/file inspection — no browser automation available for the Electron tray UI (window + native tray), so acceptance is manual observation guided by CLI output.
+testplan: optional
+<!--
+  optional = `/sprint` writes `testplan.md` only for the criteria marked
+             `manual residue`, and skips the file entirely when there are none.
+  required = always write the full step-by-step plan (the old behaviour).
+  off      = never write it.
+  In no case is `testplan.md` an acceptance gate — the tests are.
+-->
 
 ## Context to read before coding
 

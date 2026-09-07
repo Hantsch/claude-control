@@ -36,9 +36,14 @@ import {
   trayStateFor,
   type ProjectGroup,
 } from './state/aggregate.ts';
+import type { WindowSource } from './context/windowSource.ts';
 import { ContextWindowEstimator } from './state/contextPressure.ts';
 import { deriveStatus } from './state/machine.ts';
-import { InMemorySessionStore, type SessionRepository } from './store/sessionStore.ts';
+import {
+  InMemorySessionStore,
+  sessionNewsStamp,
+  type SessionRepository,
+} from './store/sessionStore.ts';
 import { FileWatcher, type FileChange } from './watch/watcher.ts';
 import { isTranscriptFile, sessionIdFromTranscriptPath } from './adapters/claude/paths.ts';
 
@@ -80,6 +85,20 @@ export interface ControlEngineOptions {
     onChange: (changes: FileChange[]) => void;
     onError: (error: Error) => void;
   }) => { start(): Promise<void>; stop(): Promise<void> };
+  /**
+   * Synchronous cache read: "does this PID currently have a terminal window?" The real
+   * Win32 probe (main/, out of scope for `core/`) spawns PowerShell with an 8 s timeout, so
+   * it cannot run inline in `getSnapshot()`, which is synchronous and runs every tick — this
+   * seam is the cached, instant answer instead. `undefined` means "not known yet" and must
+   * never be treated as "no window": a slow/failed/absent probe can never hide a real session.
+   */
+  hasTerminalWindow?: (pid: number) => boolean | undefined;
+  /**
+   * The opt-in model→context-window table (story 005). Absent means "estimate table only",
+   * which is also what an present-but-disabled source resolves to, so the estimate path is
+   * unaffected either way. The engine owns following the setting; see `updateSettings`.
+   */
+  windowSource?: WindowSource;
 }
 
 interface CachedSnapshot {
@@ -93,8 +112,10 @@ export class ControlEngine {
   private readonly emitter = new EventEmitter();
   private readonly adapter: AgentAdapter;
   private readonly store: SessionRepository;
-  private readonly context = new ContextWindowEstimator();
+  private readonly context: ContextWindowEstimator;
+  private readonly windowSource: WindowSource | null;
   private readonly now: () => number;
+  private readonly hasTerminalWindow?: (pid: number) => boolean | undefined;
   private settings: AppSettings;
 
   private watcher: { start(): Promise<void>; stop(): Promise<void> } | null = null;
@@ -103,6 +124,21 @@ export class ControlEngine {
   private indexingHistory = false;
 
   private snapshots = new Map<SessionId, CachedSnapshot>();
+  /**
+   * Sessions the user has silenced toasts for (§6.6, story 004 D4). In-memory only, by
+   * design (Decisions (Sprint)): a restart always comes back with nothing muted, and a
+   * reappearing session id (same folder, new process) starts unmuted too, since it is
+   * cleared the moment the old one transitions to `ended`.
+   */
+  private mutedSessions = new Set<SessionId>();
+  /**
+   * Sessions that were already `done` on the very first read, mapped to how new they were at
+   * that moment (`sessionNewsStamp`). They finished before the app was watching, so they are
+   * not news and stay off the live surfaces while `list.hideDoneOnStart` is on — until their
+   * stamp grows past the one recorded here, which is exactly what "it did something since"
+   * means. Storing the stamp rather than a flag is what makes them come back by themselves.
+   */
+  private doneOnStart = new Map<SessionId, number>();
   private ideWindows: IdeWindowRef[] = [];
   private refreshChain: Promise<void> = Promise.resolve();
   private started = false;
@@ -114,6 +150,13 @@ export class ControlEngine {
     this.settings = options.settings;
     this.store = options.store ?? new InMemorySessionStore();
     this.now = options.now ?? (() => Date.now());
+    this.hasTerminalWindow = options.hasTerminalWindow;
+    // The setting is the single source of truth for whether the table may be consulted; the
+    // lookup itself stays a live closure, so a later toggle needs no new estimator.
+    this.windowSource = options.windowSource ?? null;
+    const source = this.windowSource;
+    if (source) source.setEnabled(options.settings.contextWindows.useOnlineTable);
+    this.context = new ContextWindowEstimator(source ? (model) => source.lookupWindow(model) : null);
     if (options.createWatcher) this.createWatcher = options.createWatcher;
   }
 
@@ -139,6 +182,11 @@ export class ControlEngine {
     this.started = true;
 
     this.ideWindows = await this.adapter.listIdeWindows().catch(() => []);
+    // Mark a background index as expected before the initial refresh runs, so any
+    // session-ended transition it triggers (which fires indexOne) reports done:false
+    // instead of a spurious done:true (indexingHistory would otherwise still be false
+    // here, since startHistoryIndex() hasn't been called yet).
+    this.indexingHistory = this.settings.indexHistoryOnStart;
     await this.refresh('start');
 
     this.watcher = this.createWatcher({
@@ -174,9 +222,34 @@ export class ControlEngine {
     // worth watching, so by default it does not reach any surface. The store still knows
     // about it — this is a presentation filter, not a hole in the state machine, and the
     // moment its first prompt lands it leaves `starting` and shows up.
-    const sessions = (
-      this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all
-    ).sort(compareSessions);
+    const unstarting = this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all;
+    // A windowless session in the same folder as one that still has a window open is that
+    // session's orphan, not a second thing to watch (§4) — but only once the probe actually
+    // tells the two apart. `undefined`, from a missing probe or one that has not answered
+    // yet, is "not known" and must never read as "no window": that would hide a real session.
+    // Work that was already finished when the app started is not news either — see
+    // `list.hideDoneOnStart`. It leaves `unstarting` alone so the orphan rule below still
+    // sees every live session in the folder when it decides who has a window.
+    const listed = this.settings.list.hideDoneOnStart
+      ? unstarting.filter((s) => !this.wasDoneOnStart(s))
+      : unstarting;
+    const hideOrphans = this.settings.list.hideOrphanSessions;
+    const sessions = (hideOrphans ? listed.filter((s) => !this.isOrphan(s, unstarting)) : listed)
+      .sort(compareSessions)
+      // Mute is presentation only (§6.6 D4): decorated last, after status/sort/grouping have
+      // already been decided from the real, unmuted facts, so a mute can never move a
+      // session, change its status or hide it from anything but toasts.
+      //
+      // `windowUnknown` rides along the same way (story 012 D2), and only while the filter is
+      // armed: with `hideOrphanSessions` off no session was ever at risk of being hidden, so
+      // there is nothing to warn about and the field stays absent.
+      .map(
+        (session): SessionView => ({
+          ...session,
+          muted: this.mutedSessions.has(session.sessionId),
+          ...(hideOrphans && { windowUnknown: this.isWindowUnknown(session, unstarting) }),
+        }),
+      );
     const at = this.now();
     // The tray is the glance surface and gets the narrower list; the icon and the badge
     // follow it, so what the icon claims is always something the popover can show.
@@ -198,6 +271,60 @@ export class ControlEngine {
     return this.store.getLive(id);
   }
 
+  /**
+   * Unfiltered live sessions (before the `hideUnusedSessions`/`hideDoneOnStart`/
+   * `hideOrphanSessions` presentation filters) — what the main-process window probe needs to pick its candidates, since a
+   * session hidden as an orphan is still a live process whose folder mate still needs its
+   * window checked (D2 of story 004).
+   */
+  getLiveSessions(): SessionView[] {
+    return this.store.listLive();
+  }
+
+  /**
+   * `session` finished before the app started and has done nothing since, so it is not news
+   * (`list.hideDoneOnStart`). Two ways out, both of them "something happened": it left `done`,
+   * or its news stamp grew past the one the seeding read recorded — the latter catches a whole
+   * turn that started and finished between two polls, which never shows up as a transition.
+   *
+   * Pure on purpose: `getSnapshot` may be called at any time, so this only ever reads the map.
+   * Entries are dropped when the session ends, in `doRefresh`.
+   */
+  private wasDoneOnStart(session: SessionView): boolean {
+    const stamp = this.doneOnStart.get(session.sessionId);
+    if (stamp === undefined) return false;
+    return session.status === 'done' && sessionNewsStamp(session) <= stamp;
+  }
+
+  /**
+   * `session` is an orphan iff the probe says it has no window (`false`, not `undefined`)
+   * and some other live session in the same folder (`cwd`) does have one (`true`). Absent a
+   * probe, or an `undefined` answer for either side, nothing is ever dropped.
+   */
+  private isOrphan(session: SessionView, all: SessionView[]): boolean {
+    if (!this.hasTerminalWindow) return false;
+    if (this.hasTerminalWindow(session.pid) !== false) return false;
+    return all.some(
+      (other) => other !== session && other.cwd === session.cwd && this.hasTerminalWindow!(other.pid) === true,
+    );
+  }
+
+  /**
+   * The other half of `isOrphan()`: this session is only still on screen because the probe
+   * could not answer for it (`undefined`) while a folder mate answered `true` — i.e. with a
+   * decisive `false` it *would* have been hidden. That makes it shown on a guess, which the
+   * UI marks (story 012). A `false` or `true` answer is decisive and never unknown, and when
+   * no mate has a window there was no orphan rule to escape in the first place — a folder
+   * where the probe failed for everyone therefore raises no marker at all.
+   */
+  private isWindowUnknown(session: SessionView, all: SessionView[]): boolean {
+    if (!this.hasTerminalWindow) return false;
+    if (this.hasTerminalWindow(session.pid) !== undefined) return false;
+    return all.some(
+      (other) => other !== session && other.cwd === session.cwd && this.hasTerminalWindow!(other.pid) === true,
+    );
+  }
+
   /** Why the most recent refresh ran — surfaced in the CLI's verbose output. */
   getLastRefreshReason(): RefreshReason {
     return this.lastRefreshReason;
@@ -215,7 +342,16 @@ export class ControlEngine {
     const live = this.store.getLive(id);
     const fromHistory = this.store.listHistory().find((entry) => entry.sessionId === id);
     const path = live?.transcriptPath ?? fromHistory?.transcriptPath ?? null;
-    return this.adapter.readDetail(id, path);
+    const detail = await this.adapter.readDetail(id, path);
+    // Lazy fill-in: the history index only tail-reads, so a long transcript may have
+    // left `usageComplete: false`. A full detail read already parsed the whole file,
+    // so fold its exact totals back into the stored entry — cheap, and it upgrades
+    // the entry for every future history view without a background recompute pass.
+    if (fromHistory) {
+      this.store.putHistory([{ ...fromHistory, usage: detail.usage, usageComplete: true }]);
+      this.emitter.emit('history', { count: this.store.historyCount(), done: !this.indexingHistory });
+    }
+    return detail;
   }
 
   /** IDE windows for the focus feature (§7). Refreshed on lock-file changes. */
@@ -228,8 +364,13 @@ export class ControlEngine {
       settings.reading.debounceMs !== this.settings.reading.debounceMs ||
       settings.claudeDir !== this.settings.claudeDir;
     const tickChanged = settings.reading.tickIntervalMs !== this.settings.reading.tickIntervalMs;
+    const onlineTableChanged =
+      settings.contextWindows.useOnlineTable !== this.settings.contextWindows.useOnlineTable;
     this.settings = settings;
 
+    // Turning it off makes every lookup null again, so the refresh below re-derives every
+    // session back onto the estimate table — no exact number survives the toggle.
+    if (onlineTableChanged) this.windowSource?.setEnabled(settings.contextWindows.useOnlineTable);
     if (tickChanged) this.startTick();
     if (watchRelevant && this.watcher) {
       await this.watcher.stop();
@@ -262,6 +403,37 @@ export class ControlEngine {
   /** "Mark all as seen" — the way out when several sessions piled up while you were away. */
   acknowledgeAll(): void {
     if (this.store.acknowledgeAll() > 0) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /**
+   * Dismiss one session from the tray surfaces — the popover's "Mark as seen". Stronger than
+   * `acknowledge()`: the row leaves the popover and the tray menu immediately instead of
+   * lingering out its recency window, until the session produces news again.
+   */
+  dismiss(id: SessionId): void {
+    if (this.store.dismiss(id)) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /** "Mark all as seen" from the popover — `dismiss()` for every live session. */
+  dismissAll(): void {
+    if (this.store.dismissAll() > 0) this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  /**
+   * Silence (or restore) toasts for one session — "Mute this session" (§6.6 D4). Nothing is
+   * re-read; only future notification decisions are affected, so this is deliberately
+   * synchronous and re-emits immediately, mirroring `acknowledge()`.
+   */
+  setMuted(id: SessionId, muted: boolean): void {
+    const already = this.mutedSessions.has(id);
+    if (muted === already) return;
+    if (muted) this.mutedSessions.add(id);
+    else this.mutedSessions.delete(id);
+    this.emitter.emit('sessions', this.getSnapshot());
+  }
+
+  isMuted(id: SessionId): boolean {
+    return this.mutedSessions.has(id);
   }
 
   restartHistoryIndex(): void {
@@ -338,11 +510,20 @@ export class ControlEngine {
       this.emitter.emit('transitions', transitions);
       // A session that just ended should show up in history without waiting for a restart.
       for (const transition of transitions) {
+        // The seeding pass is the app's first look at the world: whatever is sitting at
+        // `done` there finished before we arrived (`list.hideDoneOnStart`).
+        if (transition.seeded && transition.to === 'done') {
+          this.doneOnStart.set(transition.sessionId, sessionNewsStamp(transition.view));
+        }
         if (transition.to !== 'ended') continue;
         this.indexOne(transition.view.transcriptPath);
         // Nothing will ask about this session again, so drop its per-session caches.
         this.context.forget(transition.sessionId);
         this.adapter.forgetSession?.(transition.sessionId);
+        // A reappearing session id (same folder, new process) must not inherit a stale mute —
+        // mirrors the gate's own cooldown reset on `ended`.
+        this.mutedSessions.delete(transition.sessionId);
+        this.doneOnStart.delete(transition.sessionId);
       }
     }
     this.emitter.emit('sessions', this.getSnapshot());
@@ -405,8 +586,12 @@ export class ControlEngine {
       statusSource: derived.statusSource,
       // 0 lets the store stamp the moment the status actually changed.
       statusSince: 0,
-      // The store owns acknowledgement — it is the only thing that survives a re-read.
+      // The store owns acknowledgement and dismissal — the only things that survive a re-read.
       seen: false,
+      dismissed: false,
+      // Placeholder: the engine's mute registry, not the store, owns this — `getSnapshot()`
+      // decorates the real value onto every view on the way out.
+      muted: false,
       project: snapshot.project,
       branch: facts.branch,
       groupKey: `${snapshot.project.key}::${facts.branch ?? ''}`,

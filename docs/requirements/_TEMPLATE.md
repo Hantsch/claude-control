@@ -12,8 +12,11 @@ the "how".>
 
 ## Acceptance Criteria
 
-- [ ] <how do you recognise it is finished?>
-- [ ] ...
+<Numbered, so `## Acceptance Tests` below can point at each one individually. One
+criterion = one observable fact, not a bundle of three.>
+
+- [ ] **AC1** — <how do you recognise it is finished?>
+- [ ] **AC2** — ...
 
 ## Open Questions
 
@@ -30,8 +33,10 @@ Concrete steps, affected files, order. No essay.>
 
 <Leave empty. Filled by `/refine <id>`: small pieces, each with its own acceptance
 (scrum-like) and the files it touches. `/build` implements them in order, in one go.
-Every acceptance criterion above must be covered by at least one deliverable — refine checks
-this before `status: ready`, build refuses to start without it.>
+Every acceptance criterion above must be covered by at least one deliverable **and** by the
+test named for it in `## Acceptance Tests` — the test is part of the deliverable that
+implements the behaviour, never a clean-up afterwards. Refine checks both before
+`status: ready`, build refuses to start without them.>
 
 - [ ] D1 — <smallest useful, individually acceptable result; names the files it touches>
 - [ ] D2 — ...
@@ -43,11 +48,19 @@ unmarked. If a step needs more brainpower: "D3 (balancing formula) → deliverab
 high effort, agent in `.claude/agents/`) plus a one-sentence risk justification.
 Plus one line for the code review, default: "Review: → default".>
 
-## Test Plan (manual acceptance)
+## Acceptance Tests
 
-<Leave empty. Fill only if a human check is needed. Then: exact steps to reproduce that
-someone can follow. If `ui-acceptance-required: true` in `.claude/ai-scrum.md`, steps for
-user-facing actions must go through the real UI.>
+<Leave empty. Filled by `/refine <id>`: one line per acceptance criterion above, naming the
+automated test that proves it — level, file, and the test name it will carry. The tests are
+written by the deliverables, not afterwards; `/build` re-checks this mapping and that the
+tests pass before `status: done`. This section replaces the manual test plan: acceptance is
+the suite, not a click list.
+
+- AC1 → e2e `tests/e2e/<flow>.spec.ts` › "<test name>" (real surface, per
+  `ui-acceptance-required`)
+- AC2 → unit `tests/core/<module>.test.ts` › "<test name>"
+- AC3 → **manual residue:** <the real reason it cannot be automated — an OS dialog, a
+  specific machine, a paid external service>. Goes into the sprint review; blocks nothing.>
 
 ## Done
 

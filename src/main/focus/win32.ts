@@ -168,25 +168,91 @@ export function listWindows(): WindowInfo[] {
 }
 
 /**
+ * How a hint is allowed to match a window title.
+ *
+ *  - `segment` — the title, cut at ` - `, contains a part that *is* the hint. VS Code builds
+ *    its titles as `file - rootName - Visual Studio Code`, so the workspace name is a whole
+ *    segment; requiring that is what keeps `q2` from matching `q2-launcher` and a folder from
+ *    matching a file that merely mentions it. Remote and profile decorations (`rootName
+ *    [WSL: Ubuntu]`, `rootName (Profile)`) still count.
+ *  - `substring` — anywhere in the title. Weaker, and only used for the hint we trust most
+ *    (the workspace folder the session actually runs in) after every segment match failed.
+ *  - `title` — the whole title, verbatim. That is what a process's `MainWindowTitle` is, so
+ *    it is the only honest way to use one as a hint.
+ */
+export type HintMode = 'segment' | 'substring' | 'title';
+
+export interface WindowHint {
+  text: string;
+  mode: HintMode;
+}
+
+/**
+ * Why this window was chosen — the caller needs to know how much to trust it:
+ *
+ *  - `matched` — a hint matched its title.
+ *  - `only` — no hint matched, but the process owns exactly one window, so there is nothing
+ *    to be wrong about.
+ *  - `guess` — no hint matched and the process owns several windows. Handing one of those
+ *    over silently is the bug this whole file exists for (every VS Code session ended up on
+ *    the same arbitrary window), so it is reported instead of hidden.
+ */
+export type MatchConfidence = 'matched' | 'only' | 'guess';
+
+export interface WindowMatch {
+  window: WindowInfo;
+  confidence: MatchConfidence;
+}
+
+/**
  * Best visible top-level window of a process.
  *
  * A single VS Code process owns *one window per open workspace* (measured: three windows
- * under one pid), so the pid alone cannot identify the right one. `titleHint` — normally the
- * workspace folder name — picks the matching window; without it, the longest title wins.
+ * under one pid), so the pid alone cannot identify the right one — the hints, normally the
+ * session's workspace folder name, are what picks the window out.
  */
-export function findWindowForPid(pid: number, titleHint?: string | null): WindowInfo | null {
-  const candidates = listWindows().filter((window) => window.pid === pid);
+export function findWindowForPid(pid: number, hints: readonly WindowHint[] = []): WindowMatch | null {
+  return pickWindow(listWindows().filter((window) => window.pid === pid), hints);
+}
+
+/**
+ * The choice itself, split out of `findWindowForPid` so it has unit coverage: everything
+ * around it is `user32` behind an FFI that only exists on Windows, while *which* of a
+ * process's windows is the right one is pure list logic and is where the bug was.
+ *
+ * Hints are tried in the order given and the first that matches wins, so callers rank them
+ * by confidence rather than by how likely they are to match anything.
+ */
+export function pickWindow(
+  candidates: readonly WindowInfo[],
+  hints: readonly WindowHint[] = [],
+): WindowMatch | null {
   if (candidates.length === 0) return null;
-  const hint = titleHint?.trim().toLowerCase();
-  if (hint) {
-    const matching = candidates.filter((window) => window.title.toLowerCase().includes(hint));
-    if (matching.length > 0) {
-      // Shortest matching title = least decorated, i.e. the plain workspace window rather
-      // than one that happens to mention the folder in a tab name.
-      return matching.sort((a, b) => a.title.length - b.title.length)[0]!;
-    }
+
+  for (const hint of hints) {
+    const text = hint.text.trim().toLowerCase();
+    if (!text) continue;
+    const matching = candidates.filter((window) => titleMatches(window.title, text, hint.mode));
+    if (matching.length === 0) continue;
+    // Shortest matching title = least decorated, i.e. the plain workspace window rather
+    // than one that happens to mention the folder in a tab name.
+    const window = [...matching].sort((a, b) => a.title.length - b.title.length)[0]!;
+    return { window, confidence: 'matched' };
   }
-  return candidates.sort((a, b) => b.title.length - a.title.length)[0]!;
+
+  if (candidates.length === 1) return { window: candidates[0]!, confidence: 'only' };
+  return { window: [...candidates].sort((a, b) => b.title.length - a.title.length)[0]!, confidence: 'guess' };
+}
+
+function titleMatches(title: string, hint: string, mode: HintMode): boolean {
+  const lower = title.toLowerCase();
+  if (mode === 'title') return lower.trim() === hint;
+  if (mode === 'substring') return lower.includes(hint);
+  return lower
+    .split(' - ')
+    .map((part) => part.trim())
+    // `folder [WSL: Ubuntu]` and `folder (Profile)` are the same workspace, decorated.
+    .some((part) => part === hint || part.startsWith(`${hint} [`) || part.startsWith(`${hint} (`));
 }
 
 export function activateWindow(handle: string): ActivationOutcome {

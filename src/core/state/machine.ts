@@ -7,9 +7,9 @@
  *   R.type == "assistant" && stop_reason == "end_turn"        → done
  *   R.type == "assistant" && stop_reason == "tool_use"
  *           && no paired tool result yet
- *           && age(R) <  T_work(tool)                          → working
- *           && age(R) >= T_work(tool) && tool is fast          → waiting
- *           && age(R) >= T_work(tool) && tool is slow          → stale
+ *           && quiet <  T_work(tool)                           → working
+ *           && quiet >= T_work(tool) && tool is fast           → waiting
+ *           && quiet >= T_work(tool) && tool is slow           → stale
  *   R.type == "user"  (a real prompt, or a tool result)        → working
  *   enqueue seen with no matching dequeue                      → queued
  *   no R at all, whole transcript seen, read ok                → starting
@@ -17,6 +17,13 @@
  *
  * `R` is the newest *semantic* record: bookkeeping types are filtered out before this runs
  * (237 of 290 files end in a bookkeeping record — RESEARCH.md §2).
+ *
+ * `quiet` is how long *nothing at all* has happened, which is age(R) except when the call is
+ * an `Agent` whose subagent has its own transcript on disk: a subagent writing away in its own
+ * file is the session working, even though the parent transcript gets nothing until the run
+ * reports back. Without that, a fan-out run went `stale` after 20 minutes while every one of
+ * its subagents was demonstrably busy — the state was a statement about the parent file, not
+ * about the session. `facts.subagentActivityAt` carries the evidence; absent, nothing changes.
  *
  * Nothing here decays with age. The old "age(R) >= T_idle → idle" rule turned every state,
  * `done` included, into `idle` after 15 minutes — so a session that had finished cleanly
@@ -144,9 +151,21 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
     }));
     const slowest = budgets.reduce((a, b) => (b.ms > a.ms ? b : a));
     appliedWorkMs = slowest.ms;
-    if (ageMs < appliedWorkMs) {
+    // A subagent of this very call writing to its own transcript restarts the clock: the work
+    // is observably going on, so the call is not overdue no matter how old the parent record
+    // is. `subagentActivityAt` is only ever set for a *pending* call's subagent (adapter), and
+    // is `null` whenever there is no evidence — then this is plain `ageMs`, exactly as before.
+    const quietMs =
+      facts.subagentActivityAt !== null
+        ? Math.min(ageMs, Math.max(0, now - facts.subagentActivityAt))
+        : ageMs;
+    if (quietMs < appliedWorkMs) {
       status = 'working';
-      reason = `tool ${facts.pendingTool.name} running for ${Math.round(ageMs / 1000)}s`;
+      reason =
+        quietMs === ageMs
+          ? `tool ${facts.pendingTool.name} running for ${Math.round(ageMs / 1000)}s`
+          : `tool ${facts.pendingTool.name} running for ${Math.round(ageMs / 60_000)} min — ` +
+            `its subagent wrote ${Math.round(quietMs / 1000)}s ago, so the run is progressing`;
     } else if (isSlowTool(thresholds, slowest.name)) {
       // A tool that is *supposed* to take minutes and is taking more of them says nothing
       // about whether anything is wrong — so this is a hint, not an alarm, and it stays out
@@ -154,8 +173,8 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
       status = 'stale';
       reason =
         `tool ${slowest.name} has been running for ${Math.round(ageMs / 60_000)} min ` +
-        `(over its ${Math.round(appliedWorkMs / 60_000)} min budget) — probably still working, ` +
-        `but worth a look`;
+        `(over its ${Math.round(appliedWorkMs / 60_000)} min budget) with nothing written ` +
+        `since — probably still working, but worth a look`;
     } else {
       status = 'waiting';
       reason =

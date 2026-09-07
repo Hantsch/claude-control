@@ -7,7 +7,7 @@
  * native menu.
  */
 
-import { Menu, Tray, screen } from 'electron';
+import { Menu, Tray, nativeTheme, screen } from 'electron';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import { trayIconFor } from '../core/state/aggregate.ts';
 import type { AppState } from '../shared/ipc.ts';
@@ -18,7 +18,8 @@ export interface TrayPresenterDeps {
   onTogglePopover: (bounds: Electron.Rectangle) => void;
   onOpenWindow: (tab: 'sessions' | 'history' | 'settings') => void;
   onFocusSession: (sessionId: string) => void;
-  onAcknowledgeAll: () => void;
+  /** "Mark all as seen" — dismisses every settled session from the tray surfaces. */
+  onMarkAllSeen: () => void;
   onRefresh: () => void;
   onQuit: () => void;
 }
@@ -31,6 +32,7 @@ export class TrayPresenter {
   /** Physical size of the tile Windows will ask for on this display. */
   private pixelSize = trayPixelSize(1);
   private readonly onDisplayChange = (): void => this.rescale();
+  private readonly onThemeChange = (): void => this.retheme();
 
   constructor(deps: TrayPresenterDeps) {
     this.deps = deps;
@@ -48,6 +50,10 @@ export class TrayPresenter {
     // to another monitor. The tile has to be rebuilt at the new physical size or Windows
     // resamples the one it has.
     screen.on('display-metrics-changed', this.onDisplayChange);
+    // Same reasoning as the DPI listener above: the badge rim depends on
+    // `nativeTheme.shouldUseDarkColors`, so a live OS theme switch has to invalidate the cached
+    // key and rebuild, not wait for the next unrelated state change.
+    nativeTheme.on('updated', this.onThemeChange);
   }
 
   update(state: AppState): void {
@@ -67,6 +73,7 @@ export class TrayPresenter {
 
   destroy(): void {
     screen.removeListener('display-metrics-changed', this.onDisplayChange);
+    nativeTheme.removeListener('updated', this.onThemeChange);
     this.tray?.destroy();
     this.tray = null;
   }
@@ -79,6 +86,11 @@ export class TrayPresenter {
     const size = trayPixelSize(screen.getPrimaryDisplay().scaleFactor);
     if (size === this.pixelSize) return;
     this.pixelSize = size;
+    this.lastKey = '';
+    if (this.state) this.update(this.state);
+  }
+
+  private retheme(): void {
     this.lastKey = '';
     if (this.state) this.update(this.state);
   }
@@ -112,13 +124,15 @@ export class TrayPresenter {
     }
 
     // The badge has to be dismissible, otherwise the icon claims something is open with no
-    // way for the user to answer it. Offered only when there is something to dismiss.
+    // way for the user to answer it. Offered only when there is something to dismiss. Same
+    // action as the popover's "Mark all as seen": the settled rows leave this menu too, not
+    // just the badge.
     if ((this.state?.attention ?? 0) > 0) {
       items.push(
         { type: 'separator' },
         {
           label: `Mark all as seen (${this.state?.attention ?? 0})`,
-          click: () => this.deps.onAcknowledgeAll(),
+          click: () => this.deps.onMarkAllSeen(),
         },
       );
     }

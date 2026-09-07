@@ -1,16 +1,18 @@
 /**
- * Overlay badge and the code-drawn fallback tile (F3, F4, §6.5).
+ * The tray tile and its overlay badge (F3, F4, §6.5).
  *
- * The tray tiles themselves are shipped art — `assets/icons/tray/<px>/<state>.png`, assembled
- * by `scripts/build-icons.py`. This file does the two things an image file cannot: stamp the
- * live session count onto a tile, and draw something recognisable if the art cannot be read,
- * so a missing file degrades the tray instead of blanking it.
+ * Both are drawn in code, at the exact physical size Windows asks for. The tile used to be
+ * shipped art — a rounded near-black plate carrying a glowing ring, generated per state and
+ * per size — and at the size the tray actually shows it (16 px at 100 % scaling) that plate
+ * ate the box and the state went with it. What replaces it is the mark the rest of the app
+ * already uses for a status: the status dot from `renderer/styles.css`, scaled up to fill the
+ * tray box, in the same `--status-*` colours. One vocabulary, one place to change it.
  *
- * Everything works on Electron's own bitmap format — premultiplied BGRA — so a tile loaded
- * from disk and a tile drawn here are the same kind of thing and go through the same
- * compositing code.
+ * Everything works on Electron's own bitmap format — premultiplied BGRA — so the tile and the
+ * badge composited onto it are the same kind of thing and go through the same code.
  */
 
+import { nativeTheme } from 'electron';
 import type { TrayIcon, TrayState } from '../core/model/status.ts';
 
 export interface Rgb {
@@ -20,21 +22,44 @@ export interface Rgb {
 }
 
 /**
- * Icon colour per state. Order of urgency is defined in `core/model/status.ts`. The shipped
- * art is drawn in these colours; the fallback tile uses them directly.
+ * Icon colour per state, for a dark taskbar. Order of urgency is defined in
+ * `core/model/status.ts`; the hues are the dark scheme's `--status-*` tokens from
+ * `renderer/styles.css`, so the tray dot and the dot in the window are the same mark.
  */
 export const STATE_COLORS: Record<TrayState, Rgb> = {
   waiting: { r: 255, g: 159, b: 10 }, // amber — probably blocked on you
   done: { r: 48, g: 209, b: 88 }, // green — turn finished
   stale: { r: 172, g: 142, b: 104 }, // muted amber — running long, probably fine
   working: { r: 10, g: 132, b: 255 }, // blue — busy
-  none: { r: 99, g: 99, b: 104 }, // dim outline — nothing running
+  none: { r: 112, g: 112, b: 118 }, // dim outline — nothing running
+};
+
+/**
+ * Light-theme mirror of `STATE_COLORS` (§014 D4) — same hues `styles.css`'s
+ * `prefers-color-scheme: light` block uses for `--status-*`, darkened enough to read on a light
+ * taskbar instead of the dark one these were tuned for. `none` has no `--status-*` light token
+ * (it's a neutral/dim state), so this picks a grey dim enough to still read as "quiet" against
+ * `#f3f3f3` — checked for contrast by `test/unit/trayTileContrast.test.ts`.
+ */
+export const LIGHT_STATE_COLORS: Record<TrayState, Rgb> = {
+  waiting: { r: 160, g: 76, b: 0 },
+  done: { r: 21, g: 127, b: 60 },
+  stale: { r: 143, g: 124, b: 95 },
+  working: { r: 27, g: 95, b: 201 },
+  none: { r: 90, g: 90, b: 96 },
 };
 
 const BADGE_COLOR: Rgb = { r: 255, g: 59, b: 48 };
 const BADGE_TEXT: Rgb = { r: 255, g: 255, b: 255 };
-/** Near-black rim: the badge sits on top of the state ring and has to separate from it. */
-const BADGE_RIM_COLOR: Rgb = { r: 18, g: 18, b: 20 };
+/** Near-black rim: on a dark taskbar it separates the badge from the state ring beneath it. */
+const BADGE_RIM_COLOR_DARK: Rgb = { r: 18, g: 18, b: 20 };
+/** Near-white rim: the dark one disappears into a light taskbar, so light theme gets the mirror. */
+const BADGE_RIM_COLOR_LIGHT: Rgb = { r: 240, g: 240, b: 240 };
+
+/** Rim colour for the current OS theme (§007 D4) — dark taskbar keeps the near-black rim. */
+export function badgeRimColor(dark: boolean = nativeTheme.shouldUseDarkColors): Rgb {
+  return dark ? BADGE_RIM_COLOR_DARK : BADGE_RIM_COLOR_LIGHT;
+}
 /** Badge radius and rim width, relative to the tile. */
 const BADGE_RADIUS = 0.24;
 const BADGE_RIM = 0.045;
@@ -92,6 +117,7 @@ function circle(bitmap: Bitmap, cx: number, cy: number, radius: number, color: R
   });
 }
 
+/** Ring with the same supersampled edges. `alpha` is what makes the `waiting` halo a halo. */
 function ring(
   bitmap: Bitmap,
   cx: number,
@@ -99,12 +125,29 @@ function ring(
   radius: number,
   thickness: number,
   color: Rgb,
+  alpha = 1,
 ): void {
   const inner = Math.max(0, radius - thickness);
   forEachPixelNear(bitmap, cx, cy, radius, (x, y) => {
     const outside = coverage(x, y, cx, cy, radius);
     const hole = coverage(x, y, cx, cy, inner);
-    blend(bitmap, x, y, color, Math.max(0, outside - hole));
+    blend(bitmap, x, y, color, Math.max(0, outside - hole) * alpha);
+  });
+}
+
+/**
+ * Punch a circle back out of what has been drawn — the `waiting` notch. Erasing rather than
+ * painting a dark disc is what makes the notch work on both taskbars: it is the taskbar
+ * showing through, so it cannot be the wrong colour against the tile behind it.
+ */
+function erase(bitmap: Bitmap, cx: number, cy: number, radius: number): void {
+  forEachPixelNear(bitmap, cx, cy, radius, (x, y) => {
+    if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) return;
+    const keep = 1 - coverage(x, y, cx, cy, radius);
+    const i = (y * bitmap.width + x) * 4;
+    const { data } = bitmap;
+    // Premultiplied, so scaling all four channels is the whole operation.
+    for (let c = 0; c < 4; c += 1) data[i + c] = Math.round(data[i + c]! * keep);
   });
 }
 
@@ -179,14 +222,18 @@ export function badgeLabel(count: number): string | null {
  * the tooltip and the popover. It still beats no badge: the mark alone says "something is
  * waiting for you", and that is the part that has to survive at tray size.
  */
-export function paintBadge(bitmap: Bitmap, label: string): void {
+export function paintBadge(
+  bitmap: Bitmap,
+  label: string,
+  dark: boolean = nativeTheme.shouldUseDarkColors,
+): void {
   const size = Math.min(bitmap.width, bitmap.height);
   const radius = size * BADGE_RADIUS;
   const rim = Math.max(1, size * BADGE_RIM);
   const cx = bitmap.width - radius - rim;
   const cy = bitmap.height - radius - rim;
 
-  circle(bitmap, cx, cy, radius + rim, BADGE_RIM_COLOR);
+  circle(bitmap, cx, cy, radius + rim, badgeRimColor(dark));
   circle(bitmap, cx, cy, radius, BADGE_COLOR);
 
   const scale = Math.max(1, Math.floor((2 * radius * BADGE_GLYPH) / 5));
@@ -201,43 +248,88 @@ export function paintBadge(bitmap: Bitmap, label: string): void {
 }
 
 /**
- * Tile drawn in code, used only when the shipped art cannot be read.
- *
- * Deliberately plain — a disc for the states that assert something, a hollow ring for the two
- * quiet ones, and the working colour around a finished disc for `mixed`. It exists so a
- * missing asset cannot leave the tray blank, not to imitate the art.
+ * Tile geometry, all as a fraction of the tile's edge so every physical size draws the same
+ * picture. The mark is deliberately large: at 16 px, `MARK_RADIUS` is a 12.8 px dot in a
+ * 16 px box, which is the whole reason this replaced the shipped art — that art spent the box
+ * on a plate and a glow and had nothing left for the state.
  */
-export function renderFallbackTile(icon: TrayIcon, size: number): Bitmap {
+const MARK_RADIUS = 0.4;
+/** Stroke of the two hollow marks. One physical pixel at 16 px would disappear; this is ~1.8. */
+const RING_STROKE = 0.115;
+/** `none` is drawn smaller and thinner than the rest — "nothing here" should not shout. */
+const NONE_RADIUS = 0.33;
+const NONE_STROKE = 0.085;
+/**
+ * `waiting` is the one state that has to survive being read wrong: it is the state that means
+ * "you are blocked", and amber against `done`'s green is exactly the pair colour vision drops
+ * first. So it gets a shape as well — a notch bitten out of the disc, the shape the code-drawn
+ * tile has always used for it — plus the halo `.dot.halo` draws around the same dot in the
+ * window. The disc pulls in from `MARK_RADIUS` to leave the halo room outside it.
+ */
+const WAITING_DISC = 0.3;
+const WAITING_NOTCH = 0.19;
+/** Notch centre, right of the disc's, so the bite is off-centre and reads as a bite. */
+const WAITING_NOTCH_OFFSET = 0.17;
+const HALO_STROKE = 0.085;
+/** Roughly `--halo-strength` (35 %), nudged up because the halo has no text beside it here. */
+const HALO_ALPHA = 0.5;
+/** `working`'s core, and `mixed`'s inner disc. */
+const CORE_RADIUS = 0.16;
+const MIXED_CORE = 0.2;
+const CORE_COLOR: Rgb = { r: 255, g: 255, b: 255 };
+
+/**
+ * The tray tile for one state, drawn at a physical pixel size (F3, §6.5).
+ *
+ * The vocabulary is the app's own status dot: a filled disc in the state's `--status-*` colour,
+ * which is exactly what the sessions list and the popover show for the same state. On top of
+ * that, each state gets a shape as well as a hue, so the tray still says something when the
+ * colours are hard to tell apart — a filled disc for the states that assert something
+ * (`done`), a notched disc plus its halo for the one that demands attention (`waiting`), a disc
+ * with a core for `working`, hollow rings for the two quiet ones
+ * (`none` small and thin, `stale` full size — same shape, different weight, the relationship
+ * those two states have everywhere else), and `mixed` as a finished disc inside a working ring.
+ */
+export function renderTrayTile(
+  icon: TrayIcon,
+  size: number,
+  dark: boolean = nativeTheme.shouldUseDarkColors,
+): Bitmap {
   const bitmap = createBitmap(size, size);
   const cx = size / 2;
   const cy = size / 2;
-  const radius = size * 0.34;
-  const outline = Math.max(1.5, size * 0.09);
+  const colors = dark ? STATE_COLORS : LIGHT_STATE_COLORS;
+  const radius = size * MARK_RADIUS;
+  const stroke = Math.max(1.5, size * RING_STROKE);
 
   switch (icon) {
     case 'none':
+      ring(bitmap, cx, cy, size * NONE_RADIUS, Math.max(1, size * NONE_STROKE), colors.none);
+      break;
     case 'stale':
-      // An outline rather than a disc: present, but not asserting itself. For `none` that
-      // means "quiet"; for `stale` it means "running long, probably fine" — the muted colour
-      // carries the difference, the hollow shape keeps it from reading as an alarm.
-      ring(bitmap, cx, cy, radius, outline, STATE_COLORS[icon]);
+      // Hollow like `none`, full size like the states that assert something: `stale` is a hint
+      // that something may be worth a look, not a demand and not silence (§6.3).
+      ring(bitmap, cx, cy, radius, stroke, colors.stale);
       break;
     case 'waiting':
-      circle(bitmap, cx, cy, radius, STATE_COLORS.waiting);
-      // A notch distinguishes "needs you?" from "done" without relying on colour.
-      circle(bitmap, cx + radius * 0.15, cy, radius * 0.42, { r: 28, g: 28, b: 30 });
+      ring(bitmap, cx, cy, radius, Math.max(1, size * HALO_STROKE), colors.waiting, HALO_ALPHA);
+      circle(bitmap, cx, cy, size * WAITING_DISC, colors.waiting);
+      erase(bitmap, cx + size * WAITING_NOTCH_OFFSET, cy, size * WAITING_NOTCH);
       break;
     case 'working':
-      circle(bitmap, cx, cy, radius, STATE_COLORS.working);
-      ring(bitmap, cx, cy, radius * 0.55, Math.max(1, size * 0.06), { r: 255, g: 255, b: 255 });
+      circle(bitmap, cx, cy, radius, colors.working);
+      // The dot in the window pulses to say "busy"; a tray tile cannot animate, so the core
+      // carries that difference instead. Its contrast is against the blue disc under it, not
+      // the taskbar, so it stays white in both themes.
+      circle(bitmap, cx, cy, size * CORE_RADIUS, CORE_COLOR);
       break;
     case 'done':
-      circle(bitmap, cx, cy, radius, STATE_COLORS.done);
+      circle(bitmap, cx, cy, radius, colors.done);
       break;
     case 'mixed':
       // Finished, with something still running around it.
-      circle(bitmap, cx, cy, radius * 0.6, STATE_COLORS.done);
-      ring(bitmap, cx, cy, radius, outline, STATE_COLORS.working);
+      ring(bitmap, cx, cy, radius, stroke, colors.working);
+      circle(bitmap, cx, cy, size * MIXED_CORE, colors.done);
       break;
   }
 

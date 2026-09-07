@@ -24,6 +24,13 @@ export interface ChainWindow {
 
 const MAX_HOPS = 8;
 
+/**
+ * `|` separates the fields below, so a title containing one is rewritten to `/` before it is
+ * printed. The escaping is doubled on purpose: `"\\|"` in this string is `"\|"` by the time
+ * PowerShell parses it, and only then is it a literal pipe. Written as `"\|"` here it reaches
+ * PowerShell as the regex `|`, which matches the empty string between every character — and
+ * the titles came back with a `/` inserted between every letter, silently unusable as hints.
+ */
 export async function findWindowUpChain(pid: number): Promise<ChainWindow | null> {
   if (process.platform !== 'win32' || !Number.isInteger(pid) || pid <= 0) return null;
 
@@ -59,6 +66,72 @@ export async function findWindowUpChain(pid: number): Promise<ChainWindow | null
 }
 
 /**
+ * Batched form of `findWindowUpChain`: one PowerShell invocation walks the parent chain for
+ * every pid, instead of one child process per pid (§ decisions, D2). Same query, same loop,
+ * just fanned out over an array and re-joined with the originating pid so the results can be
+ * matched back up.
+ *
+ * Three outcomes per pid, and the difference between the last two is the point (story 012,
+ * AC1): a window found ⇒ `true`; the chain walked to its end with no window ⇒ `false`, which
+ * the script now says explicitly with a `<start>|FALSE` line; and **no line at all** ⇒ the pid
+ * is absent from the map, meaning "not answered". The map is therefore built purely from what
+ * PowerShell actually reported — never pre-filled with `false` — so a timeout or a mid-script
+ * failure leaves the pids it never reached genuinely unknown instead of silently claiming they
+ * have no window. Only a decisive `false` may ever hide a session, so an unknown pid stays
+ * uncached (`WindowProbe.get()` ⇒ `undefined`) and is re-probed on the next pass.
+ */
+export async function findWindowsUpChain(pids: readonly number[]): Promise<Map<number, boolean>> {
+  const valid = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+  const result = new Map<number, boolean>();
+  if (process.platform !== 'win32' || valid.length === 0) return result;
+
+  const script = [
+    `$targets = @(${valid.join(',')})`,
+    'foreach ($start in $targets) {',
+    '  $id = $start',
+    '  $found = $false',
+    `  for ($i = 0; $i -lt ${MAX_HOPS}; $i++) {`,
+    '    $p = Get-Process -Id $id -ErrorAction SilentlyContinue',
+    '    if ($p -and $p.MainWindowHandle -ne 0) {',
+    '      $found = $true',
+    '      "{0}|{1}|{2}|{3}|{4}" -f $start, $p.Id, [int64]$p.MainWindowHandle, $i, ($p.MainWindowTitle -replace "\\|", "/")',
+    '      break',
+    '    }',
+    '    $ci = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue',
+    '    if (-not $ci -or -not $ci.ParentProcessId) { break }',
+    '    $id = [int]$ci.ParentProcessId',
+    '    if ($id -le 4) { break }',
+    '  }',
+    // The chain for $start was searched to its end (no parent, hit the system pids, or
+    // MAX_HOPS) without a window: say so, so the JS side can tell a real negative apart from
+    // a target the script never reached at all.
+    '  if (-not $found) { "{0}|FALSE" -f $start }',
+    '}',
+  ].join('\n');
+
+  const targets = new Set(valid);
+  const stdout = await run(script);
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    // A positive line is `<start>|<pid>|<handle>|<depth>|<title>`, so its two leading numeric
+    // fields can never be confused with the `<start>|FALSE` negative marker. Anything else
+    // (PowerShell noise, a half-written line from a killed process) is ignored, which leaves
+    // that pid unanswered rather than guessed at.
+    const positive = /^(\d+)\|\d+\|/.exec(trimmed);
+    const negative = positive ? null : /^(\d+)\|FALSE$/.exec(trimmed);
+    const match = positive ?? negative;
+    if (!match) continue;
+    const start = Number(match[1]);
+    if (!targets.has(start)) continue;
+    // `true` wins: once a window was reported for a pid, a later negative marker for it could
+    // only be an artefact.
+    if (positive) result.set(start, true);
+    else if (!result.has(start)) result.set(start, false);
+  }
+  return result;
+}
+
+/**
  * Shell fallback activation for when `koffi` is unavailable. `AppActivate` is subject to
  * the same foreground restrictions, so a `false` result is reported honestly rather than
  * assumed to be success.
@@ -73,13 +146,20 @@ export async function activateViaShell(pid: number): Promise<boolean> {
   return stdout.includes('ok');
 }
 
+/**
+ * Whatever PowerShell managed to write is kept even when the call failed — a timeout (the 8 s
+ * budget below still applies, it is the child that gets killed) or a mid-script error may
+ * still have flushed complete, trustworthy lines for the targets it did process. Discarding
+ * those was only ever safe because a missing line was read as "no window"; now that a missing
+ * line means "not answered", partial output is strictly better than none.
+ */
 function run(script: string): Promise<string> {
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
       { windowsHide: true, timeout: 8_000, maxBuffer: 512 * 1024 },
-      (error, stdout) => resolve(error ? '' : stdout),
+      (_error, stdout) => resolve(stdout ?? ''),
     );
   });
 }

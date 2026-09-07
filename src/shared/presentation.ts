@@ -5,7 +5,7 @@
  * Pure data — no Node, no Electron, no DOM.
  */
 
-import type { ContextBand } from '../core/model/types.ts';
+import type { ContextBand, SubagentStatus } from '../core/model/types.ts';
 import type { SessionStatus } from '../core/model/status.ts';
 
 export { STATUS_LABEL } from '../core/model/status.ts';
@@ -20,6 +20,20 @@ export const STATUS_COLOR_VAR: Record<SessionStatus, string> = {
   starting: '--status-starting',
   ended: '--status-ended',
   unknown: '--status-unknown',
+};
+
+/**
+ * CSS custom-property name per `SubagentStatus` (story 010 D5), for the popover's subagent
+ * status dot. There is no `SubagentStatus` equivalent of `STATUS_COLOR_VAR` elsewhere — this
+ * is that table. `launched` and `unknown` share the neutral faint colour: `launched` has no
+ * observable end (§8), and `unknown` is a state we cannot colour honestly either way.
+ */
+export const SUBAGENT_STATUS_COLOR_VAR: Record<SubagentStatus, string> = {
+  running: '--status-working',
+  launched: '--text-faint',
+  completed: '--status-done',
+  failed: '--band-red',
+  unknown: '--text-faint',
 };
 
 /** One-line explanation shown in tooltips — both overdue states carry the caveat (§6.3). */
@@ -62,6 +76,34 @@ export const HISTORY_FINAL_LABEL: Record<SessionStatus, string> = {
   unknown: 'no messages',
 };
 
+/**
+ * Prefix on a history group's total when the page it was computed from was truncated (story
+ * 015 D1) — states that the sum is a lower bound, not the whole group. Visually and
+ * semantically distinct from the `~` inexact-usage marker (006): `~` means "some entries had
+ * no usable usage number", `≥` means "there are more entries than were counted at all". Both
+ * can appear together as `≥~` on the same total.
+ */
+export const TRUNCATED_TOTAL_MARKER = '≥';
+
+/**
+ * Explains both group-total markers in one string, for a shared `title`/`aria-label` on the
+ * marker (story 015 D1; closes the gap that 006's `~` never had one).
+ */
+export const TRUNCATED_TOTAL_EXPLANATION =
+  `${TRUNCATED_TOTAL_MARKER} means the page was truncated, so this total is a lower bound, ` +
+  'not the whole group; ~ means some entries in this group had no usable usage number.';
+
+/**
+ * "Showing 200 of 438 sessions" line for a truncated history page (story 015 D1), shared by
+ * the GUI history view and the CLI so both surfaces state the same truncation the same way.
+ * Returns `null` when nothing was truncated (`shown === total`) — an unmarked view stays
+ * unmarked.
+ */
+export function formatShownOf(shown: number, total: number): string | null {
+  if (shown >= total) return null;
+  return `Showing ${shown} of ${total} sessions`;
+}
+
 /** Context-pressure band → indicator, per the §6.4 thresholds. */
 export const BAND_SYMBOL: Record<ContextBand, string> = {
   green: '🟢',
@@ -102,10 +144,23 @@ export function clampLabel(text: string, max: number): string {
 }
 
 /**
+ * A declared model on an `Agent` tool call (story 011 D2's `declaredModelOf`) is one of these
+ * four tier aliases, never a resolved model id — `subagent_type`'s sibling `model` key takes
+ * only this vocabulary. Kept as its own set so `modelDisplayName` can special-case it before
+ * falling into the `claude-…` id parsing below, which would otherwise leave it untouched (it
+ * does not start with `claude-`) and print the raw lowercase alias next to a resolved model's
+ * full display name, e.g. `opus` beside `Opus 5 · 1M` (011 Decisions (Sprint)).
+ */
+const TIER_ALIASES = new Set(['opus', 'sonnet', 'haiku', 'fable']);
+
+/**
  * How a raw model id (`us.anthropic.claude-opus-5`, `claude-opus-5[1m]`, …) reads on the
  * tray and popover, instead of the API's dotted/bracketed wire form.
  *
  * Steps:
+ *  0. A bare tier alias (`opus`, `sonnet`, `haiku`, `fable`) — the vocabulary a declared
+ *     `model` on an `Agent` call uses — is title-cased directly (`opus` → `Opus`) and
+ *     returned; it never reaches the `claude-…` id parsing below (story 011 D4).
  *  1. Strip everything up to and including the *last* `.` (drops a vendor/region prefix
  *     such as `us.anthropic.`).
  *  2. Split off a trailing `[...]` suffix (e.g. `[1m]`), if present.
@@ -119,7 +174,9 @@ export function clampLabel(text: string, max: number): string {
  */
 export function modelDisplayName(modelId: string | null | undefined): string | null {
   if (modelId == null) return null;
-  if (modelId.trim() === '') return null;
+  const trimmed = modelId.trim();
+  if (trimmed === '') return null;
+  if (TIER_ALIASES.has(trimmed)) return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 
   const lastDot = modelId.lastIndexOf('.');
   const afterDot = lastDot >= 0 ? modelId.slice(lastDot + 1) : modelId;

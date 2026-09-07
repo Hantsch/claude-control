@@ -5,11 +5,14 @@
  */
 
 import { BrowserWindow, app, clipboard, ipcMain, shell } from 'electron';
+import type { WindowSource } from '../core/context/windowSource.ts';
 import type { ControlEngine } from '../core/engine.ts';
 import type { HistoryQuery, SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type DiagnosticsInfo, type FocusResult } from '../shared/ipc.ts';
 import type { WindowFocuser } from './focus/focuser.ts';
 import type { SettingsStore } from './settings.ts';
+import type { ShortcutManager } from './shortcuts.ts';
+import type { ProtocolRegistration } from './toast-protocol.ts';
 import type { MainTab, WindowManager } from './windows.ts';
 
 export interface IpcDeps {
@@ -17,11 +20,15 @@ export interface IpcDeps {
   settings: SettingsStore;
   focuser: WindowFocuser;
   windows: WindowManager;
+  shortcutManager: ShortcutManager;
   claudeDir: string;
   adapterId: string;
   state: () => AppState;
   focusSession: (id: SessionId) => Promise<FocusResult>;
   quit: () => void;
+  protocolRegistration: ProtocolRegistration;
+  /** Null when no data dir was supplied (story 005, D6) — no fetch is possible, only an estimate. */
+  windowSource: WindowSource | null;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -41,11 +48,25 @@ export function registerIpc(deps: IpcDeps): void {
     deps.engine.acknowledgeAll();
   });
 
+  ipcMain.handle(IPC.dismiss, (_event, id: SessionId) => {
+    deps.engine.dismiss(id);
+  });
+
+  ipcMain.handle(IPC.dismissAll, () => {
+    deps.engine.dismissAll();
+  });
+
+  ipcMain.handle(IPC.setSessionMuted, (_event, id: SessionId, muted: boolean) => {
+    deps.engine.setMuted(id, muted === true);
+  });
+
   ipcMain.handle(IPC.getSettings, () => deps.settings.get());
 
   ipcMain.handle(IPC.setSettings, (_event, partial: unknown) => deps.settings.set(partial));
 
   ipcMain.handle(IPC.resetSettings, () => deps.settings.reset());
+
+  ipcMain.handle(IPC.getShortcutStatus, () => deps.shortcutManager.status());
 
   ipcMain.handle(IPC.refresh, async () => {
     await deps.engine.refreshNow();
@@ -69,9 +90,9 @@ export function registerIpc(deps: IpcDeps): void {
     shell.showItemInFolder(path);
   });
 
-  ipcMain.handle(IPC.openMainWindow, (_event, tab: MainTab | undefined) => {
+  ipcMain.handle(IPC.openMainWindow, (_event, tab: MainTab | undefined, sessionId?: SessionId) => {
     deps.windows.hidePopover();
-    deps.windows.openMain(tab ?? 'sessions');
+    deps.windows.openMain(tab ?? 'sessions', typeof sessionId === 'string' ? sessionId : null);
   });
 
   // The popover's own close button — explicit, so it closes even a pinned one.
@@ -86,10 +107,19 @@ export function registerIpc(deps: IpcDeps): void {
     electronVersion: process.versions.electron ?? 'unknown',
     focusBackend: deps.focuser.backendName(),
     platform: `${process.platform} ${process.arch}`,
+    protocolTarget: deps.protocolRegistration,
+    modelWindows: deps.windowSource?.status() ?? null,
   }));
 
   ipcMain.handle(IPC.quit, () => {
     deps.quit();
+  });
+
+  // The Settings checkbox (D7) awaits this — a forced refresh happens inside the call, so the
+  // toggle's own success/failure is visible immediately rather than on the next background tick.
+  ipcMain.handle(IPC.refreshModelWindows, async () => {
+    if (!deps.windowSource) return null;
+    return deps.windowSource.refresh({ force: true });
   });
 
   // The popover sizes itself to its content, so it can ask for the height it needs (§8).

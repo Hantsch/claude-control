@@ -181,6 +181,11 @@ export function isSyntheticModel(record: TranscriptRecord): boolean {
   return record.message?.model === '<synthetic>';
 }
 
+/** An `ai-title` record that actually carries a title — the scan predicate for one. */
+export function isAiTitleRecord(record: TranscriptRecord): boolean {
+  return record.type === 'ai-title' && aiTitleOf(record) !== null;
+}
+
 /** Title carried by an `ai-title` record; the field name is not guaranteed, so try both. */
 export function aiTitleOf(record: TranscriptRecord): string | null {
   for (const key of ['title', 'aiTitle', 'content', 'text'] as const) {
@@ -188,6 +193,21 @@ export function aiTitleOf(record: TranscriptRecord): string | null {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return null;
+}
+
+/** How much transcript text fits on one row of the tree or the popover. */
+export const ROW_TEXT_CHARS = 120;
+
+/**
+ * Collapse to one line and truncate to `max` characters, ending in `…` when clipped.
+ *
+ * The single convention for row-sized text taken out of a transcript: `toolInputHint` has
+ * always used it and `finalTextOf` reuses it, so a hint and a subagent report cannot end up
+ * clipped by two slightly different rules.
+ */
+export function clipOneLine(text: string, max: number): string {
+  const oneLine = text.replace(/\s+/g, ' ').trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max - 3)}…` : oneLine;
 }
 
 /** Short hint from a tool input: the most identifying field we can find. */
@@ -206,8 +226,7 @@ export function toolInputHint(input: Record<string, unknown>): string | null {
   for (const key of candidates) {
     const value = input[key];
     if (typeof value === 'string' && value.trim()) {
-      const oneLine = value.replace(/\s+/g, ' ').trim();
-      return oneLine.length > 120 ? `${oneLine.slice(0, 117)}…` : oneLine;
+      return clipOneLine(value, ROW_TEXT_CHARS);
     }
   }
   return null;
@@ -216,6 +235,12 @@ export function toolInputHint(input: Record<string, unknown>): string | null {
 /** `subagent_type` on an `Agent` call, when present. */
 export function agentTypeOf(input: Record<string, unknown>): string | null {
   const value = input.subagent_type ?? input.agentType ?? input.agent_type;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** `model` on an `Agent` call, when the call declared one explicitly. */
+export function declaredModelOf(input: Record<string, unknown>): string | null {
+  const value = input.model;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 

@@ -3,12 +3,12 @@
  * world (§3).
  */
 
-import type { AppState, RendererApi } from '../shared/ipc.ts';
+import type { AppState, NavigateTarget, RendererApi } from '../shared/ipc.ts';
 
 export type MainTab = 'sessions' | 'history' | 'settings';
 
 export interface FullApi extends RendererApi {
-  onNavigate(listener: (tab: MainTab) => void): () => void;
+  onNavigate(listener: (target: NavigateTarget) => void): () => void;
   setPopoverHeight(height: number): Promise<void>;
   getPopoverPinned(): Promise<boolean>;
   /** Returns the pin state that was actually applied. */

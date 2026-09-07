@@ -10,15 +10,27 @@
  * doubling notifications defeats the purpose of the app.
  */
 
-import { app, dialog } from 'electron';
+import { app, dialog, globalShortcut } from 'electron';
 import { join } from 'node:path';
+import { REFRESH_CADENCE_MS } from '../core/context/windowSource.ts';
 import { createEngine } from '../core/createEngine.ts';
 import type { SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type FocusResult } from '../shared/ipc.ts';
+import { applyAutostart, AUTOSTART_FLAG, healAutostartPath } from './autostart.ts';
 import { WindowFocuser } from './focus/focuser.ts';
+import { createWindowProbe } from './focus/windowProbe.ts';
 import { broadcast, registerIpc } from './ipc.ts';
 import { Notifier } from './notifier.ts';
 import { SettingsStore } from './settings.ts';
+import { ShortcutManager } from './shortcuts.ts';
+import {
+  buildProtocolRegistration,
+  protocolClientTarget,
+  TOAST_PROTOCOL,
+  toastActionFromArgv,
+  type ProtocolRegistration,
+  type ToastAction,
+} from './toast-protocol.ts';
 import { TrayPresenter } from './tray.ts';
 import { WindowManager, type MainTab } from './windows.ts';
 
@@ -32,13 +44,33 @@ if (!gotLock) {
 async function bootstrap(): Promise<void> {
   // Required on Windows for toasts to be attributed to this app (F5).
   app.setAppUserModelId('solutions.aidu.claude-control');
-  // The app has no network features at all (N1).
+  const protocolRegistration = registerToastProtocol();
+  // No outbound requests by default (N1) — the opt-in exact-context-window lookup is the sole
+  // exception, so there is nothing here for Electron's HTTP cache to usefully retain.
   app.commandLine.appendSwitch('disable-http-cache');
 
   await app.whenReady();
 
   const settings = new SettingsStore(app.getPath('userData'));
-  const { engine, adapter, paths } = createEngine({ settings: settings.get() });
+
+  // Heal first (a login item from an earlier install may point at an old EXE path), then
+  // apply — so the setting always wins over whatever is currently registered.
+  healAutostartPath();
+  applyAutostart(settings.get().ui.autostart);
+
+  // Sync cache read for `hasTerminalWindow` — the real probe is async and runs out-of-band,
+  // driven off the same `sessions` event the tray/renderer already consume (see below), so no
+  // separate timer is needed.
+  const windowProbe = createWindowProbe();
+
+  const { engine, adapter, paths, windowSource } = createEngine({
+    settings: settings.get(),
+    hasTerminalWindow: (pid) => windowProbe.get(pid),
+    // Electron's per-user data dir — the same root `SettingsStore` already writes under, so
+    // the cache file (`model-windows.json`) lives next to `settings.json` rather than
+    // introducing a second location.
+    dataDir: app.getPath('userData'),
+  });
 
   const windows = new WindowManager({
     rendererDir: join(app.getAppPath(), 'out', 'renderer'),
@@ -55,6 +87,7 @@ async function bootstrap(): Promise<void> {
     onActivate: (sessionId) => {
       void focusSession(sessionId);
     },
+    isMuted: (sessionId) => engine.isMuted(sessionId),
   });
 
   const tray = new TrayPresenter({
@@ -63,7 +96,7 @@ async function bootstrap(): Promise<void> {
     onFocusSession: (sessionId) => {
       void focusSession(sessionId);
     },
-    onAcknowledgeAll: () => engine.acknowledgeAll(),
+    onMarkAllSeen: () => engine.dismissAll(),
     onRefresh: () => {
       void engine.refreshNow();
     },
@@ -76,6 +109,9 @@ async function bootstrap(): Promise<void> {
     lastState = snapshot;
     tray.update(snapshot);
     broadcast(IPC.stateChanged, snapshot);
+    // Piggybacks on the engine's own refresh cadence (tick + file-change driven) instead of a
+    // separate timer. `getLiveSessions()` is the unfiltered list on purpose — see its doc.
+    void windowProbe.refresh(engine.getLiveSessions());
   });
   engine.on('transitions', (transitions) => notifier.handle(transitions));
   engine.on('history', (info) => broadcast(IPC.historyChanged, info));
@@ -83,8 +119,18 @@ async function bootstrap(): Promise<void> {
     process.stderr.write(`[claude-control] ${error.message}\n`);
   });
 
+  const shortcutManager = new ShortcutManager({
+    onToggle: () => {
+      const bounds = tray.getBounds();
+      if (bounds) windows.togglePopover(bounds);
+    },
+  });
+
   settings.onChange((next) => {
     void engine.updateSettings(next);
+    applyAutostart(next.ui.autostart);
+    shortcutManager.apply(next.ui.globalShortcut);
+    broadcast(IPC.shortcutStatusChanged, shortcutManager.status());
     broadcast(IPC.settingsChanged, next);
   });
 
@@ -93,12 +139,29 @@ async function bootstrap(): Promise<void> {
     settings,
     focuser,
     windows,
+    shortcutManager,
     claudeDir: paths.root,
     adapterId: adapter.id,
     state: () => lastState,
     focusSession,
     quit,
+    protocolRegistration,
+    windowSource,
   });
+
+  // Opt-in exact-context-window refresh (story 005, D6). `refresh()` is a no-op while the
+  // setting is off (checked inside `WindowSource`, not here) and never throws, so firing it
+  // without awaiting cannot block or crash startup (AC2). The interval mirrors the class's own
+  // cadence — ticking more often would be wasted work, since `refresh()` itself will no-op
+  // until the due-check window has passed.
+  if (windowSource) {
+    void windowSource.refresh();
+    const windowRefreshTimer = setInterval(() => {
+      void windowSource.refresh();
+    }, REFRESH_CADENCE_MS);
+    windowRefreshTimer.unref?.();
+    app.on('before-quit', () => clearInterval(windowRefreshTimer));
+  }
 
   // Live tier first (N5), tray immediately afterwards.
   await engine.start();
@@ -106,7 +169,13 @@ async function bootstrap(): Promise<void> {
   tray.create();
   tray.update(lastState);
 
-  if (lastState.sessions.length === 0 && !hasClaudeData(paths.root)) {
+  shortcutManager.apply(settings.get().ui.globalShortcut);
+  broadcast(IPC.shortcutStatusChanged, shortcutManager.status());
+
+  // Started by the login item: a modal at logon would be pure noise, so it stays silent.
+  const startedByAutostart = process.argv.includes(AUTOSTART_FLAG);
+
+  if (!startedByAutostart && lastState.sessions.length === 0 && !hasClaudeData(paths.root)) {
     // Better a clear message than a permanently empty tray icon.
     dialog.showMessageBox({
       type: 'info',
@@ -128,9 +197,20 @@ async function bootstrap(): Promise<void> {
     windows.openMain(show);
   }
 
-  app.on('second-instance', () => {
-    windows.openMain('sessions');
+  // A toast button (D6) reaches us as a *new* process launched by the shell for the
+  // `claude-control://` URI; the lock above bounces it here with its argv. Anything else is a
+  // user starting the app a second time, which means "show me the app".
+  app.on('second-instance', (_event, argv) => {
+    const action = toastActionFromArgv(argv);
+    if (action) runToastAction(action);
+    else windows.openMain('sessions');
   });
+
+  // Same URI, but the app was not running when the button was pressed: then there is no second
+  // instance and the URI is simply in our own command line. Runs last, so the engine is
+  // started and `jump` can find its session.
+  const startupAction = toastActionFromArgv(process.argv);
+  if (startupAction) runToastAction(startupAction);
 
   // Tray app: closing all windows must not quit (N3, §8).
   app.on('window-all-closed', () => {
@@ -140,6 +220,12 @@ async function bootstrap(): Promise<void> {
   app.on('before-quit', () => {
     void engine.stop();
     tray.destroy();
+    windows.destroy();
+  });
+
+  // Belt-and-suspenders: guarantees the registration is gone even if `before-quit` is cancelled.
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
   });
 
   async function focusSession(sessionId: SessionId): Promise<FocusResult> {
@@ -157,16 +243,57 @@ async function bootstrap(): Promise<void> {
     // Jumping to a session is the strongest possible "I have seen this", so it clears the
     // badge for it whether the focus itself succeeds or not.
     engine.acknowledge(sessionId);
-    windows.hidePopover();
-    return focuser.focus(session);
+    // Activate *first*, hide after. Windows only grants `SetForegroundWindow` to a process
+    // that owns the foreground window, and hiding the popover hands the foreground straight
+    // back to whatever was underneath — so hiding first made our own call ineligible and the
+    // jump degraded to a taskbar flash, which reads as "the click did nothing". A failed jump
+    // leaves the popover up on purpose: it is the surface that then reports why.
+    const result = await focuser.focus(session);
+    if (result.ok || result.flashed) windows.hidePopover();
+    return result;
+  }
+
+  /**
+   * What a toast button does (D6). "Jump" is the same path as clicking the toast body, and
+   * "Mute" is the same call the renderer's mute switch makes over IPC — one behaviour each,
+   * reached from a second entry point.
+   */
+  function runToastAction(action: ToastAction): void {
+    const sessionId = action.sessionId as SessionId;
+    if (action.action === 'mute') engine.setMuted(sessionId, true);
+    else void focusSession(sessionId);
   }
 
   function quit(): void {
     void engine.stop().finally(() => {
       tray.destroy();
+      windows.destroy();
       app.quit();
     });
   }
+}
+
+/**
+ * Makes `claude-control://` ours, so the shell can hand a toast button's URI back to the app
+ * (D6). Windows-only: that is the only platform where the buttons exist, and registering a
+ * scheme elsewhere would be a side effect nothing asked for. A dev run has no exe of its own,
+ * so the registration has to name Electron plus the script it should run. `protocolClientTarget`
+ * (D4) additionally prefers the portable build's stable exe path over the temp extraction dir
+ * `process.execPath` would otherwise record.
+ */
+function registerToastProtocol(): ProtocolRegistration {
+  const target = protocolClientTarget(process.env, process.execPath, app.isPackaged, process.argv[1]);
+  let outcome: { ok: true } | { ok: false; error?: unknown };
+  try {
+    const ok = target.path
+      ? app.setAsDefaultProtocolClient(TOAST_PROTOCOL, target.path, target.args ?? [])
+      : app.setAsDefaultProtocolClient(TOAST_PROTOCOL);
+    outcome = ok ? { ok: true } : { ok: false };
+  } catch (error) {
+    // A blocked registry write costs the buttons, not the app — the toast itself still shows.
+    outcome = { ok: false, error };
+  }
+  return buildProtocolRegistration(process.platform, target, outcome, process.execPath);
 }
 
 /** Parses the `--show` dev flag. Returns null when the app should start tray-only. */

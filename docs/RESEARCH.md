@@ -149,11 +149,38 @@ arrays.
 `Task` tool in this version — the tool is named `Agent`.
 
 **However:** `isSidechain` was `true` on **zero** records across all 290 files. So the
-field exists but subagent transcripts are apparently *not* interleaved into the parent
-file in this version. Where subagent detail lives is **unverified**. The concept treats
-the subagent tree as derivable from `Agent` `tool_use` blocks in the parent transcript
-(which gives label, start time, and completion via the paired result) and marks deeper
-detail as a research task.
+field exists but subagent transcripts are *not* interleaved into the parent file. The
+subagent tree is therefore derived from `Agent` `tool_use` blocks in the parent transcript
+(label, start time, and completion via the paired result).
+
+#### Where subagent detail lives — resolved (2.1.241)
+
+That open question is answered: each run gets its own transcript next to the session's,
+
+```
+projects/<slug>/<sessionId>/subagents/agent-<agentId>.jsonl
+projects/<slug>/<sessionId>/subagents/agent-<agentId>.meta.json
+```
+
+with the sidecar naming the link back to the parent call:
+
+```json
+{"agentType":"general-purpose","description":"Build story 042","toolUseId":"toolu_013H77…","spawnDepth":1,"model":"sonnet"}
+{"agentType":"deliverable-hard","description":"D4: …","toolUseId":"toolu_01DCYJ…","parentAgentId":"a4468e4145a5b6128","spawnDepth":2}
+```
+
+Records inside those files *do* carry `isSidechain: true` and an `agentId`; `parentAgentId`
++ `spawnDepth` give the real nesting the parent transcript cannot show.
+
+Two consequences, one taken and one not:
+
+- **Taken:** a run's `mtime` says whether it is still working. Without it a fan-out went
+  `stale` after the `Agent` budget (20 min) while every subagent was demonstrably busy —
+  the parent transcript gets nothing at all between the call and its result. Only file
+  metadata is read; nothing inside a subagent transcript is opened, so §4's rule that
+  prompts are never read is untouched.
+- **Not taken:** the sidecars would also let `children` be filled in and the flat-list
+  disclaimer dropped. That is a UI change, not a correctness one, and is still open.
 
 ---
 
@@ -174,6 +201,15 @@ This maps a workspace folder to an IDE process, which is the missing link for "j
 session": match a session's `cwd` against `workspaceFolders`, then focus that `pid`'s
 window. The file also contains an `authToken` — Claude Control must **never** read, log,
 or transmit that field.
+
+**Caveat (2.1.241):** `~/.claude/ide/` is frequently *empty* while `claude-vscode` sessions
+are running — the locks are not a dependable index, so the jump has to survive without
+them. The fallback then walks the parent chain (§7), and for a VS Code terminal that chain
+ends at the **shared** main `Code.exe`: measured, one pid (20400) owned three top-level
+windows, one per workspace, while its `MainWindowHandle`/`MainWindowTitle` named just one
+of them. The pid is therefore not an answer on its own — the window has to be picked out of
+that process's window list by the session's own folder name, which VS Code puts in the
+title (`sprint.md - q2-launcher - Visual Studio Code`).
 
 ---
 

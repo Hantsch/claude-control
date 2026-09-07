@@ -1,0 +1,53 @@
+- 2026-08-21 13:40 · 010 · D1 Two-line session row · started
+- 2026-08-21 13:46 · 010 · D1 Two-line session row · done
+- 2026-08-21 13:46 · 010 · D2 Absolute token count in context cell · started
+- 2026-08-21 13:47 · 010 · D2 Absolute token count in context cell · done
+- 2026-08-21 13:47 · 010 · D3 Collapsible group headers · started
+- 2026-08-21 13:51 · 010 · D3 Collapsible group headers · done
+- 2026-08-21 13:51 · 010 · D4 Expandable session rows · started
+- 2026-08-21 13:54 · 010 · D4 Expandable session rows · done
+- 2026-08-21 13:54 · 010 · D5 Subagent rows · started
+- 2026-08-21 13:59 · 010 · D5 Subagent rows · done
+- 2026-08-21 13:59 · 010 · D6 Three absent-data cases · started
+- 2026-08-21 14:02 · 010 · D6 Three absent-data cases · done
+- 2026-08-21 14:02 · 010 · D7 Keyboard expand/collapse · started
+- 2026-08-21 14:08 · 010 · D7 Keyboard expand/collapse · done
+- 2026-08-21 14:08 · 010 · D8 Height accept the scroll · started
+- 2026-08-21 14:10 · 010 · D8 Height accept the scroll · done
+- 2026-08-21 14:27 · 011 · D1 Final message at adapter boundary · started
+- 2026-08-21 14:27 · 011 · D1 Final message at adapter boundary · done
+- 2026-08-21 14:27 · 011 · D2 Declared model and precedence · started
+- 2026-08-21 14:27 · 011 · D2 Declared model and precedence · done
+- 2026-08-21 14:27 · 011 · D3 Main window renders both · started
+- 2026-08-21 14:27 · 011 · D3 Main window renders both · done
+- 2026-08-21 14:27 · 011 · D5 Measure the N5 cost · done
+- 2026-08-21 14:27 · 011 · D4 Popover renders both · started
+- 2026-08-21 14:27 · 011 · D4 Popover renders both · done
+- 2026-08-21 14:57 · 011 · review + fix cycle (story-review-hard) · done
+- 2026-08-21 14:57 · 011 · Done section filled, status in-progress (live acceptance pending) · done
+- 2026-08-21 14:59 · 007 · D1 Light branch for surfaces · started
+- 2026-08-21 14:59 · 007 · D1 Light branch for surfaces · done
+- 2026-08-21 14:59 · 007 · D2 Window chrome follows OS scheme · started
+- 2026-08-21 14:59 · 007 · D4 Tray badge follows taskbar · started
+- 2026-08-21 15:07 · 007 · D2 Window chrome follows OS scheme · done
+- 2026-08-21 15:07 · 007 · D4 Tray badge follows taskbar · done
+- 2026-08-21 15:07 · 007 · D3 Contrast pass over semantic colours · started
+- 2026-08-21 15:20 · 007 · D3 Contrast pass over semantic colours · done
+- 2026-08-21 15:30 · 007 · review + fix cycle (POPOVER_BG.light bug found and fixed) · done
+- 2026-08-21 15:30 · 007 · Done section filled, status in-progress (live acceptance pending) · done
+- 2026-08-21 15:32 · 012 · D1 Probe stops inventing a false · started
+- 2026-08-21 15:33 · 012 · D1 Probe stops inventing a false · done
+- 2026-08-21 15:33 · 012 · D2 windowUnknown on the snapshot · started
+- 2026-08-21 15:38 · 012 · D2 windowUnknown on the snapshot · done
+- 2026-08-21 15:38 · 012 · D3 Marker on the glance surface · started
+- 2026-08-21 15:44 · 012 · D3 Marker on the glance surface · done
+- 2026-08-21 15:44 · 012 · D4 Register stable protocol path · started
+- 2026-08-21 15:52 · 012 · D4 Register stable protocol path · done
+- 2026-08-21 15:52 · 012 · D5 State the limit where a user meets it · started
+- 2026-08-21 15:59 · 012 · D5 State the limit where a user meets it · done
+- 2026-08-21 15:59 · 012 · D6 Never steal focus from Pin/Close · started
+- 2026-08-21 16:10 · 012 · D6 Never take focus off Pin/Close · done
+- 2026-08-21 16:10 · 012 · D7 One ShortcutStatus · started
+- 2026-08-21 16:14 · 012 · D7 One ShortcutStatus · done
+- 2026-08-21 17:53 · 012 · review + fix cycle (probe pre-filled false — AC1 blocker — plus grid track and marker gate) · done
+- 2026-08-21 17:53 · 012 · Done section filled, status in-progress (live acceptance pending) · done

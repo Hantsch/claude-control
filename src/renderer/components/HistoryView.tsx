@@ -8,11 +8,48 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { AppState, HistoryEntry, HistoryPage } from '../../shared/ipc.ts';
-import { HISTORY_FINAL_LABEL } from '../../shared/presentation.ts';
+import {
+  formatShownOf,
+  HISTORY_FINAL_LABEL,
+  TRUNCATED_TOTAL_EXPLANATION,
+  TRUNCATED_TOTAL_MARKER,
+} from '../../shared/presentation.ts';
 import { api } from '../api.ts';
-import { formatBytes, formatDateTime, formatDuration } from '../lib/format.ts';
+import { formatBytes, formatDateTime, formatDuration, formatTokens } from '../lib/format.ts';
+import { groupHistory, type HistoryGroup, type HistoryGroupDimension } from '../../core/state/historyGrouping.ts';
 
 const PAGE_SIZE = 200;
+
+/** Per-entry token count shown in the Tokens column — same formula as `groupHistory`'s sum. */
+function entryTokens(entry: HistoryEntry): number | null {
+  if (!entry.usage) return null;
+  return entry.usage.inputTokens + entry.usage.outputTokens + entry.usage.cacheCreationTokens;
+}
+
+const DIMENSIONS: Array<{ value: HistoryGroupDimension | 'none'; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'project', label: 'Project' },
+  { value: 'branch', label: 'Branch' },
+  { value: 'model', label: 'Model' },
+];
+
+/** One session row, shared by the flat table and every group's table (D7). */
+function HistoryRow({ entry, onSelect }: { entry: HistoryEntry; onSelect: () => void }): React.JSX.Element {
+  const tokens = entryTokens(entry);
+  return (
+    <tr onClick={onSelect}>
+      <td>{formatDateTime(entry.endedAt ?? entry.mtimeMs)}</td>
+      <td title={entry.project.path}>{entry.project.name}</td>
+      <td>{entry.branch ?? '—'}</td>
+      <td>{HISTORY_FINAL_LABEL[entry.finalStatus]}</td>
+      <td className="title" title={entry.title ?? entry.sessionId}>
+        {entry.title ?? entry.sessionId}
+      </td>
+      <td>{formatBytes(entry.fileSize)}</td>
+      <td>{tokens === null ? '—' : formatTokens(tokens)}</td>
+    </tr>
+  );
+}
 
 export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
   const [page, setPage] = useState<HistoryPage>({ entries: [], total: 0, indexing: true });
@@ -21,6 +58,19 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [selected, setSelected] = useState<HistoryEntry | null>(null);
+  const [dimension, setDimension] = useState<HistoryGroupDimension | 'none'>('none');
+  // Presence in the set means collapsed (mirrors popover.tsx's `collapsedGroups` convention) —
+  // all groups start expanded. Reset whenever the dimension changes.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+
+  const truncated = page.total > page.entries.length;
+
+  const groups = useMemo<HistoryGroup[]>(
+    () => (dimension === 'none' ? [] : groupHistory(page.entries, dimension, { truncated })),
+    [page.entries, dimension, truncated],
+  );
+
+  const shownOf = formatShownOf(page.entries.length, page.total);
 
   const query = useMemo(
     () => ({
@@ -88,32 +138,135 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
         </button>
       </div>
 
-      <table className="history">
-        <thead>
-          <tr>
-            <th>Ended</th>
-            <th>Project</th>
-            <th>Branch</th>
-            <th>Final state</th>
-            <th>Title</th>
-            <th>Size</th>
-          </tr>
-        </thead>
-        <tbody>
-          {page.entries.map((entry) => (
-            <tr key={entry.sessionId} onClick={() => setSelected(entry)}>
-              <td>{formatDateTime(entry.endedAt ?? entry.mtimeMs)}</td>
-              <td title={entry.project.path}>{entry.project.name}</td>
-              <td>{entry.branch ?? '—'}</td>
-              <td>{HISTORY_FINAL_LABEL[entry.finalStatus]}</td>
-              <td className="title" title={entry.title ?? entry.sessionId}>
-                {entry.title ?? entry.sessionId}
-              </td>
-              <td>{formatBytes(entry.fileSize)}</td>
+      <div className="segmented">
+        {DIMENSIONS.map(({ value, label }) => (
+          <button
+            key={value}
+            type="button"
+            className={dimension === value ? 'active' : undefined}
+            onClick={() => {
+              setDimension(value);
+              setCollapsedGroups(new Set());
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {shownOf && <div className="shown-of">{shownOf}</div>}
+
+      {dimension === 'none' ? (
+        <table className="history">
+          <thead>
+            <tr>
+              <th>Ended</th>
+              <th>Project</th>
+              <th>Branch</th>
+              <th>Final state</th>
+              <th>Title</th>
+              <th>Size</th>
+              <th>Tokens</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {page.entries.map((entry) => (
+              <HistoryRow
+                key={entry.sessionId}
+                entry={entry}
+                onSelect={() => {
+                  setSelected(entry);
+                  // Fire-and-forget: upgrades the stored entry's usage to the exact total once
+                  // the full parse completes; the `history` broadcast it emits refreshes this view.
+                  void api.getDetail(entry.sessionId);
+                }}
+              />
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="history-groups">
+          {groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.key);
+            const toggleGroup = (): void => {
+              setCollapsedGroups((prev) => {
+                const next = new Set(prev);
+                if (next.has(group.key)) next.delete(group.key);
+                else next.add(group.key);
+                return next;
+              });
+            };
+            return (
+              <div key={group.key}>
+                <div
+                  className="history-group-head"
+                  role="button"
+                  tabIndex={0}
+                  onClick={toggleGroup}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      toggleGroup();
+                    }
+                  }}
+                >
+                  <span className={`chev${collapsed ? '' : ' open'}`} aria-hidden="true">
+                    ▶
+                  </span>
+                  <span className="name">{group.label}</span>
+                  <span className="count">
+                    {group.entries.length === 1 ? '1 session' : `${group.entries.length} sessions`}
+                  </span>
+                  {group.notCounted > 0 && (
+                    <span className="not-counted">· {group.notCounted} not counted</span>
+                  )}
+                  <span className="spacer" />
+                  <span
+                    className="total"
+                    title={group.truncated || group.partial ? TRUNCATED_TOTAL_EXPLANATION : undefined}
+                    aria-label={
+                      group.truncated || group.partial ? TRUNCATED_TOTAL_EXPLANATION : undefined
+                    }
+                  >
+                    {group.truncated ? TRUNCATED_TOTAL_MARKER : ''}
+                    {group.partial ? '~' : ''}
+                    {formatTokens(group.totalTokens)} tokens
+                  </span>
+                </div>
+                {!collapsed && (
+                  <table className="history">
+                    <thead>
+                      <tr>
+                        <th>Ended</th>
+                        <th>Project</th>
+                        <th>Branch</th>
+                        <th>Final state</th>
+                        <th>Title</th>
+                        <th>Size</th>
+                        <th>Tokens</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.entries.map((entry) => (
+                        <HistoryRow
+                          key={entry.sessionId}
+                          entry={entry}
+                          onSelect={() => {
+                            setSelected(entry);
+                            // Fire-and-forget: upgrades the stored entry's usage to the exact
+                            // total; the `history` broadcast it emits refreshes this view.
+                            void api.getDetail(entry.sessionId);
+                          }}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {page.entries.length === 0 && (
         <div className="empty">

@@ -18,8 +18,14 @@ draft ──► ready ──► in-progress ──► done
 | ------------- | ------------------------------------------------------------- |
 | `draft`       | The requirement is written, the plan is missing               |
 | `ready`       | Plan + deliverables are in the document, approved to build    |
-| `in-progress` | Implementation is running                                     |
-| `done`        | Implemented (+ verified), Done section filled                 |
+| `in-progress` | Implementation is running, or a real blocker holds it there   |
+| `done`        | Implemented, every criterion's test green, review through     |
+
+`done` is set by `/build` itself, as soon as verification is green and the clean-agent review
+is through. There is **no** approval state behind it: acceptance is the test each criterion was
+mapped to, not a person with a click list. A story stays `in-progress` only for a real
+blocker — red tests nobody can fix, a criterion whose test was never written, review-fix cycles
+exhausted. Anything found later is a **new** story, not a reopened one.
 
 ## Flow
 
@@ -32,16 +38,22 @@ draft ──► ready ──► in-progress ──► done
      ("too small to refine, say GO").
    - **Unclear** → `Open Questions` filled and put to you; status stays `draft`.
    - **Clear** → **`Plan`** (precise, max. ~50 lines), **`Deliverables`** (small,
-     individually acceptable pieces), **`Model Hints`** and possibly **`Test Plan`** are
-     written into the document and `status: ready` is set.
+     individually acceptable pieces), **`Model Hints`** and **`Acceptance Tests`** — one line
+     per acceptance criterion naming the automated test that will prove it — are written into
+     the document and `status: ready` is set.
+   - **The coverage gate:** no `ready` while a criterion lacks a deliverable, and none while it
+     lacks a named test or a `manual residue` reason. Whatever is not mapped here is never
+     checked at all — there is no manual round downstream to catch it.
    - Usable in a **separate session** while another session implements.
 
 3. **`/build <id>`** (cheap tier) reads the `ready` requirement + plan and implements
-   the **deliverables in order**, in one go (scrum-like, no giant diff at the end). Then it
-   verifies with the project's build/test commands, has the diff reviewed by a **fresh clean
-   agent**, fills **`Done`** (summary + a 1–2 line commit message), moves the file to `done/`
-   and appends a line to `done/INDEX.md`. Status → `in-progress` → `done`.
-   **You make the commit deliberately yourself.**
+   the **deliverables in order**, in one go (scrum-like, no giant diff at the end) — each D
+   including the acceptance test named for it, written by the same agent, not afterwards. Then
+   it verifies with the project's build/test commands (plus `e2e` for criteria about user
+   actions), has the diff reviewed by a **fresh clean agent** — which also judges whether those
+   tests would fail on a broken implementation — fills **`Done`** (summary + a 1–2 line commit
+   message), moves the file to `done/` and appends a line to `done/INDEX.md`.
+   Status → `in-progress` → `done`. **You make the commit deliberately yourself.**
 
 ## Model routing
 
@@ -57,7 +69,10 @@ draft ──► ready ──► in-progress ──► done
 ## Document sections (see `_TEMPLATE.md`)
 
 `Requirement` · `Acceptance Criteria` · `Open Questions` · `Plan` · `Deliverables` ·
-`Model Hints` · `Test Plan (manual acceptance)` · `Done`.
+`Model Hints` · `Acceptance Tests` · `Done`.
+
+Stories written before the test mapping existed carry `Test Plan (manual acceptance)` in place
+of `Acceptance Tests` — the commands treat it as equivalent and do not restructure the file.
 
 ## IDs
 

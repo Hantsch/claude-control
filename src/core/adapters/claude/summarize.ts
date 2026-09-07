@@ -17,8 +17,11 @@ import type {
 import { buildSubagentTree } from '../../state/subagents.ts';
 import { findLast } from './tail.ts';
 import {
+  ROW_TEXT_CHARS,
   SUBAGENT_TOOL_NAMES,
   agentTypeOf,
+  declaredModelOf,
+  clipOneLine,
   aiTitleOf,
   isAssistantRecord,
   isPromptRecord,
@@ -74,6 +77,9 @@ export function summarizeRecords(
     runStartedAt: lastPrompt ? recordTime(lastPrompt) : null,
     lastAssistantText: clip(newestAssistantText(records)),
     subagents: buildSubagentTree(toolCalls, options.now),
+    // The filesystem is the adapter's business, not this function's — `readStatus` fills
+    // this in (and leaves it `null` for the history index, which reads no live subagents).
+    subagentActivityAt: null,
     agentVersion: newestField(records, (r) => (typeof r.version === 'string' && r.version ? r.version : null)),
     read: options.read,
   };
@@ -142,6 +148,7 @@ export function collectToolCalls(records: readonly TranscriptRecord[]): ToolCall
           label: toolInputHint(block.input),
           isSubagent: SUBAGENT_TOOL_NAMES.has(block.name),
           agentType: agentTypeOf(block.input),
+          declaredModel: declaredModelOf(block.input),
           endedAt: null,
           errored: false,
           runResult: null,
@@ -190,8 +197,10 @@ function finishCall(call: ToolCallEvent, result: TranscriptRecord): void {
  * for ordinary tool results, which carry none of these fields — the presence of `agentId`,
  * `totalDurationMs` or `totalTokens` is what identifies an agent result.
  *
- * Field-by-field by design: the same object also holds the subagent's prompt and full
- * output, and §4 says neither may be retained.
+ * Field-by-field by design, and this is where the §4 line runs: the same object also holds
+ * the subagent's full `prompt` — never read, here or anywhere — and its `content`, of which
+ * `finalTextOf` keeps one row's worth so the UI can say what the run reported. That excerpt is
+ * held in memory for display only: nothing here logs it or writes it to disk.
  */
 export function subagentRunResultOf(record: TranscriptRecord): SubagentRunResult | null {
   const raw = record.toolUseResult;
@@ -223,7 +232,42 @@ export function subagentRunResultOf(record: TranscriptRecord): SubagentRunResult
     linesAdded: numberOrNull(stats.linesAdded),
     linesRemoved: numberOrNull(stats.linesRemoved),
     errorText: null,
+    finalText: finalTextOf(record),
   };
+}
+
+/**
+ * What the subagent reported back, clipped to a single row (§4, AC "clipped at the adapter
+ * boundary"): the **last** `type: 'text'` block of the result's `content`, which is the run's
+ * final message — the same choice `newestAssistantText` makes for a session — or a
+ * plain-string `content` where the result delivers it that way.
+ *
+ * `null` whenever there is no report, and the cases that must stay `null` are the point:
+ * - a run still going, or one whose result carries no text block at all;
+ * - a `launched` run: its report lives in `outputFile`, and opening a second file is a new
+ *   data source this deliberately does not take on;
+ * - a **failed** run, whose whole result is a plain string. That string is the death notice,
+ *   not a report, and belongs in `errorText` only — hence the early return below.
+ */
+export function finalTextOf(record: TranscriptRecord): string | null {
+  const raw = record.toolUseResult;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const content = (raw as Record<string, unknown>).content;
+  const text = typeof content === 'string' ? content : lastTextBlock(content);
+  if (text === null) return null;
+  return clipOneLine(text, ROW_TEXT_CHARS) || null;
+}
+
+/** Last `type: 'text'` block of a content array; null for anything else, including `[]`. */
+function lastTextBlock(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  for (let i = content.length - 1; i >= 0; i -= 1) {
+    const block: unknown = content[i];
+    if (!block || typeof block !== 'object') continue;
+    const { type, text } = block as { type?: unknown; text?: unknown };
+    if (type === 'text' && typeof text === 'string' && text.trim()) return text;
+  }
+  return null;
 }
 
 const EMPTY_RUN_RESULT: SubagentRunResult = {
@@ -238,6 +282,8 @@ const EMPTY_RUN_RESULT: SubagentRunResult = {
   linesAdded: null,
   linesRemoved: null,
   errorText: null,
+  // A failed run's plain-string result is its error reason, never a report (`finalTextOf`).
+  finalText: null,
 };
 
 /** One line, short enough for a tree row. */

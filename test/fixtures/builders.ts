@@ -7,7 +7,7 @@
  * exactly what §4 says must not leave the process.
  */
 
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { epochMsToFileTime } from '../../src/core/registry/liveness.ts';
@@ -120,8 +120,12 @@ export function toolResult(
 /**
  * Result of a finished subagent: an ordinary tool result whose `toolUseResult` carries the
  * run's own numbers. Shape measured on Claude Code 2.1.222 — including the `prompt` and
- * `content` fields that must never be retained (§4), so the privacy test has something real
- * to check against.
+ * `content` fields, so the privacy test has something real to check against.
+ *
+ * The two markers are deliberately distinct: `prompt` must never appear anywhere downstream,
+ * while `content` may appear as a clipped `finalText` and nowhere else. A single `/PRIVATE/`
+ * marker could not tell those two apart. Pass `content` to override the report — including
+ * `content: undefined`, which builds a result that carries none at all.
  */
 export function agentResult(
   uuid: string,
@@ -139,6 +143,8 @@ export function agentResult(
     usage?: { input?: number; cacheRead?: number; cacheCreation?: number; output?: number };
     linesAdded?: number;
     linesRemoved?: number;
+    /** The report, in either observed shape (block array or plain string). */
+    content?: unknown;
   },
 ): Record<string, unknown> {
   const record = toolResult(uuid, at, {
@@ -151,7 +157,9 @@ export function agentResult(
     prompt: 'PRIVATE PROMPT — must not be retained',
     agentId: options.agentId ?? 'agent-1',
     agentType: options.agentType ?? 'general-purpose',
-    content: [{ type: 'text', text: 'PRIVATE OUTPUT — must not be retained' }],
+    content: 'content' in options
+      ? options.content
+      : [{ type: 'text', text: 'PRIVATE REPORT — only a clipped row of this may be kept' }],
     resolvedModel: options.model ?? 'claude-opus-5[1m]',
     totalDurationMs: options.durationMs ?? 900_106,
     totalTokens: options.totalTokens ?? 67_430,
@@ -224,8 +232,13 @@ export function lastPrompt(leafUuid: string): Record<string, unknown> {
   return { type: 'last-prompt', leafUuid, timestamp: iso(0) };
 }
 
+/**
+ * The generated session title. The payload key is `aiTitle` on every real transcript
+ * observed — `aiTitleOf` accepts `title` too, but a fixture that used the lenient spelling
+ * would not exercise the one Claude Code actually writes.
+ */
 export function aiTitle(title: string, at = 0): Record<string, unknown> {
-  return { type: 'ai-title', title, timestamp: iso(at) };
+  return { type: 'ai-title', aiTitle: title, timestamp: iso(at) };
 }
 
 /**
@@ -266,6 +279,22 @@ export interface FixtureTree {
   ideDir: string;
   /** Write a transcript and return its absolute path. */
   writeTranscript(slug: string, sessionId: string, content: string): Promise<string>;
+  /**
+   * Write one subagent run's sidecar + transcript under `<slug>/<sessionId>/subagents/`,
+   * the layout Claude Code 2.1.241 writes. Returns the transcript's absolute path.
+   */
+  writeSubagent(options: {
+    slug: string;
+    sessionId: string;
+    agentId: string;
+    toolUseId?: string | null;
+    parentAgentId?: string | null;
+    agentType?: string;
+    description?: string;
+    content?: string;
+    /** mtime to stamp on the transcript, when the test cares about "how recent". */
+    at?: number;
+  }): Promise<string>;
   writeRegistry(pid: number, entry: Record<string, unknown>): Promise<string>;
   writeIdeLock(port: number, entry: Record<string, unknown>): Promise<string>;
 }
@@ -305,6 +334,23 @@ export async function makeFixtureTree(prefix = 'cc-fixture-'): Promise<FixtureTr
       await mkdir(dir, { recursive: true });
       const path = join(dir, `${sessionId}.jsonl`);
       await writeFile(path, content, 'utf8');
+      return path;
+    },
+    async writeSubagent(options) {
+      const dir = join(projectsDir, options.slug, options.sessionId, 'subagents');
+      await mkdir(dir, { recursive: true });
+      const stem = `agent-${options.agentId}`;
+      const meta: Record<string, unknown> = {
+        agentType: options.agentType ?? 'general-purpose',
+        description: options.description ?? 'do a thing',
+        spawnDepth: options.parentAgentId ? 2 : 1,
+      };
+      if (options.toolUseId !== null) meta.toolUseId = options.toolUseId ?? `toolu_${options.agentId}`;
+      if (options.parentAgentId) meta.parentAgentId = options.parentAgentId;
+      await writeFile(join(dir, `${stem}.meta.json`), JSON.stringify(meta), 'utf8');
+      const path = join(dir, `${stem}.jsonl`);
+      await writeFile(path, options.content ?? '{"type":"user"}\n', 'utf8');
+      if (options.at !== undefined) await utimes(path, new Date(options.at), new Date(options.at));
       return path;
     },
     async writeRegistry(pid, entry) {

@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { modelDisplayName } from '../../src/shared/presentation.ts';
+import { acceleratorFromChord, formatAccelerator } from '../../src/shared/accelerator.ts';
+import { formatShownOf, modelDisplayName } from '../../src/shared/presentation.ts';
 import { formatAge } from '../../src/renderer/lib/format.ts';
 
 describe('modelDisplayName', () => {
@@ -49,6 +50,32 @@ describe('modelDisplayName', () => {
   it('returns the original string unchanged when the vendor-stripped id has no claude- prefix', () => {
     expect(modelDisplayName('us.anthropic.something-else')).toBe('us.anthropic.something-else');
   });
+
+  it('title-cases a declared tier alias instead of falling into the claude- id parsing', () => {
+    expect(modelDisplayName('opus')).toBe('Opus');
+    expect(modelDisplayName('sonnet')).toBe('Sonnet');
+    expect(modelDisplayName('haiku')).toBe('Haiku');
+    expect(modelDisplayName('fable')).toBe('Fable');
+  });
+
+  it('does not treat an uppercase or partial match as a tier alias', () => {
+    expect(modelDisplayName('Opus')).toBe('Opus');
+    expect(modelDisplayName('opus-5')).toBe('opus-5');
+  });
+});
+
+describe('formatShownOf', () => {
+  it('returns null when shown equals total', () => {
+    expect(formatShownOf(200, 200)).toBeNull();
+  });
+
+  it('returns null when shown exceeds total', () => {
+    expect(formatShownOf(200, 100)).toBeNull();
+  });
+
+  it('returns the sentence when shown is smaller than total', () => {
+    expect(formatShownOf(200, 438)).toBe('Showing 200 of 438 sessions');
+  });
 });
 
 describe('formatAge', () => {
@@ -58,5 +85,54 @@ describe('formatAge', () => {
 
   it('switches to normal "Ns ago" formatting at the 5s boundary (5000ms)', () => {
     expect(formatAge(5000)).toBe('5s ago');
+  });
+});
+
+describe('acceleratorFromChord', () => {
+  const base = { key: '', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false };
+
+  it('builds Ctrl+Alt+C from ctrl+alt and a lowercase letter', () => {
+    expect(acceleratorFromChord({ ...base, ctrlKey: true, altKey: true, key: 'c' })).toBe(
+      'Ctrl+Alt+C',
+    );
+  });
+
+  it('builds Ctrl+Shift+F1 from ctrl+shift and a function key', () => {
+    expect(acceleratorFromChord({ ...base, ctrlKey: true, shiftKey: true, key: 'F1' })).toBe(
+      'Ctrl+Shift+F1',
+    );
+  });
+
+  it('returns null for a plain key with no modifiers', () => {
+    expect(acceleratorFromChord({ ...base, key: 'c' })).toBeNull();
+  });
+
+  it('returns null for Shift alone (shift does not count as a qualifying modifier)', () => {
+    expect(acceleratorFromChord({ ...base, shiftKey: true, key: 'c' })).toBeNull();
+  });
+
+  it('returns null when key is itself the held modifier', () => {
+    expect(acceleratorFromChord({ ...base, ctrlKey: true, key: 'Control' })).toBeNull();
+  });
+
+  it('does not throw on empty/garbage input', () => {
+    expect(() => acceleratorFromChord({ ...base, key: '' })).not.toThrow();
+    expect(acceleratorFromChord({ ...base, key: '' })).toBeNull();
+  });
+
+  it('includes Meta in the fixed modifier order Ctrl, Alt, Shift, Meta', () => {
+    expect(
+      acceleratorFromChord({ ctrlKey: true, altKey: true, shiftKey: true, metaKey: true, key: 'x' }),
+    ).toBe('Ctrl+Alt+Shift+Meta+X');
+  });
+});
+
+describe('formatAccelerator', () => {
+  it('shows an empty accelerator as "None"', () => {
+    expect(formatAccelerator('')).toBe('None');
+  });
+
+  it('returns a non-empty accelerator unchanged', () => {
+    expect(formatAccelerator('Ctrl+Alt+C')).toBe('Ctrl+Alt+C');
   });
 });

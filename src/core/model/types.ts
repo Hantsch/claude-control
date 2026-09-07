@@ -65,6 +65,12 @@ export interface ContextPressure {
   band: ContextBand;
   /** True when the assumed window was widened because observed usage exceeded it. */
   widened: boolean;
+  /**
+   * Where `window` came from: `'exact'` only when the opt-in model→window table resolved
+   * this model. Auto-widening is a guess layered on a number, so a `widened` estimate is
+   * always `'estimated'`, even when the table had an entry (story 005).
+   */
+  windowSource: 'estimated' | 'exact';
   model: string | null;
 }
 
@@ -97,8 +103,11 @@ export type SubagentStatus = 'running' | 'launched' | 'completed' | 'failed' | '
  * the honest ceiling here, not an omission. `totalDurationMs` was checked against the record
  * timestamps and agrees to within a few seconds, so the two never contradict each other.
  *
- * **Privacy (§4):** the result also carries the subagent's full `prompt` and `content`.
- * Neither is read here; only these numbers are.
+ * **Privacy (§4):** the result also carries the subagent's full `prompt` and `content`. The
+ * `prompt` is still never read — not here, not anywhere. The `content` is read, but only to
+ * fill `finalText` with a single row's worth of it; that excerpt lives in memory for display
+ * and is never logged and never written to disk (CONCEPT §4 allows exactly that: response
+ * text is read because the UI needs it, and never leaves the process).
  */
 export interface SubagentRunResult {
   status: string | null;
@@ -120,6 +129,13 @@ export interface SubagentRunResult {
    * is the one case where the *reason* is the only thing the result has to offer.
    */
   errorText: string | null;
+  /**
+   * What the run reported back, clipped to one row at the adapter boundary: the last `text`
+   * block of the result's `content`, or a plain-string `content`. Null when there is no
+   * report — including for a *failed* run, whose plain-string result is the error reason and
+   * belongs in `errorText` alone.
+   */
+  finalText: string | null;
 }
 
 /** Per-run numbers of a *finished* subagent, ready for display. */
@@ -147,12 +163,33 @@ export interface SubagentNode {
   startedAt: number;
   /** Null while running and for `launched` runs, whose end is never observable. */
   endedAt: number | null;
+  /**
+   * Newest write to the run's *own* transcript (or one of its descendants'), while it runs —
+   * `null` once it has finished, and whenever no subagent transcript could be found at all.
+   *
+   * This is the one interim fact a running subagent does offer: Claude Code writes each run
+   * to `projects/<slug>/<sessionId>/subagents/agent-<agentId>.jsonl`, so its `mtime` says the
+   * run is alive without anything inside the file being read (§4).
+   */
+  lastActivityAt: number | null;
   durationMs: number | null;
   status: SubagentStatus;
   /** Null while the subagent runs; the numbers only exist once it has finished. */
   metrics: SubagentMetrics | null;
   /** Why the run failed, when the result said so. */
   errorText: string | null;
+  /**
+   * The run's final message, already clipped to one row (§4). Null while it runs and for a
+   * `launched` run — neither has a report yet, and no interim state exists — and for a failed
+   * one, which has `errorText` instead.
+   */
+  finalText: string | null;
+  /**
+   * `resolvedModel` once the run has finished, else the model declared on the `Agent` call,
+   * else null. No third, inherited-from-session source — a declared alias is exact where
+   * present and an empty cell is preferred over a guess (Decisions (Sprint), story 011).
+   */
+  model: string | null;
   children: SubagentNode[];
 }
 
@@ -175,6 +212,8 @@ export interface ToolCallEvent {
   /** True when this tool is the agent's subagent-spawning tool (`Agent`). */
   isSubagent: boolean;
   agentType: string | null;
+  /** `model` on an `Agent` call, when the call declared one explicitly (a tier alias, not a model id). */
+  declaredModel: string | null;
   endedAt: number | null;
   errored: boolean;
   /** Filled from the paired result for subagent calls only (see `SubagentRunResult`). */
@@ -235,6 +274,17 @@ export interface TranscriptTailFacts {
   /** Last assistant sentence, used in the `done` toast body (§6.6). */
   lastAssistantText: string | null;
   subagents: SubagentNode[];
+  /**
+   * Newest write by a subagent the *pending* tool call is still waiting on, or `null` when
+   * there is no such evidence — no running subagent, no transcript for it, or an agent
+   * version that does not write one.
+   *
+   * Filled in by the adapter after the records are summarized (it needs the filesystem, which
+   * `summarizeRecords` deliberately does not touch) and read by the state machine: a call
+   * whose subagent is demonstrably still writing is `working`, however far past its own
+   * budget the call is (§6.2).
+   */
+  subagentActivityAt: number | null;
   /** Agent version recorded on the newest record — makes schema drift detectable (§12). */
   agentVersion: string | null;
   /** Diagnostics from the tail read. */
@@ -290,6 +340,28 @@ export interface SessionView {
    * back for something that actually happened since.
    */
   seen: boolean;
+  /**
+   * True when the user explicitly dismissed the session from the tray surfaces — the
+   * popover's right-click menu ("Mark as seen" / "Mark all as seen"). It implies `seen`,
+   * but says one thing more: *stop showing me this row*, which beats the recency rule that
+   * otherwise keeps a settled session in the popover for `list.trayRecentMs` after its last
+   * activity (`isTrayWorthy`). Re-arms exactly like `seen` does — the next status change or
+   * new transcript line brings the row back, so a dismissal can never hide live news.
+   */
+  dismissed: boolean;
+  /**
+   * True while the user has silenced toasts for this session (§6.6, story 004 D4). In-memory
+   * only — a restart always comes back unmuted. Affects `decideNotification` alone: status,
+   * sorting, grouping and the tray badge all read this session exactly as if it were unmuted.
+   */
+  muted: boolean;
+  /**
+   * True when this session is only visible because the window probe could not answer for it
+   * while a folder mate did have a window — a decisive "no window" would have hidden it as an
+   * orphan (§4, story 012). Presentation only, and only ever set while `hideOrphanSessions`
+   * is on: absent means either the filter is off or the probe answer was decisive.
+   */
+  windowUnknown?: boolean;
   project: ProjectRef;
   branch: string | null;
   /** Worktree/branch grouping key (§10 of requirements, F10). */
@@ -324,6 +396,18 @@ export interface HistoryEntry {
   /** Status the transcript ended in, as far as the tail allows. */
   finalStatus: SessionStatus;
   messageCountEstimate: number;
+  /**
+   * Token usage summed over the records the index's tail window happened to cover, or
+   * `null` when none of them reported usage. Deliberately partial: the index never parses
+   * a whole transcript (N5), so this is what the tail read already had in hand — no extra
+   * I/O. `readDetail` is the place that returns exact totals.
+   */
+  usage: UsageTotals | null;
+  /**
+   * True only when the tail window reached byte 0, i.e. `usage` covers the entire
+   * transcript and may be shown as a total rather than a lower bound.
+   */
+  usageComplete: boolean;
   fileSize: number;
   mtimeMs: number;
 }
@@ -359,7 +443,8 @@ export interface SessionDetail {
   models: string[];
   startedAt: number | null;
   endedAt: number | null;
-  usage: UsageTotals;
+  /** `null` when the transcript reported no usage records — distinct from a real zero total. */
+  usage: UsageTotals | null;
   events: TimelineEvent[];
   subagents: SubagentNode[];
   truncated: boolean;

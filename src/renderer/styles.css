@@ -8,7 +8,7 @@
   --border: #2a2a30;
   --text: #e8e8ea;
   --text-dim: #9a9aa2;
-  --text-faint: #6a6a72;
+  --text-faint: #7d7d85;
   --accent: #7c8cff;
 
   --status-waiting: #ff9f0a;
@@ -25,7 +25,67 @@
   --band-red: #ff453a;
   --band-critical: #ff2d55;
 
+  /* Stray literals tokenised (007 D1): a hex chosen against near-black is exactly the leak
+     this story exists to close. Values unchanged from what they replace. */
+  --error-border: #5a2a2a;
+  --row-divider: #1c1c20;
+
+  /* Effect tokens (007 D1): these three assume a dark backdrop, so the light branch below
+     needs its own dimming factors instead of inheriting numbers baked into the rule. */
+  --muted-opacity: 0.7;
+  --pulse-min: 0.4;
+  --halo-strength: 35%;
+
   color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f7f9;
+    --bg-raised: #ffffff;
+    --bg-hover: #ececef;
+    --bg-active: #e0e0e5;
+    --border: #d8d8dd;
+    --text: #1c1c1f;
+    --text-dim: #55555c;
+    --text-faint: #74747b;
+    --accent: #4f5bd5;
+
+    /* Semantic hues retuned for a light surface (007 D3). Every one of them is painted as a
+       fill — status dots, band fills, subagent pips — on surfaces as dark as `--bg-active`
+       (a selected row, the bar track), so `--bg-active` is the backdrop they have to survive,
+       not `--bg`. Two are painted as *text* as well (`--status-waiting` in
+       `.field .hint.warning` / `.popover-group-head .attention`, `--band-red` in
+       `.meta.error`), which puts them on the stricter 4.5:1 target.
+       On a light ground every one of these has to sit below ~30 % relative luminance to clear
+       3:1, so the lightness axis the dark scheme spreads its hues over is largely gone: the
+       separation here is carried by hue and chroma instead, with the two greys and the tan
+       taking the remaining lightness steps. None of it is eyeballed — `test/unit/theme.test.ts`
+       re-derives every ratio and the worst pairwise OKLab distance from this file, using the
+       shipped dark scheme's own worst pair as the distinguishability threshold. */
+    --status-waiting: #a04c00;
+    --status-done: #157f3c;
+    --status-working: #1b5fc9;
+    --status-stale: #8f7c5f;
+    --status-queued: #8f2fae;
+    --status-starting: #0f7f92;
+    --status-ended: #2f2f36;
+    --status-unknown: #4f5460;
+
+    --band-green: #157f3c;
+    --band-yellow: #9c7600;
+    --band-red: #c62828;
+    --band-critical: #8e0b3a;
+
+    --error-border: #e0a8a8;
+    --row-divider: #e4e4e9;
+
+    --muted-opacity: 0.65;
+    --pulse-min: 0.55;
+    --halo-strength: 25%;
+
+    color-scheme: light;
+  }
 }
 
 * {
@@ -179,22 +239,14 @@ code,
   flex: none;
 }
 
-.project-header .path,
-.project-header .count {
+.project-header .path {
   color: var(--text-faint);
   font-size: 11px;
-}
-
-.project-header .path {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.project-header .count {
-  flex: none;
 }
 
 .branch-group {
@@ -217,7 +269,7 @@ code,
 
 .session-row {
   display: grid;
-  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 88px;
+  grid-template-columns: 14px minmax(120px, 2.2fr) minmax(70px, 0.9fr) 62px 88px 22px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -280,6 +332,34 @@ code,
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Muted sessions still show up, just quieter — the icon is the recognisable-at-a-glance
+   marker, the dimming reinforces it without hiding anything. */
+.session-row.muted {
+  opacity: var(--muted-opacity);
+}
+
+.session-row .mute-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.session-row .mute-toggle:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.session-row .mute-toggle.on {
+  color: var(--accent);
+}
+
 /* ---------------------------------------------------------- context pressure in a row */
 
 .ctx {
@@ -326,6 +406,13 @@ code,
   flex: none;
 }
 
+/* The popover's second line (story 010 D1): the dot only re-states the status next to its
+   own text there, so it must not compete with the full-size dot on line 1. */
+.dot.sm {
+  width: 7px;
+  height: 7px;
+}
+
 .dot.pulse {
   animation: pulse 1.6s ease-in-out infinite;
 }
@@ -333,7 +420,12 @@ code,
 /* The waiting dot is the only one that gets a halo — derived from the same
    --status-waiting variable used for its fill, so the two can never drift apart. */
 .dot.halo {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) 35%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-waiting) var(--halo-strength), transparent);
+}
+
+/* A 3px halo around a 7px dot swallows the dot and reaches into the text beside it. */
+.dot.sm.halo {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-waiting) var(--halo-strength), transparent);
 }
 
 @keyframes pulse {
@@ -342,7 +434,7 @@ code,
     opacity: 1;
   }
   50% {
-    opacity: 0.4;
+    opacity: var(--pulse-min);
   }
 }
 
@@ -369,7 +461,34 @@ code,
   padding-left: 18px;
 }
 
+/* The session id and its copy button. Same left inset as the slug above, so name, slug and
+   id line up as one identity block under the status dot. */
+.detail-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-left: 18px;
+}
+
+.detail-id .mono {
+  color: var(--text-dim);
+  font-size: 11px;
+  /* A uuid has no spaces to break at, and the pane is narrow. */
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.copy-inline {
+  flex: none;
+  padding: 1px 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .detail-jump {
+  display: flex;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
@@ -380,6 +499,20 @@ code,
 
 .detail-jump button:hover {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.detail-jump .mute-button {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.detail-jump .mute-button:hover {
+  background: var(--bg-hover);
+}
+
+.detail-jump .mute-button.on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .kv {
@@ -518,7 +651,7 @@ code,
 }
 
 .notice.error {
-  border-color: #5a2a2a;
+  border-color: var(--error-border);
 }
 
 /* ---------------------------------------------------------------- history */
@@ -537,6 +670,93 @@ code,
   display: flex;
   gap: 4px;
   align-items: center;
+}
+
+/* Segmented control (D7) — None/Project/Branch/Model. Reuses `.tabs button.active`'s
+   look (background + border on the active option) rather than inventing a new style. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.segmented button {
+  border-color: transparent;
+}
+
+.segmented button.active {
+  background: var(--bg-active);
+  border-color: var(--border);
+}
+
+.history-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Collapsible group header (D7) — same chevron/name/count/spacer idiom as
+   `.popover-group-head`, scoped separately since this sits in the main window, not the
+   popover, and carries a per-group token total the popover header does not have. */
+.history-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.history-group-head:hover {
+  background: var(--bg-hover);
+}
+
+.history-group-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.history-group-head .name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.history-group-head .count,
+.history-group-head .not-counted {
+  color: var(--text-faint);
+}
+
+.history-group-head .chev {
+  display: inline-block;
+  width: 9px;
+  flex: none;
+  color: var(--text-faint);
+  font-size: 8px;
+  text-align: center;
+  transition: transform 0.12s ease;
+}
+
+.history-group-head .chev.open {
+  transform: rotate(90deg);
+}
+
+.history-group-head .spacer {
+  flex: 1;
+}
+
+.history-group-head .total {
+  font-weight: 500;
+  cursor: help;
+}
+
+/* "Showing 200 of 438 sessions" (story 015 D2) — same quiet register as `.estimate` and
+   `.not-counted`, sits above the table/group list in both flat and grouped mode. */
+.shown-of {
+  color: var(--text-faint);
+  font-size: 11px;
+  margin: 4px 0 8px;
 }
 
 table.history {
@@ -559,7 +779,7 @@ table.history th {
 
 table.history td {
   padding: 4px 6px;
-  border-bottom: 1px solid #1c1c20;
+  border-bottom: 1px solid var(--row-divider);
   vertical-align: top;
 }
 
@@ -592,6 +812,14 @@ table.history .title {
   grid-column: 2;
   color: var(--text-faint);
   font-size: 11px;
+}
+
+.field .hint.warning {
+  color: var(--status-waiting);
+}
+
+.kv dd.warning {
+  color: var(--status-waiting);
 }
 
 .tool-grid {
@@ -776,10 +1004,21 @@ table.history .title {
   padding: 6px 6px 2px;
   color: var(--text-dim);
   font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
 }
 
 .popover-group-head:first-child {
   padding-top: 4px;
+}
+
+.popover-group-head:hover {
+  background: var(--bg-hover);
+}
+
+.popover-group-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .popover-group-head .name {
@@ -790,14 +1029,65 @@ table.history .title {
   color: var(--text-faint);
 }
 
-.popover-row {
-  display: grid;
-  grid-template-columns:
-    14px minmax(0, 2.1fr) minmax(0, 1.5fr) minmax(0, 1.2fr) 58px 46px 62px 62px;
+/* Story 010 D3 — collapsible group headers. The chevron mirrors `.popover-row .chev`'s
+   idiom (a static glyph that rotates open). */
+.popover-group-head .chev {
+  display: inline-block;
+  width: 9px;
+  flex: none;
+  color: var(--text-faint);
+  font-size: 8px;
+  text-align: center;
+  transition: transform 0.12s ease;
+}
+
+.popover-group-head .chev.open {
+  transform: rotate(90deg);
+}
+
+.popover-group-head .attention {
+  font-size: 10.5px;
+  color: var(--status-waiting);
+}
+
+.popover-group-head .spacer {
+  flex: 1;
+}
+
+/* `StatusRollup` (story 006 D2) — one coloured dot + count per distinct status present in a
+   project group, in `STATUS_SORT_RANK` order, zero-count statuses omitted (mirrors the design
+   prototype's `rollup()`). Unscoped on purpose: the popover group head and the main window's
+   group header render the same component, so the rules must not hang off either surface. */
+.rollup {
+  display: inline-flex;
+  gap: 7px;
   align-items: center;
-  gap: 10px;
+  /* Prevents the main window's `.project-header` (a flex row with a `.path` that grows via
+     `flex: 1 1 auto`) from squeezing the rollup as its siblings compete for space. Harmless in
+     the popover, where the rollup already sits after a `.spacer { flex: 1 }` that isolates it. */
+  flex: none;
+}
+
+.rollup > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.rollup .n {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* Two lines per session (story 010 D1), deliberately reversing story 002's single-line
+   8-column grid: that grid was over-subscribed, and the cell it starved was the waiting
+   reason — the one string that says why you would click the row. Line 1 carries identity and
+   numbers, line 2 gets the full popover width for the prose. Mirrors the design prototype's
+   `.srow` / `.l1` / `.l2` rules (docs/requirements/assets/010-popover-drilldown-prototype.html). */
+.popover-row {
+  display: block;
   width: 100%;
-  padding: 5px 6px;
+  padding: 4px 6px 5px;
   border: none;
   border-radius: 6px;
   text-align: left;
@@ -805,55 +1095,420 @@ table.history .title {
   font-size: 12px;
 }
 
+/* The 22px column holds story 004's mute toggle (22 × 22) rather than the prototype's 14px
+   agent icon, which has no data source today. The trailing 18px column is story 012's
+   window-unknown badge; it is declared unconditionally so the branch column does not re-width
+   as the badge comes and goes. */
+.popover-row .l1,
+.popover-subagent-row .l1 {
+  display: grid;
+  grid-template-columns: 9px 13px 11px minmax(0, 1fr) 108px 92px 22px 18px;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Indented so the prose starts under the branch rather than under the chevron; the reason
+   text then runs to the right edge of the popover, ellipsizing only in the extreme. */
+.popover-row .l2,
+.popover-subagent-row .l2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 42px;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.popover-row .l2 .spacer,
+.popover-subagent-row .l2 .spacer {
+  flex: 1;
+}
+
+/* Inert in D1 — a static glyph that reserved the column; D4 turns it into the expand
+   control (a real `<button>`, reset back down to the plain-glyph look) with a rotated
+   `.open` state. */
+.popover-row .chev {
+  display: inline-block;
+  width: 9px;
+  flex: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.popover-row .chev.open {
+  transform: rotate(90deg);
+}
+
+.popover-row .chev:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+/* The status glyph sits in a fixed 13px column, the dot itself is 10px wide. */
+.popover-row .l1 > .dot {
+  justify-self: center;
+}
+
+/* Position within the group — the number you say out loud ("the second one"). */
+.popover-row .idx {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Identity cell: the session's own name, then the branch behind it. The name gets the
+   emphasis and whatever width is left, because it is the only part that tells two sessions
+   on the same branch apart; the branch keeps a slice of the cell for itself (`flex: 0 1 auto`
+   plus a cap) so it never disappears entirely behind a long name. */
+.popover-row .ident {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.popover-row .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.popover-row .branch {
+  /* `0 0` on purpose: a long *name* must not squeeze the branch — the name shrinks and
+     ellipsizes first, and the branch only clips once it alone exceeds its 45% cap. */
+  flex: 0 0 auto;
+  max-width: 45%;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Muted sessions still show up in the popover, just quieter — same treatment as the main
+   window's `.session-row.muted` so the two surfaces agree on what "muted" looks like. */
+.popover-row.muted {
+  opacity: var(--muted-opacity);
+}
+
+.popover-row .mute-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.popover-row .mute-toggle:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.popover-row .mute-toggle.on {
+  color: var(--accent);
+}
+
+.popover-row .window-unknown-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
 .popover-row:hover {
   background: var(--bg-hover);
 }
 
+.popover-row:focus {
+  outline: 2px solid var(--accent);
+  background: var(--bg-hover);
+}
+
 .popover-row .name,
-.popover-row .where,
-.popover-row .status,
+.popover-row .branch,
 .popover-row .model,
-.popover-row .uptime,
-.popover-row .age {
+.popover-row .l2 .txt {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.popover-row .where,
-.popover-row .uptime,
-.popover-row .age {
-  color: var(--text-dim);
-}
-
-/* The model badge is a dim pill — present even when empty (D4) so the grid columns
-   after it never shift. */
 .popover-row .model {
   color: var(--text-dim);
-  background: var(--bg-active);
-  border-radius: 999px;
-  padding: 1px 7px;
   font-size: 11px;
-  text-align: center;
-  justify-self: start;
-}
-
-.popover-row .model:empty {
-  background: none;
-  padding: 0;
-}
-
-.popover-row .uptime,
-.popover-row .age {
   text-align: right;
 }
 
-/* The uptime column is only 46px wide — at the row's default font size, "↑3h 12m" is
-   likely to ellipsize. Matches the `.model` pill's 11px, plus a touch of negative tracking
-   so an 8-character stamp still fits. */
-.popover-row .uptime {
+/* Uptime and age share one cell on line 2 ("↑2h 14m · 3m ago"), right-aligned behind the
+   flex spacer. Tabular figures so the column does not jitter as the clock ticks. */
+.popover-row .age {
+  flex: none;
+  color: var(--text-faint);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   letter-spacing: -0.2px;
+}
+
+/* Subagent summary: one pip per subagent plus `done/total`, so "three running, one done"
+   is readable without counting. Colours are the shared status/band variables, so a pip and
+   the subagent row it stands for can never disagree. */
+.popover-row .sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.popover-row .sub .pip {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* No class = `unknown`: a state we cannot colour honestly stays the neutral base pip. */
+  background: var(--bg-active);
+}
+
+.popover-row .sub .pip.on {
+  background: var(--status-done);
+}
+
+.popover-row .sub .pip.run {
+  background: var(--status-working);
+}
+
+.popover-row .sub .pip.fail {
+  background: var(--band-red);
+}
+
+.popover-row .sub .cnt {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Expanded session detail (story 010 D4) — mirrors the design prototype's `.detail` / `.kv`
+   rules: indented to line up under line 2's prose, not line 1's chevron. */
+.popover-detail {
+  padding: 1px 0 6px;
+}
+
+/* The row's right-click menu. A line in the flow of the list rather than a floating overlay
+   (see `RowMenu` in popover.tsx): the window is sized to its content, so anything overhanging
+   the edge would be clipped. Indented to 48px like `.popover-detail .kv`, so it reads as
+   belonging to the row above it, and boxed like `.notify-menu` so it still reads as a menu. */
+.popover-row-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 6px 4px 48px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.popover-row-menu button {
+  padding: 3px 6px;
+  border-color: transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: left;
+}
+
+.popover-row-menu button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.popover-row-menu button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.popover-detail .kv {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  /* Indented to 48px — where the session row's own line-2 prose starts (its 6px row padding
+     plus `.l2`'s 42px), so the detail reads as a continuation of that line. */
+  padding: 1px 6px 4px 48px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.popover-detail .kv .title {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.popover-detail .kv .txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-detail .kv.faint {
+  color: var(--text-faint);
+}
+
+/* Subagent rows inside an expanded session (story 010 D5) — one row per `session.subagents`
+   entry, flat (no recursion — `children` is always `[]`).
+
+   Laid out on the session row's own skeleton rather than the prototype's free-flowing `.arow`
+   flex line: `.l1` reuses that row's grid and `.l2` its indented prose line, so a subagent's
+   context bar, model and time sit in exactly the columns the parent uses. The nesting cue is
+   the status dot alone — it takes the parent's index column, one cell right of the parent's
+   own dot, at 7px instead of 10px. */
+.popover-subagents {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 1px;
+}
+
+.popover-subagent-row {
+  display: block;
+  width: 100%;
+  /* Same horizontal padding as `.popover-row`, so both grids start on the same pixel. */
+  padding: 2px 6px 3px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.popover-subagent-row:hover {
+  background: var(--bg-hover);
+}
+
+.popover-subagent-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Cells are placed explicitly, never by source order: a running subagent has no context and
+   no model yet, and auto-placement would then slide the remaining cells left out of column. */
+.popover-subagent-row .l1 > .dot {
+  grid-column: 3;
+  justify-self: center;
+}
+
+.popover-subagent-row .l1 > .label {
+  grid-column: 4;
+}
+
+.popover-subagent-row .l1 > .ctx {
+  grid-column: 5;
+}
+
+.popover-subagent-row .l1 > .model {
+  grid-column: 6;
+}
+
+.popover-subagent-row .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.popover-subagent-row .type {
+  font-size: 9.5px;
+  align-self: center;
+  color: var(--text-dim);
+  background: var(--bg-active);
+  border-radius: 999px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* Right-aligned like `.popover-row .model`, since the two share the column. */
+.popover-subagent-row .model {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-subagent-row .l2 {
+  font-size: 10.5px;
+}
+
+/* The report, the error and the absent-data note all share line 2 with the duration: they
+   shrink and ellipsize, the duration never does. */
+.popover-subagent-row .l2 .txt,
+.popover-subagent-row .l2 .error {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-subagent-row .l2 .error {
+  color: var(--band-red);
+  flex: 0 1 auto;
+}
+
+.popover-subagent-row .l2 .faint {
+  color: var(--text-faint);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sits where the session row's uptime/age sits, with the same tabular figures. */
+.popover-subagent-row .duration {
+  flex: none;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+
+/* Flat-hierarchy disclaimer (story 010 D6) — once below the whole subagent list, mirroring
+   the prototype's `.flatnote` idiom under this project's `.popover-*` prefix. Sibling of
+   `.popover-subagents`, not a child (story 013 D6 — role="list" must contain only rows).
+   Indented to the rows' own prose line so it reads as a footnote to them, not a new row. */
+.popover-subagents + .flat-note {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  opacity: 0.75;
+  padding: 3px 6px 1px 48px;
+}
+
+/* Why a jump did not land (F6). Sits between the list and the footer buttons, inside the
+   measured footer block, and only exists while there is something to say. */
+.popover-jump-error {
+  padding: 5px 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--status-waiting);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .popover-footer {

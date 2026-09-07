@@ -13,7 +13,7 @@ docs/
   README.md                 this map (no status)
   ROADMAP.md                THE status/planning source: phases, milestones, unprioritised
   requirements/             open stories; done/ = finished, done/INDEX.md = history
-  sprints/                  sprint planning/review/testplan; done/SNN/ = finished
+  sprints/                  sprint planning + review; done/SNN/ = finished
   concepts/                 concept docs for systems NOT (fully) implemented yet
   systems/                  concept docs for systems ALREADY implemented (reference)
 ```
@@ -29,7 +29,8 @@ docs/
 - **How a finished system works** → [systems/](systems/) (reference docs).
 - **What is designed but not built (yet)** → [concepts/](concepts/) — concepts describe the
   what/why and are timeless; when/status is in the roadmap.
-- **How a sprint went** → [sprints/done/](sprints/done/) (review + test plan per sprint),
+- **How a sprint went** → [sprints/done/](sprints/done/) (review.md per sprint: what was built,
+  which test proved which acceptance criterion),
   workflow: [sprints/README.md](sprints/README.md).
 
 ## Maintenance

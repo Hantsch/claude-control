@@ -1,0 +1,31 @@
+- 2026-08-21 10:09 · 003 · D1 Settings schema · started
+- 2026-08-21 10:11 · 003 · D1 Settings schema · done
+- 2026-08-21 10:11 · 003 · D2 Autostart in main · started
+- 2026-08-21 10:13 · 003 · D2 Autostart in main · done
+- 2026-08-21 10:13 · 003 · D3 Autostart checkbox in Settings · started
+- 2026-08-21 10:14 · 003 · D3 Autostart checkbox in Settings · done
+- 2026-08-21 10:14 · 003 · D4 Accelerator helper · started
+- 2026-08-21 10:16 · 003 · D4 Accelerator helper · done
+- 2026-08-21 10:16 · 003 · D5 Shortcut manager in main · started
+- 2026-08-21 10:18 · 003 · D5 Shortcut manager in main · done
+- 2026-08-21 10:18 · 003 · D6 Shortcut status over IPC · started
+- 2026-08-21 10:20 · 003 · D6 Shortcut status over IPC · done
+- 2026-08-21 10:20 · 003 · D7 Shortcut field in Settings · started
+- 2026-08-21 10:22 · 003 · D7 Shortcut field in Settings · done
+- 2026-08-21 10:22 · 003 · D8 Keyboard navigation in popover · started
+- 2026-08-21 10:25 · 003 · D8 Keyboard navigation in popover · done
+- 2026-08-21 10:47 · 004 · D1 Core: orphan filter + capability seam · started
+- 2026-08-21 10:50 · 004 · D1 Core: orphan filter + capability seam · done
+- 2026-08-21 10:50 · 004 · D2 Main: batched window probe + cache · started
+- 2026-08-21 10:55 · 004 · D2 Main: batched window probe + cache · done
+- 2026-08-21 10:55 · 004 · D3 Renderer: the setting · started
+- 2026-08-21 10:55 · 004 · D4 Core: mute state + decision · started
+- 2026-08-21 11:00 · 004 · D3 Renderer: the setting · done
+- 2026-08-21 11:00 · 004 · D4 Core: mute state + decision · done
+- 2026-08-21 11:00 · 004 · D5 IPC + notifier wiring · started
+- 2026-08-21 11:02 · 004 · D5 IPC + notifier wiring · done
+- 2026-08-21 11:02 · 004 · D6 Toast buttons · started
+- 2026-08-21 11:07 · 004 · D6 Toast buttons · done
+- 2026-08-21 11:07 · 004 · D7 Mute visible/revocable in UI · started
+- 2026-08-21 11:10 · 004 · D7 Mute visible/revocable in UI · done
+- 2026-08-21 13:00 · 004 · review + fix round (toast icon in packaged build, arrow-nav from mute button) · done

@@ -2,11 +2,14 @@
  * Live session list, grouped by project → branch/worktree (F1, F2, F10, §8).
  */
 
+import { useEffect, useRef } from 'react';
 import type { AppState, ProjectGroup, SessionView } from '../../shared/ipc.ts';
 import { STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
+import { api } from '../api.ts';
 import { formatAge } from '../lib/format.ts';
 import { ContextBar } from './ContextBar.tsx';
 import { StatusDot } from './StatusDot.tsx';
+import { StatusRollup } from './StatusRollup.tsx';
 
 export interface SessionsViewProps {
   state: AppState;
@@ -35,7 +38,9 @@ export function SessionsView({
         <br />
         <span className="estimate">
           A session appears here once it has exchanged its first message. Windows that are
-          open but unused are hidden — Settings can show them again.
+          open but unused are hidden, and so is work that was already finished when Claude
+          Control started — that comes back as soon as the session does something new.
+          Settings can show both again.
         </span>
       </div>
     );
@@ -74,10 +79,7 @@ function ProjectGroupBlock({
         <span className="path" title={group.project.path}>
           {group.project.path}
         </span>
-        <span className="count">
-          {group.sessions.length} session{group.sessions.length === 1 ? '' : 's'}
-          {group.attention > 0 ? ` · ${group.attention} need attention` : ''}
-        </span>
+        <StatusRollup counts={group.statusCounts} />
       </div>
       {group.branches.map((branch) => (
         <div className="branch-group" key={branch.branch ?? '(none)'}>
@@ -108,17 +110,48 @@ function SessionRow({
   onSelect: (session: SessionView) => void;
   onActivate: (session: SessionView) => void;
 }): React.JSX.Element {
+  const row = useRef<HTMLDivElement>(null);
+  // A session selected from somewhere else — "Show in Claude Control" on a popover row — is
+  // usually not the one on screen, so bring it there. `nearest` makes this a no-op for a row
+  // that is already visible, which is every selection the user made by clicking.
+  useEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
   const age = session.lastActivityAt ? Date.now() - session.lastActivityAt : null;
   // Unseen only means something for the two states the badge counts; a working session is
   // not something you can have "missed".
   const unseen = !session.seen && (session.status === 'done' || session.status === 'waiting');
 
+  const activate = (): void => onActivate(session);
+  const select = (): void => onSelect(session);
+
+  const toggleMuted = (event: React.SyntheticEvent): void => {
+    // The mute button is nested inside the row's div-as-button — stop the click here or it
+    // would also fire the row's onClick (select) right after toggling mute.
+    event.stopPropagation();
+    void api.setSessionMuted(session.sessionId, !session.muted);
+  };
+
   return (
-    <button
-      type="button"
-      className={`session-row${selected ? ' selected' : ''}${unseen ? ' unseen' : ''}`}
-      onClick={() => onSelect(session)}
-      onDoubleClick={() => onActivate(session)}
+    <div
+      ref={row}
+      role="button"
+      tabIndex={0}
+      className={`session-row${selected ? ' selected' : ''}${unseen ? ' unseen' : ''}${session.muted ? ' muted' : ''}`}
+      onClick={select}
+      onDoubleClick={activate}
+      onKeyDown={(event) => {
+        // Preserve the button-like keyboard behaviour a plain <div role="button"> does not
+        // get for free — but only for the row itself: bail out if the keydown bubbled up from
+        // the nested mute-toggle <button> so its own native Enter/Space activation is not
+        // suppressed (and replaced by "select the row") by this handler.
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          select();
+        }
+      }}
       title={session.statusReason}
     >
       <StatusDot status={session.status} />
@@ -137,6 +170,16 @@ function SessionRow({
       </span>
       <span className="age">{formatAge(age)}</span>
       <ContextBar context={session.context} />
-    </button>
+      <button
+        type="button"
+        className={`mute-toggle${session.muted ? ' on' : ''}`}
+        onClick={toggleMuted}
+        onDoubleClick={(event) => event.stopPropagation()}
+        title={session.muted ? 'Unmute this session' : 'Mute this session'}
+        aria-pressed={session.muted}
+      >
+        {session.muted ? '🔇' : '🔔'}
+      </button>
+    </div>
   );
 }

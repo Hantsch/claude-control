@@ -6,18 +6,27 @@ on your machine is doing — and tells you when one is finished or needs you.
 Inspired by [Irrlicht](https://github.com/ingo-eichhorst/Irrlicht) (macOS menu bar),
 rebuilt for Windows with a Node/TypeScript core and an Electron tray shell.
 
-## Status
+## Download
 
-**v1 implemented** — milestones M0–M7 of [docs/CONCEPT.md](docs/CONCEPT.md) §11 are in place:
-core status engine, tray icon with badge, toasts, jump-to-session, main window with git
-grouping / context gauge / subagent tree, history with filters, and a portable EXE.
+**[Get the latest release](https://github.com/Hantsch/claude-control/releases/latest)** —
+one portable `ClaudeControl-<version>-portable.exe`. No installer: put it anywhere and start
+it. It lives in the tray — left-click for the compact session popover, right-click for the
+menu, double-click to open the main window.
 
-- [docs/CONCEPT.md](docs/CONCEPT.md) — the design this was built to
-- [docs/RESEARCH.md](docs/RESEARCH.md) — the measured facts about Claude Code's on-disk data
-- [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) — where each concept section lives in the
-  code, and the decisions taken where the concept left a choice open
-- [docs/ROADMAP.md](docs/ROADMAP.md) — where this stands and what comes next; the open stories
-  live in [docs/requirements/](docs/requirements/)
+The EXE is **not code-signed**, so on first run Windows SmartScreen shows *"Windows protected
+your PC"*. Choose **More info** → **Run anyway**. Each release also ships a `SHA256SUMS.txt`
+if you want to verify the download:
+
+```powershell
+(Get-FileHash .\ClaudeControl-1.0.0-portable.exe -Algorithm SHA256).Hash
+```
+
+Settings are stored in `%APPDATA%\claude-control\settings.json`. There is no auto-update —
+watch the releases page, or the repository, for a new version.
+
+**Requirements:** Windows 10/11, and Claude Code with its state in `~/.claude` (or point the
+app at another directory in Settings). The packaged EXE bundles its own runtime; you do not
+need Node to run it.
 
 ## What it does
 
@@ -26,13 +35,20 @@ grouping / context gauge / subagent tree, history with filters, and a portable E
   ago still reads `done`, and a subagent that has been running for ten minutes still reads
   `working`
 - **Tray indicator** that takes on the most urgent status across all sessions, with an
-  overlay badge counting sessions that need attention. The popover shows what is running,
-  what you have not acknowledged, and what you touched recently — not every live session
+  overlay badge counting sessions that need attention. The tile is drawn in code and follows
+  the Windows light/dark taskbar. The popover shows what is running, what you have not
+  acknowledged, and what you touched recently — not every live session
+- **Popover with drill-down**: sessions grouped by project, collapsible groups with per-status
+  counts, the waiting reason spelled out rather than ellipsized, and one click to see what the
+  session last said plus a row per subagent with its own model and context
 - **Windows toast** when a session finishes a turn or appears to be blocked on a permission
   prompt — click the toast to jump to that session's window
-- **History** of past sessions, filterable by project, date and free text
+- **History** of past sessions, filterable by project, date and free text, and grouped by
+  project / branch / model with totals
 - **Context pressure** gauge so you can intervene before auto-compaction degrades a session
 - **Git context** (project / branch / worktree) and the subagent tree under each session
+- **Autostart and a global hotkey**, both configurable, plus keyboard navigation in the popover
+- **Light theme** that follows the OS colour scheme
 
 ## What it does not do
 
@@ -41,49 +57,58 @@ grouping / context gauge / subagent tree, history with filters, and a portable E
 - Expose anything over the network — no listening socket, no HTTP server, no telemetry, and by
   default no outbound requests either; the optional exact-context-window lookup (opt-in, off by
   default) is the one exception, making exactly one outbound request while it is on
-- Support agents other than Claude Code in v1 (the adapter boundary is designed for it)
+- Support agents other than Claude Code (the adapter boundary is designed for it; a second
+  agent is the next milestone)
+- See sessions running inside WSL — the app reads one Windows-side `~/.claude` root
 
-## Requirements
+## Known limits
 
-- Windows 10/11
-- Node 22+ (for development only; the packaged EXE bundles its own runtime)
-- Claude Code, with its state in `~/.claude` (or set the directory in Settings)
+The toast buttons (Jump, Mute this session) work by relaunching the EXE path that was recorded
+in the Windows protocol registry entry when the app last registered it — for the portable build
+that is the actual EXE you started, not a fixed install location. Moving or deleting that EXE
+therefore breaks the buttons until the app is started once from its new location, which
+re-registers the handler. Settings → Diagnostics shows the currently registered path.
 
-## Usage
+The history view fetches 200 entries per page. A filter matching more than that shows totals
+marked `≥`, and a "Showing 200 of N sessions" line — the totals are a lower bound, not a
+complete sum.
+
+## Status
+
+**v1 released.** Phases 1 and 2 are complete and Phase 3 (accuracy & breadth) is in progress —
+see [docs/ROADMAP.md](docs/ROADMAP.md) for where each milestone stands.
+
+- [docs/CONCEPT.md](docs/CONCEPT.md) — the design this was built to
+- [docs/RESEARCH.md](docs/RESEARCH.md) — the measured facts about Claude Code's on-disk data
+- [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) — where each concept section lives in the
+  code, and the decisions taken where the concept left a choice open
+- [docs/ROADMAP.md](docs/ROADMAP.md) — the one source of status and planning; the open stories
+  live in [docs/requirements/](docs/requirements/)
+- [CHANGELOG.md](CHANGELOG.md) — what changed per release
+
+## Development
+
+Node 22+ required.
 
 ```powershell
 npm install
 
-npm run cli            # M1: print the live session list and exit
+npm run cli            # print the live session list and exit
 npm run cli -- --watch # keep printing status changes
 npm run dev            # run the tray app with hot reload
 npm run package        # build release\ClaudeControl-<version>-portable.exe
+
+npm test               # vitest over core/ with fixtures, including the N2/N4/N5 checks
+npm run typecheck      # tsc for the Node side and the renderer
+npm run icons          # rebuild assets/icons from the art in output/imagegen (Python + Pillow)
 ```
 
-The packaged EXE is portable: put it anywhere and start it manually. It lives in the tray —
-left-click for the compact session popover, right-click for the menu, double-click to open
-the main window. Settings are stored in `%APPDATA%\claude-control\settings.json`.
-
-The toast buttons (Jump, Mute this session) work by relaunching the EXE path that was recorded
-in the Windows protocol registry entry when the app last registered it — for the portable build
-that is the actual EXE the user started, not a fixed install location. Moving or deleting that
-EXE therefore breaks the buttons until the app is started once from its new location, which
-re-registers the handler. Settings → Diagnostics shows the currently registered path.
-
-Useful flags when starting from a terminal:
+Useful flags when starting the app from a terminal:
 
 ```powershell
 ClaudeControl.exe --show            # open the main window immediately
 ClaudeControl.exe --show history    # …on the History tab
 ClaudeControl.exe --show popover    # open the tray popover
-```
-
-## Development
-
-```powershell
-npm test               # vitest over core/ with fixtures, including the N2/N4/N5 checks
-npm run typecheck      # tsc for the Node side and the renderer
-npm run icons          # rebuild assets/icons from the art in output/imagegen (Python + Pillow)
 ```
 
 ```
@@ -97,13 +122,32 @@ src/
 ├─ main/        Electron: tray, toasts, window focus, IPC, settings
 ├─ renderer/    React; a pure view, no filesystem access
 ├─ shared/      the IPC contract
-└─ cli/         the M1 command-line printout
+└─ cli/         the command-line printout
 ```
 
 `npm test` includes the three non-functional checks from CONCEPT.md §10: a status change is
 observed within 2 s of an append (N4), the live tier resolves in under 2 s against a
 synthetic ~250 MB / 300-file tree (N5), and no file's content, size or mtime changes after a
 full pipeline run (N2).
+
+### Releasing
+
+Releases are cut from `main` by [`.github/workflows/release.yml`](.github/workflows/release.yml):
+merge a PR into `main` and the workflow derives the version from the commit messages
+(Conventional Commits — `feat:` minor, `<type>!:`/`BREAKING CHANGE` major, `chore:`/`docs:`/`ci:`/
+`test:`/`style:`/`build:` no release, anything else patch), builds the portable EXE and publishes
+a GitHub release with the EXE and its checksum attached.
+
+The notes come from the `## Unreleased` section of [CHANGELOG.md](CHANGELOG.md), and a release
+with an empty section fails rather than shipping without notes. `npm run typecheck`, `npm test`
+and a full `npm run package` run on every PR, so the artifact is known to build before `main`
+promises it.
+
+```powershell
+pwsh -File scripts/plan-release.ps1   # what would the next merge release, and why
+pwsh -File scripts/check-notes.ps1    # the PR gate's verdict, locally
+pwsh -File scripts/release.ps1 -Bump minor   # bump + open a changelog section by hand
+```
 
 ## License
 

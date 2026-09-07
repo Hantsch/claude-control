@@ -339,11 +339,13 @@ function SubagentRow({ node }: { node: SubagentNode }): React.JSX.Element {
  */
 function RowMenu({
   dismissible,
+  onShow,
   onMarkSeen,
   onClose,
 }: {
   /** False while the session is in flight — dismissing it would be a no-op (`isDismissible`). */
   dismissible: boolean;
+  onShow: () => void;
   onMarkSeen: () => void;
   onClose: () => void;
 }): React.JSX.Element {
@@ -396,6 +398,16 @@ function RowMenu({
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
+      {/* First item, so it is the one the keyboard route in lands on: it is the only entry
+          that opens something rather than taking the row away. */}
+      <button
+        type="button"
+        role="menuitem"
+        title="Open the main window on this session — its detail, its subagents, and its session ID to copy"
+        onClick={onShow}
+      >
+        Show in Claude Control
+      </button>
       <button
         type="button"
         role="menuitem"
@@ -619,6 +631,17 @@ function Popover(): React.JSX.Element {
     setMenuKey(null);
     focusedYet.current = false;
     void api.dismissAll();
+  }, []);
+
+  /**
+   * "Show in Claude Control" (the row's right-click menu): the main window opens on the
+   * Sessions tab with this row selected, which is where the session's detail — and its
+   * session ID, with a copy button — lives. Unlike a click on the row, this deliberately does
+   * *not* touch the session's own window.
+   */
+  const showInMainWindow = useCallback((sessionId: string): void => {
+    setMenuKey(null);
+    void api.openMainWindow('sessions', sessionId);
   }, []);
 
   const closeMenu = useCallback((): void => setMenuKey(null), []);
@@ -1004,6 +1027,7 @@ function Popover(): React.JSX.Element {
                 {menuKey === nodeKey && (
                   <RowMenu
                     dismissible={isDismissible(session)}
+                    onShow={() => showInMainWindow(session.sessionId)}
                     onMarkSeen={() => markSeen(session.sessionId)}
                     onClose={closeMenu}
                   />

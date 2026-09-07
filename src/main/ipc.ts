@@ -90,9 +90,9 @@ export function registerIpc(deps: IpcDeps): void {
     shell.showItemInFolder(path);
   });
 
-  ipcMain.handle(IPC.openMainWindow, (_event, tab: MainTab | undefined) => {
+  ipcMain.handle(IPC.openMainWindow, (_event, tab: MainTab | undefined, sessionId?: SessionId) => {
     deps.windows.hidePopover();
-    deps.windows.openMain(tab ?? 'sessions');
+    deps.windows.openMain(tab ?? 'sessions', typeof sessionId === 'string' ? sessionId : null);
   });
 
   // The popover's own close button — explicit, so it closes even a pinned one.

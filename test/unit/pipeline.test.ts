@@ -100,6 +100,44 @@ describe('discovery and status through the adapter', () => {
     expect(snapshot.project.name).toBe('claude-control');
   });
 
+  it('finds the generated title even when it sits outside the tail window', async () => {
+    // What every long-running session looks like: `ai-title` is written once, early, and by
+    // the time the popover asks it is far behind the tail window — the case that used to
+    // leave every row labelled with the registry's derived slug instead.
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(
+      LIVE_PID,
+      registryEntry({ pid: LIVE_PID, sessionId: 'sess-titled', name: 'claude-control-7e' }),
+    );
+    const padding = Array.from({ length: 40 }, (_, index) =>
+      assistant({ uuid: `pad${index}`, at: 2_000 + index, text: 'x'.repeat(400) }),
+    );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-titled',
+      toJsonl([
+        prompt('u1', 0),
+        assistant({ uuid: 'a1', at: 1_000, text: 'Starting.' }),
+        aiTitle('Sprint 14', 1_100),
+        ...padding,
+        lastPrompt('u1'),
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter({
+      paths: resolveClaudePaths(tree.root),
+      // Small enough that the title is provably behind it — 40 × 400 chars of padding follow.
+      tailWindowBytes: 1024,
+      maxTailWindowBytes: 1024,
+      probe: new FakeProbe(new Set([LIVE_PID])),
+      thresholds: DEFAULT_THRESHOLDS,
+    });
+    const snapshot = await adapter.readStatus((await adapter.discoverLiveSessions())[0]!);
+
+    expect(snapshot.facts.read.startOffset).toBeGreaterThan(0);
+    expect(snapshot.facts.aiTitle).toBe('Sprint 14');
+  });
+
   it('parses the optional agent-reported registry fields when present', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(

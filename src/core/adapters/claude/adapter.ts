@@ -41,6 +41,8 @@ import {
   type ClaudePaths,
 } from './paths.ts';
 import {
+  aiTitleOf,
+  isAiTitleRecord,
   isAssistantRecord,
   isPromptRecord,
   isSemanticRecord,
@@ -63,6 +65,19 @@ const HISTORY_TAIL_BYTES = 64 * 1024;
  */
 const RUN_START_SCAN_BYTES = 4 * 1024 * 1024;
 const RUN_START_CHUNK_BYTES = 256 * 1024;
+/**
+ * Budget for the one-off scan that finds a session's generated title (the `ai-title`
+ * record). Claude Code writes it once, early, and only again when the title changes — so on
+ * any session that has been running for a while it sits far outside the tail window, and
+ * without this the popover falls back to the registry's derived slug (`q2-launcher-7e`)
+ * instead of the title VS Code puts on the Claude Code panel.
+ *
+ * Backwards first, because the *newest* record is the current title; the head read is the
+ * complement for a transcript too large for that scan to reach the record's end of the file.
+ */
+const AI_TITLE_SCAN_BYTES = 4 * 1024 * 1024;
+const AI_TITLE_CHUNK_BYTES = 256 * 1024;
+const AI_TITLE_HEAD_BYTES = 512 * 1024;
 /** Upper bound on timeline events returned by `readDetail`, to keep the IPC payload sane. */
 const DETAIL_EVENT_LIMIT = 10_000;
 /** Directory listing cache TTL — project directories change rarely. */
@@ -90,6 +105,13 @@ export class ClaudeAdapter implements AgentAdapter {
    * "scanned, nothing found within budget" — cached too, so a hopeless case stays cheap.
    */
   private readonly runStarts = new Map<SessionId, number | null>();
+  /**
+   * Generated title per session, for the (normal) case where the `ai-title` record is no
+   * longer in the tail window. Same contract as `runStarts`: scanned once, `null` cached
+   * too, and refreshed for free whenever the tail *does* carry one — which is what a title
+   * written or changed while the app is watching looks like.
+   */
+  private readonly aiTitles = new Map<SessionId, string | null>();
   /** Reads "is this subagent still writing?" off disk — see `subagentFiles.ts`. */
   private readonly subagentActivity = new SubagentActivityReader();
 
@@ -189,6 +211,7 @@ export class ClaudeAdapter implements AgentAdapter {
         },
       });
       facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
+      facts.aiTitle = await this.resolveAiTitle(ref.sessionId, path, facts.aiTitle);
       await this.applySubagentActivity(ref.sessionId, path, facts);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
@@ -235,6 +258,43 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /**
+   * Same shape as `resolveRunStart`: the tail window wins and refreshes the cache, otherwise
+   * the cached answer, otherwise one scan. A failed read leaves the title missing rather than
+   * failing the status read — the slug fallback is still a usable label.
+   */
+  private async resolveAiTitle(
+    sessionId: SessionId,
+    path: string,
+    fromTail: string | null,
+  ): Promise<string | null> {
+    if (fromTail !== null) {
+      this.aiTitles.set(sessionId, fromTail);
+      return fromTail;
+    }
+    const cached = this.aiTitles.get(sessionId);
+    if (cached !== undefined) return cached;
+
+    let found: string | null = null;
+    try {
+      const hit = await scanRecordsFromEnd(path, isAiTitleRecord, {
+        chunkBytes: AI_TITLE_CHUNK_BYTES,
+        maxBytes: AI_TITLE_SCAN_BYTES,
+      });
+      found = hit.record ? aiTitleOf(hit.record) : null;
+      // Only worth a second read when the scan gave up short of the start of the file: the
+      // record it is after lives at *that* end, so a bounded head read is the complement.
+      if (found === null && !hit.reachedStart) {
+        const head = await readHead(path, AI_TITLE_HEAD_BYTES);
+        found = firstAiTitle(head.records);
+      }
+    } catch {
+      // Same rule as the tail read: a failed read is a missing fact, not an error.
+    }
+    this.aiTitles.set(sessionId, found);
+    return found;
+  }
+
+  /**
    * Fill in what the *running* subagents have written, which `summarizeRecords` cannot know:
    * the parent transcript says nothing between an `Agent` call and its result, while the run
    * itself keeps appending to its own file. One `stat` of the subagent directory plus one per
@@ -274,6 +334,7 @@ export class ClaudeAdapter implements AgentAdapter {
   /** Drop the cached run start of a session that is gone, so the map cannot grow forever. */
   forgetSession(sessionId: SessionId): void {
     this.runStarts.delete(sessionId);
+    this.aiTitles.delete(sessionId);
     this.subagentActivity.forget(sessionId);
   }
 
@@ -401,10 +462,7 @@ export class ClaudeAdapter implements AgentAdapter {
         if (!record) continue;
 
         if (typeof record.gitBranch === 'string' && record.gitBranch) branches.add(record.gitBranch);
-        if (record.type === 'ai-title') {
-          const value = typeof record.title === 'string' ? record.title : null;
-          if (value) title = value;
-        }
+        if (isAiTitleRecord(record)) title = aiTitleOf(record);
         if (!isSemanticRecord(record)) continue;
 
         records.push(record);
@@ -570,15 +628,20 @@ function projectForHistory(
 }
 
 function headTitle(records: readonly TranscriptRecord[]): string | null {
-  for (const record of records) {
-    if (record.type === 'ai-title' && typeof record.title === 'string' && record.title.trim()) {
-      return record.title.trim();
-    }
-  }
+  const title = firstAiTitle(records);
+  if (title) return title;
   for (const record of records) {
     if (record.type !== 'user') continue;
     const text = cleanPromptText(recordText(record));
     if (text) return text.slice(0, 120);
+  }
+  return null;
+}
+
+/** First usable `ai-title` in reading order. The field name varies — see `aiTitleOf`. */
+function firstAiTitle(records: readonly TranscriptRecord[]): string | null {
+  for (const record of records) {
+    if (isAiTitleRecord(record)) return aiTitleOf(record);
   }
   return null;
 }

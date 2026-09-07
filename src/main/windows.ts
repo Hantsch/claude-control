@@ -8,6 +8,7 @@
 
 import { BrowserWindow, nativeTheme, screen, shell } from 'electron';
 import { join } from 'node:path';
+import type { NavigateTarget } from '../shared/ipc.ts';
 import { appIcon } from './icon-assets.ts';
 
 /**
@@ -92,11 +93,17 @@ export class WindowManager {
     return [this.main, this.popover].filter((w): w is BrowserWindow => w !== null && !w.isDestroyed());
   }
 
-  openMain(tab: MainTab = 'sessions'): BrowserWindow {
+  /**
+   * `sessionId` is the popover's "Show in Claude Control": the window opens on the Sessions
+   * tab with that row selected. It travels with the tab in one `cc:navigate` message rather
+   * than as a second one, so a freshly created window cannot miss it.
+   */
+  openMain(tab: MainTab = 'sessions', sessionId: string | null = null): BrowserWindow {
+    const target: NavigateTarget = { tab, sessionId };
     if (this.main && !this.main.isDestroyed()) {
       this.main.show();
       this.main.focus();
-      this.main.webContents.send('cc:navigate', tab);
+      this.main.webContents.send('cc:navigate', target);
       return this.main;
     }
 
@@ -116,7 +123,7 @@ export class WindowManager {
     this.harden(window);
     window.once('ready-to-show', () => {
       window.show();
-      window.webContents.send('cc:navigate', tab);
+      window.webContents.send('cc:navigate', target);
     });
     // Closing the window keeps the app alive in the tray — that is the whole point (§8).
     window.on('closed', () => {

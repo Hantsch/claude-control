@@ -24,7 +24,16 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void api.getState().then(setState);
     const offState = api.onStateChanged(setState);
-    const offNavigate = api.onNavigate(setTab);
+    // "Show in Claude Control" on a popover row arrives here: the tab to show and, with it,
+    // the session to select. Landing on a row is the same act of looking at it as clicking
+    // one, so it clears the tray badge for that session too (§6.5) — see `select` below.
+    const offNavigate = api.onNavigate((target) => {
+      setTab(target.tab);
+      if (target.sessionId) {
+        setSelectedId(target.sessionId);
+        void api.acknowledge(target.sessionId);
+      }
+    });
     const timer = setInterval(() => setClock((value) => value + 1), 5_000);
     return () => {
       offState();

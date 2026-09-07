@@ -10,6 +10,7 @@ import {
   type AppState,
   type HistoryQuery,
   type ModelWindowStatus,
+  type NavigateTarget,
   type RendererApi,
   type ShortcutStatus,
 } from '../shared/ipc.ts';
@@ -23,7 +24,7 @@ function subscribe(channel: string, listener: (payload: never) => void): () => v
 }
 
 const api: RendererApi & {
-  onNavigate(listener: (tab: 'sessions' | 'history' | 'settings') => void): () => void;
+  onNavigate(listener: (target: NavigateTarget) => void): () => void;
   setPopoverHeight(height: number): Promise<void>;
   getPopoverPinned(): Promise<boolean>;
   setPopoverPinned(pinned: boolean): Promise<boolean>;
@@ -45,7 +46,8 @@ const api: RendererApi & {
   reindexHistory: () => ipcRenderer.invoke(IPC.reindexHistory) as Promise<void>,
   copyText: (text) => ipcRenderer.invoke(IPC.copyText, text) as Promise<void>,
   revealPath: (path) => ipcRenderer.invoke(IPC.revealPath, path) as Promise<void>,
-  openMainWindow: (tab) => ipcRenderer.invoke(IPC.openMainWindow, tab) as Promise<void>,
+  openMainWindow: (tab, sessionId) =>
+    ipcRenderer.invoke(IPC.openMainWindow, tab, sessionId) as Promise<void>,
   closePopover: () => ipcRenderer.invoke(IPC.closePopover) as Promise<void>,
   diagnostics: () => ipcRenderer.invoke(IPC.diagnostics),
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,

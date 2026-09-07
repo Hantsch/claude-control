@@ -232,8 +232,13 @@ export function lastPrompt(leafUuid: string): Record<string, unknown> {
   return { type: 'last-prompt', leafUuid, timestamp: iso(0) };
 }
 
+/**
+ * The generated session title. The payload key is `aiTitle` on every real transcript
+ * observed — `aiTitleOf` accepts `title` too, but a fixture that used the lenient spelling
+ * would not exercise the one Claude Code actually writes.
+ */
 export function aiTitle(title: string, at = 0): Record<string, unknown> {
-  return { type: 'ai-title', title, timestamp: iso(at) };
+  return { type: 'ai-title', aiTitle: title, timestamp: iso(at) };
 }
 
 /**

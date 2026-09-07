@@ -77,6 +77,18 @@ export interface FocusResult {
   cwd: string;
 }
 
+/**
+ * Payload of the `cc:navigate` message the main window listens on: which tab to show and,
+ * for "Show in Claude Control" on a popover row, which session to select once it is there.
+ * An object rather than the bare tab string it used to be, so the two travel together — the
+ * window may still be opening when the request is made, and a second message would race it.
+ */
+export interface NavigateTarget {
+  tab: 'sessions' | 'history' | 'settings';
+  /** Session to select on arrival; `null` leaves the current selection alone. */
+  sessionId: SessionId | null;
+}
+
 /** Shape returned by `ShortcutManager.status()` (§main/shortcuts.ts). */
 export interface ShortcutStatus {
   accelerator: string;
@@ -195,7 +207,8 @@ export interface RendererApi {
   reindexHistory(): Promise<void>;
   copyText(text: string): Promise<void>;
   revealPath(path: string): Promise<void>;
-  openMainWindow(tab?: 'sessions' | 'history' | 'settings'): Promise<void>;
+  /** `sessionId` selects that session in the Sessions tab once the window is up. */
+  openMainWindow(tab?: 'sessions' | 'history' | 'settings', sessionId?: SessionId): Promise<void>;
   closePopover(): Promise<void>;
   diagnostics(): Promise<DiagnosticsInfo>;
   quit(): Promise<void>;

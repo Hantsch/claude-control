@@ -51,6 +51,22 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
           notifications still fall back to it, but it is not what the IDE shows. */}
       <div className="detail-slug">{session.name}</div>
 
+      {/* The session id, next to a button that copies it: it is what `claude --resume <id>`,
+          a transcript file name and a bug report all want, and it is far too long to retype. */}
+      <div className="detail-id">
+        <span className="mono" title="This session's id, as Claude Code knows it">
+          {session.sessionId}
+        </span>
+        <button
+          type="button"
+          className="copy-inline"
+          title="Copy the session ID to the clipboard"
+          onClick={() => void copy('session ID', session.sessionId)}
+        >
+          Copy
+        </button>
+      </div>
+
       <div className="detail-jump">
         <button type="button" onClick={() => void jump()}>
           Jump to session

@@ -33,3 +33,9 @@ while that section is empty, and promotes it to the new version section on relea
 - **Light theme** following the OS colour scheme, contrast-tested against WCAG ratios.
 - **Read-only towards Claude Code** — the app never writes into `~/.claude`, and exposes nothing
   on the network: no listening socket, no HTTP server, no telemetry.
+- Sessions are named the way VS Code names them. The generated title is written once, early in
+  the transcript, so on a session that had been running a while it fell outside the read window
+  and the row fell back to Claude Code's derived slug (`q2-launcher-7e`); it is now looked up
+  once per session and kept.
+- **Show in Claude Control** in a popover row's right-click menu: opens the main window on that
+  session, whose detail now shows the **session ID with a copy button**.

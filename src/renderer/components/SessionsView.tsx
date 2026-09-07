@@ -2,6 +2,7 @@
  * Live session list, grouped by project → branch/worktree (F1, F2, F10, §8).
  */
 
+import { useEffect, useRef } from 'react';
 import type { AppState, ProjectGroup, SessionView } from '../../shared/ipc.ts';
 import { STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
 import { api } from '../api.ts';
@@ -107,6 +108,14 @@ function SessionRow({
   onSelect: (session: SessionView) => void;
   onActivate: (session: SessionView) => void;
 }): React.JSX.Element {
+  const row = useRef<HTMLDivElement>(null);
+  // A session selected from somewhere else — "Show in Claude Control" on a popover row — is
+  // usually not the one on screen, so bring it there. `nearest` makes this a no-op for a row
+  // that is already visible, which is every selection the user made by clicking.
+  useEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
   const age = session.lastActivityAt ? Date.now() - session.lastActivityAt : null;
   // Unseen only means something for the two states the badge counts; a working session is
   // not something you can have "missed".
@@ -124,6 +133,7 @@ function SessionRow({
 
   return (
     <div
+      ref={row}
       role="button"
       tabIndex={0}
       className={`session-row${selected ? ' selected' : ''}${unseen ? ' unseen' : ''}${session.muted ? ' muted' : ''}`}

@@ -181,6 +181,11 @@ export function isSyntheticModel(record: TranscriptRecord): boolean {
   return record.message?.model === '<synthetic>';
 }
 
+/** An `ai-title` record that actually carries a title — the scan predicate for one. */
+export function isAiTitleRecord(record: TranscriptRecord): boolean {
+  return record.type === 'ai-title' && aiTitleOf(record) !== null;
+}
+
 /** Title carried by an `ai-title` record; the field name is not guaranteed, so try both. */
 export function aiTitleOf(record: TranscriptRecord): string | null {
   for (const key of ['title', 'aiTitle', 'content', 'text'] as const) {

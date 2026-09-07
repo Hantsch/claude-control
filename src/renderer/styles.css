@@ -461,6 +461,31 @@ code,
   padding-left: 18px;
 }
 
+/* The session id and its copy button. Same left inset as the slug above, so name, slug and
+   id line up as one identity block under the status dot. */
+.detail-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-left: 18px;
+}
+
+.detail-id .mono {
+  color: var(--text-dim);
+  font-size: 11px;
+  /* A uuid has no spaces to break at, and the pane is narrow. */
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.copy-inline {
+  flex: none;
+  padding: 1px 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .detail-jump {
   display: flex;
   gap: 8px;

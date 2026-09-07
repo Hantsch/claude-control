@@ -11,6 +11,8 @@ while that section is empty, and promotes it to the new version section on relea
 
 <!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
 
+## 1.0.0 — 2026-09-07
+
 - First public release.
 - **Live session status** for every running Claude Code session: working / needs you? / stale /
   done / queued. A status says what is going on, never how long ago — a turn that finished an
@@ -43,3 +45,4 @@ while that section is empty, and promotes it to the new version section on relea
   "Hide sessions already done at start" turns it off; history is unaffected.
 - **Show in Claude Control** in a popover row's right-click menu: opens the main window on that
   session, whose detail now shows the **session ID with a copy button**.
+

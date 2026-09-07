@@ -23,6 +23,10 @@
     Only run the -PromoteUnreleased notes validation and exit - no file is touched, no version
     is computed. This is how check-notes.ps1 reaches the release workflow's verdict without
     performing a release.
+.PARAMETER AllowUnchangedVersion
+    Permit -Version to name the version package.json already carries, instead of failing with
+    "nothing to do". Only the bootstrap release needs this: with no tag to derive from, the
+    first release ships package.json's version verbatim.
 .EXAMPLE
     pwsh -File scripts/release.ps1 -Bump minor
 .EXAMPLE
@@ -35,7 +39,8 @@ param(
     [switch]$Tag,
     [switch]$PromoteUnreleased,
     [string]$NotesOut,
-    [switch]$ValidateNotesOnly
+    [switch]$ValidateNotesOnly,
+    [switch]$AllowUnchangedVersion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,7 +76,10 @@ if ($Version) {
     $next = "$major.$minor.$patch"
 }
 
-if ($next -eq $current) { throw "version is already $next - nothing to do" }
+# -AllowUnchangedVersion is the bootstrap release: the version in package.json IS the version
+# being released, so there is nothing to bump and the manifest write below is a no-op. Every
+# other caller reaching this with an unchanged version has made a mistake.
+if ($next -eq $current -and -not $AllowUnchangedVersion) { throw "version is already $next - nothing to do" }
 
 # Em dash as a char code on purpose: this file must stay pure ASCII, because PowerShell 5.1
 # reads a BOM-less script as ANSI and would parse the 0x94 byte of an em dash as a quote.

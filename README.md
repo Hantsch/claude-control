@@ -132,11 +132,15 @@ full pipeline run (N2).
 
 ### Releasing
 
-Releases are cut from `main` by [`.github/workflows/release.yml`](.github/workflows/release.yml):
-merge a PR into `main` and the workflow derives the version from the commit messages
-(Conventional Commits — `feat:` minor, `<type>!:`/`BREAKING CHANGE` major, `chore:`/`docs:`/`ci:`/
-`test:`/`style:`/`build:` no release, anything else patch), builds the portable EXE and publishes
-a GitHub release with the EXE and its checksum attached.
+Merging a PR into `main` releases — there is no separate publish step.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) derives the version from the
+commit messages (Conventional Commits — `feat:` minor, `<type>!:`/`BREAKING CHANGE` major,
+`chore:`/`docs:`/`ci:`/`test:`/`style:`/`build:` no release, anything else patch), bumps
+`package.json`, builds the portable EXE and publishes a GitHub release with the EXE and its
+checksum attached. A merge whose commits are all no-release types releases nothing.
+
+The very first release is the one case with no tag to derive from, so it ships whatever version
+`package.json` already carries, verbatim and unbumped. Every release after that is derived.
 
 The notes come from the `## Unreleased` section of [CHANGELOG.md](CHANGELOG.md), and a release
 with an empty section fails rather than shipping without notes. `npm run typecheck`, `npm test`

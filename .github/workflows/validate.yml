@@ -1,0 +1,38 @@
+name: validate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Typecheck, tests, release notes
+    # windows-latest, not ubuntu: the test suite covers Windows-specific behaviour (registry
+    # paths, PID liveness, tray tile rendering) and this is the only OS the app ships on.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # check-notes.ps1 needs tags and history to derive the bump level
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Same verdict the release job reaches after the merge - here it fails the PR instead.
+      - name: Check release notes
+        shell: pwsh
+        run: ./scripts/check-notes.ps1
+
+      # Proves the artifact still builds before main promises a release that has to produce it.
+      - name: Package
+        run: npm run package

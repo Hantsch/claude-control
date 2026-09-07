@@ -1,0 +1,75 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release exactly this version (required for the first release, e.g. 1.0.0)'
+        required: false
+        type: string
+      bump:
+        description: 'Force this bump level instead of reading commit messages'
+        required: false
+        type: choice
+        options: ['', 'patch', 'minor', 'major']
+        default: ''
+      dry_run:
+        description: 'Build and print, but do not commit, tag, push or publish'
+        required: false
+        type: boolean
+        default: false
+
+# Needed to push the release commit + tag and to create the GitHub release.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    # electron-builder produces the Windows portable target, so this has to be a Windows runner.
+    runs-on: windows-latest
+    # The release commit itself is chore(release) and would be skipped anyway; the marker
+    # makes it explicit and saves a run.
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # plan-release.ps1 needs tags and history
+          # Check out the branch, not the bare SHA: on a push event the default is a detached
+          # HEAD, and the release commit could not be pushed from there.
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The app is shipped unsigned; without this electron-builder still probes for a
+          # certificate on every build and logs a misleading warning.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          $params = @{}
+          if ('${{ inputs.version }}') { $params['Version'] = '${{ inputs.version }}' }
+          if ('${{ inputs.bump }}') { $params['ForceBump'] = '${{ inputs.bump }}' }
+          if ('${{ inputs.dry_run }}' -eq 'true') { $params['DryRun'] = $true }
+          ./scripts/ci-release.ps1 @params

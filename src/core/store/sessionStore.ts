@@ -78,6 +78,15 @@ function newsStamp(view: SessionView, statusSince: number): number {
   return Math.max(statusSince, view.lastActivityAt ?? 0);
 }
 
+/**
+ * `newsStamp` for a view the store has already stamped — `view.statusSince` is the store's
+ * own value, so this is the same number the seen/dismissed re-arming is decided from.
+ * Exported for the engine's "was already done when we started" filter (`hideDoneOnStart`).
+ */
+export function sessionNewsStamp(view: SessionView): number {
+  return newsStamp(view, view.statusSince);
+}
+
 export class InMemorySessionStore implements SessionRepository {
   private live = new Map<SessionId, LiveRecord>();
   private history = new Map<SessionId, HistoryEntry>();

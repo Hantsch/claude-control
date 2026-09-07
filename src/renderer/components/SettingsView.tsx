@@ -210,6 +210,24 @@ export function SettingsView(): React.JSX.Element {
         </span>
       </div>
       <div className="field">
+        <span>Hide sessions already done at start</span>
+        <input
+          type="checkbox"
+          checked={settings.list.hideDoneOnStart}
+          onChange={(event) =>
+            void apply({
+              ...settings,
+              list: { ...settings.list, hideDoneOnStart: event.target.checked },
+            })
+          }
+        />
+        <span className="hint">
+          A turn that finished before Claude Control was running is not news. With this on,
+          such a session stays out of the list, the popover and the tray until it does
+          something new — then it comes back on its own. History is unaffected.
+        </span>
+      </div>
+      <div className="field">
         <span>Keep settled sessions in the tray for</span>
         <span>
           <input

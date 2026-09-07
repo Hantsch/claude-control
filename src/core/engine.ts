@@ -39,7 +39,11 @@ import {
 import type { WindowSource } from './context/windowSource.ts';
 import { ContextWindowEstimator } from './state/contextPressure.ts';
 import { deriveStatus } from './state/machine.ts';
-import { InMemorySessionStore, type SessionRepository } from './store/sessionStore.ts';
+import {
+  InMemorySessionStore,
+  sessionNewsStamp,
+  type SessionRepository,
+} from './store/sessionStore.ts';
 import { FileWatcher, type FileChange } from './watch/watcher.ts';
 import { isTranscriptFile, sessionIdFromTranscriptPath } from './adapters/claude/paths.ts';
 
@@ -127,6 +131,14 @@ export class ControlEngine {
    * cleared the moment the old one transitions to `ended`.
    */
   private mutedSessions = new Set<SessionId>();
+  /**
+   * Sessions that were already `done` on the very first read, mapped to how new they were at
+   * that moment (`sessionNewsStamp`). They finished before the app was watching, so they are
+   * not news and stay off the live surfaces while `list.hideDoneOnStart` is on — until their
+   * stamp grows past the one recorded here, which is exactly what "it did something since"
+   * means. Storing the stamp rather than a flag is what makes them come back by themselves.
+   */
+  private doneOnStart = new Map<SessionId, number>();
   private ideWindows: IdeWindowRef[] = [];
   private refreshChain: Promise<void> = Promise.resolve();
   private started = false;
@@ -215,8 +227,14 @@ export class ControlEngine {
     // session's orphan, not a second thing to watch (§4) — but only once the probe actually
     // tells the two apart. `undefined`, from a missing probe or one that has not answered
     // yet, is "not known" and must never read as "no window": that would hide a real session.
+    // Work that was already finished when the app started is not news either — see
+    // `list.hideDoneOnStart`. It leaves `unstarting` alone so the orphan rule below still
+    // sees every live session in the folder when it decides who has a window.
+    const listed = this.settings.list.hideDoneOnStart
+      ? unstarting.filter((s) => !this.wasDoneOnStart(s))
+      : unstarting;
     const hideOrphans = this.settings.list.hideOrphanSessions;
-    const sessions = (hideOrphans ? unstarting.filter((s) => !this.isOrphan(s, unstarting)) : unstarting)
+    const sessions = (hideOrphans ? listed.filter((s) => !this.isOrphan(s, unstarting)) : listed)
       .sort(compareSessions)
       // Mute is presentation only (§6.6 D4): decorated last, after status/sort/grouping have
       // already been decided from the real, unmuted facts, so a mute can never move a
@@ -254,13 +272,28 @@ export class ControlEngine {
   }
 
   /**
-   * Unfiltered live sessions (before the `hideUnusedSessions`/`hideOrphanSessions` presentation
-   * filters) — what the main-process window probe needs to pick its candidates, since a
+   * Unfiltered live sessions (before the `hideUnusedSessions`/`hideDoneOnStart`/
+   * `hideOrphanSessions` presentation filters) — what the main-process window probe needs to pick its candidates, since a
    * session hidden as an orphan is still a live process whose folder mate still needs its
    * window checked (D2 of story 004).
    */
   getLiveSessions(): SessionView[] {
     return this.store.listLive();
+  }
+
+  /**
+   * `session` finished before the app started and has done nothing since, so it is not news
+   * (`list.hideDoneOnStart`). Two ways out, both of them "something happened": it left `done`,
+   * or its news stamp grew past the one the seeding read recorded — the latter catches a whole
+   * turn that started and finished between two polls, which never shows up as a transition.
+   *
+   * Pure on purpose: `getSnapshot` may be called at any time, so this only ever reads the map.
+   * Entries are dropped when the session ends, in `doRefresh`.
+   */
+  private wasDoneOnStart(session: SessionView): boolean {
+    const stamp = this.doneOnStart.get(session.sessionId);
+    if (stamp === undefined) return false;
+    return session.status === 'done' && sessionNewsStamp(session) <= stamp;
   }
 
   /**
@@ -477,6 +510,11 @@ export class ControlEngine {
       this.emitter.emit('transitions', transitions);
       // A session that just ended should show up in history without waiting for a restart.
       for (const transition of transitions) {
+        // The seeding pass is the app's first look at the world: whatever is sitting at
+        // `done` there finished before we arrived (`list.hideDoneOnStart`).
+        if (transition.seeded && transition.to === 'done') {
+          this.doneOnStart.set(transition.sessionId, sessionNewsStamp(transition.view));
+        }
         if (transition.to !== 'ended') continue;
         this.indexOne(transition.view.transcriptPath);
         // Nothing will ask about this session again, so drop its per-session caches.
@@ -485,6 +523,7 @@ export class ControlEngine {
         // A reappearing session id (same folder, new process) must not inherit a stale mute —
         // mirrors the gate's own cooldown reset on `ended`.
         this.mutedSessions.delete(transition.sessionId);
+        this.doneOnStart.delete(transition.sessionId);
       }
     }
     this.emitter.emit('sessions', this.getSnapshot());

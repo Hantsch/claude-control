@@ -37,5 +37,9 @@ while that section is empty, and promotes it to the new version section on relea
   the transcript, so on a session that had been running a while it fell outside the read window
   and the row fell back to Claude Code's derived slug (`q2-launcher-7e`); it is now looked up
   once per session and kept.
+- **A start shows only what still matters:** a session that was already `done` when Claude
+  Control started is not news, so it stays out of the list, the popover and the tray badge
+  until it does something new — then it comes back on its own. Settings → Session list →
+  "Hide sessions already done at start" turns it off; history is unaffected.
 - **Show in Claude Control** in a popover row's right-click menu: opens the main window on that
   session, whose detail now shows the **session ID with a copy button**.

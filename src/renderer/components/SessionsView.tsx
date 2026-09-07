@@ -38,7 +38,9 @@ export function SessionsView({
         <br />
         <span className="estimate">
           A session appears here once it has exchanged its first message. Windows that are
-          open but unused are hidden — Settings can show them again.
+          open but unused are hidden, and so is work that was already finished when Claude
+          Control started — that comes back as soon as the session does something new.
+          Settings can show both again.
         </span>
       </div>
     );

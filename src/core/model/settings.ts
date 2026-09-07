@@ -100,6 +100,19 @@ export interface ListSettings {
    */
   hideOrphanSessions: boolean;
   /**
+   * Drop sessions that were already `done` when the app started from the live surfaces.
+   *
+   * A turn that finished before we were watching is not news: it is the same reason §6.6
+   * seeds statuses silently instead of firing a toast for every session that happens to be
+   * sitting at `done` on launch. Without this, a fresh start opens onto a list of finished
+   * work the user has already dealt with, and the tray badge claims all of it needs them.
+   *
+   * The session is hidden, not forgotten: the moment it produces news — a new turn, a status
+   * change, a new transcript line — it comes back on its own, exactly like a dismissal
+   * re-arms (`SessionView.dismissed`). History is unaffected.
+   */
+  hideDoneOnStart: boolean;
+  /**
    * How long a quiet session stays interesting to the *tray* surfaces (popover, tray menu).
    *
    * The tray is the glance surface: it should answer "what needs me right now", and a
@@ -204,6 +217,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   list: {
     hideUnusedSessions: true,
     hideOrphanSessions: true,
+    hideDoneOnStart: true,
     trayRecentMs: 30 * 60_000,
   },
   ui: {
@@ -315,6 +329,7 @@ export function mergeSettings(partial: unknown): AppSettings {
   if (l && typeof l === 'object') {
     if (typeof l.hideUnusedSessions === 'boolean') base.list.hideUnusedSessions = l.hideUnusedSessions;
     if (typeof l.hideOrphanSessions === 'boolean') base.list.hideOrphanSessions = l.hideOrphanSessions;
+    if (typeof l.hideDoneOnStart === 'boolean') base.list.hideDoneOnStart = l.hideDoneOnStart;
     if (isPositive(l.trayRecentMs)) base.list.trayRecentMs = l.trayRecentMs;
   }
 

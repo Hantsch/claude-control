@@ -472,6 +472,16 @@ describe('discovery and status through the adapter', () => {
 });
 
 describe('engine', () => {
+  /**
+   * For tests whose fixture session seeds as `done`: `hideDoneOnStart` (on by default) would
+   * take that row off every surface, which is its own test below and not what these are about.
+   */
+  const SHOWING_SETTLED = {
+    ...DEFAULT_SETTINGS,
+    indexHistoryOnStart: false,
+    list: { hideDoneOnStart: false },
+  };
+
   it('produces a view model with tray state, badge and grouping', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-a', name: 'cc-a' }));
@@ -484,7 +494,7 @@ describe('engine', () => {
     const now = () => T0 + 2_000;
     const engine = new ControlEngine({
       adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      settings: mergeSettings(SHOWING_SETTLED),
       now,
       // No file watching in this test; the snapshot is what is under test.
       createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
@@ -555,7 +565,7 @@ describe('engine', () => {
     let clock = T0 + 2_000;
     const engine = new ControlEngine({
       adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      settings: mergeSettings(SHOWING_SETTLED),
       now: () => clock,
       createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
     });
@@ -581,6 +591,67 @@ describe('engine', () => {
       'utf8',
     );
     await engine.refreshNow();
+    expect(engine.getSnapshot().attention).toBe(1);
+
+    await engine.stop();
+  });
+
+  it('hides a session that was already done at start until it does something new', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-old', name: 'cc-old' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    // A turn that ended long before the app was started.
+    const path = await tree.writeTranscript(
+      slug,
+      'sess-old',
+      toJsonl([
+        prompt('u1', 0, 'the thing from before'),
+        assistant({ uuid: 'a1', at: 1_000, stopReason: 'end_turn', text: 'Done.' }),
+      ]),
+    );
+
+    let clock = T0 + 10 * 60_000;
+    const makeEngine = (hide: boolean): ControlEngine =>
+      new ControlEngine({
+        adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+        settings: mergeSettings({
+          ...DEFAULT_SETTINGS,
+          indexHistoryOnStart: false,
+          list: { hideDoneOnStart: hide },
+        }),
+        now: () => clock,
+        createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+      });
+
+    // With the filter off it is an ordinary `done` row that lights the tray.
+    const showing = makeEngine(false);
+    await showing.start();
+    expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['done']);
+    expect(showing.getSnapshot().attention).toBe(1);
+    await showing.stop();
+
+    const engine = makeEngine(true);
+    await engine.start();
+    expect(engine.getSnapshot().sessions).toHaveLength(0);
+    expect(engine.getSnapshot().groups).toHaveLength(0);
+    expect(engine.getSnapshot().trayState).toBe('none');
+    expect(engine.getSnapshot().attention).toBe(0);
+    // Re-reading the same transcript keeps it hidden — nothing happened since.
+    await engine.refreshNow();
+    expect(engine.getSnapshot().sessions).toHaveLength(0);
+
+    // A new turn is news: the row comes back by itself, badge included.
+    clock = T0 + 20 * 60_000;
+    await appendFile(
+      path,
+      toJsonl([
+        prompt('u2', 15 * 60_000, 'one more thing'),
+        assistant({ uuid: 'a2', at: 16 * 60_000, stopReason: 'end_turn', text: 'Also done.' }),
+      ]),
+      'utf8',
+    );
+    await engine.refreshNow();
+    expect(engine.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['sess-old']);
     expect(engine.getSnapshot().attention).toBe(1);
 
     await engine.stop();
@@ -656,7 +727,7 @@ describe('engine', () => {
     const now = () => T0 + 120_000;
     const engine = new ControlEngine({
       adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
-      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      settings: mergeSettings(SHOWING_SETTLED),
       now,
       createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
     });

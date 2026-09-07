@@ -3,8 +3,16 @@
 # Sprint workflow
 
 Bundles several stories from the requirements folder into a **sprint that runs autonomously**:
-one branch per sprint, refine all stories first, then build them all, one commit per story, and
-at the end a review doc + test plan as the basis for the next sprint planning.
+one branch per sprint, refine all stories first, then build them all — each with the tests its
+acceptance criteria were mapped to — one commit per story, and at the end a review doc as the
+basis for the next sprint planning.
+
+**A sprint needs no manual acceptance.** Every acceptance criterion is mapped to an automated
+test in refine and proven by it in build, so a finished sprint is finished: you read
+`review.md` and merge. Only criteria that genuinely cannot be automated (an OS dialog,
+specific hardware, a paid external service) end up on a human, declared per story with their
+reason — and even those hold nothing open. Whatever a later walk-through finds becomes a new
+story in a new sprint.
 
 ## Folder structure
 
@@ -16,8 +24,8 @@ sprints/
   SNN/                    running sprint
     sprint.md             planning: goal, story list (build order), status
     progress.md           live trail: one line per finished deliverable, while the sprint runs
-    review.md             result: implemented stories, findings & decisions, blockers
-    testplan.md           manual acceptance: use cases with step-by-step instructions
+    review.md             result: implemented stories, acceptance record, findings, blockers
+    testplan.md           optional, and only the manual residue — often absent entirely
   done/SNN/               finished sprints, moved with `git mv`
 ```
 
@@ -36,17 +44,20 @@ sprints/
      — detail decisions are made by the agents, verified against spec/guardrails and
      documented per story under `## Decisions (Sprint)`. New user questions coming out of
      refine go into a follow-up round (again via the orchestrator), then one more refine round.
-   - **Build:** all stories sequentially through fresh agents, including verification and
-     clean-agent review. After each story **one commit on the sprint branch** (never push,
-     never on a protected branch). Blocked stories do not stop the sprint — they are marked
-     and explained in the review doc.
-   - **Review:** `review.md` (stories + short description, findings & decisions, blockers) and
-     `testplan.md` (step-by-step acceptance) are written, the roadmap is updated at the
-     milestone, then committed, `status: done`.
-3. **You** do the sprint review from `review.md` + `testplan.md`, plan the next sprint on top
-   of it (correction stories if needed) and decide about the **merge back into
-   `branch-base`**. A protected branch only ever receives a deliberate release merge, never a
-   sprint branch directly.
+   - **Build:** all stories sequentially through fresh agents, each deliverable including the
+     acceptance test named for it. Then verification (build/test/lint plus the `e2e` command
+     for criteria about user actions) and a clean-agent review that also judges whether those
+     tests would actually fail on a broken implementation. After each story **one commit on the
+     sprint branch** (never push, never on a protected branch). Blocked stories do not stop the
+     sprint — they are marked and explained in the review doc.
+   - **Review:** `review.md` (stories + short description, the acceptance record — which test
+     proved which criterion — findings & decisions, blockers) is written, `testplan.md` only if
+     there is manual residue to walk, the roadmap is updated at the milestone, then committed,
+     `status: done`.
+3. **You** read `review.md`, plan the next sprint on top of it (correction stories if needed)
+   and decide about the **merge back into `branch-base`**. There is nothing to accept by hand
+   first. A protected branch only ever receives a deliberate release merge, never a sprint
+   branch directly.
 
 The sprint is **resumable**: if the session dies, `/sprint SNN` continues at the
 first open spot based on `sprint.md` + story status.
@@ -54,9 +65,11 @@ first open spot based on `sprint.md` + story status.
 ## Watching a running sprint
 
 A sprint runs for hours and mostly says nothing, so `progress.md` is what you watch: the build
-agent appends a line there after every finished deliverable. If it keeps growing, the sprint is
-working — a slow deliverable and a dead one look identical in the working tree otherwise. Ticked
-`- [x] D…` boxes in the story file are the second signal.
+agent appends a `started` line before and a `done`/`blocked` line after every deliverable, the
+timestamp produced by the shell in the same command. If it keeps growing, the sprint is working —
+a slow deliverable and a dead one look identical in the working tree otherwise. Ticked `- [x] D…`
+boxes in the story file are the second signal. Timestamps that run backwards or lie in the future
+mean the agent typed them instead of running the command — that is a finding, not a clock issue.
 
 ## Numbering
 

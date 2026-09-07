@@ -5,7 +5,7 @@ model: sonnet
 effort: medium
 ---
 
-<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 3.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Run the roadmap ritual: **$1** (no argument: run `check` first, then offer `plan`).
@@ -32,9 +32,12 @@ keeps it honest and turns it into the next sprints. Story truth stays in `requir
      under `done/`.
    - `<concepts>/` — are there concepts without a line in the roadmap? Are there concepts
      whose stories are all done (→ they belong in `<systems>/`)?
-3. Correct every deviation directly in the roadmap. Exception: **"accepted" on a milestone is
-   marked by the user only** — name missing live acceptances as an open point, do not tick
-   them yourself.
+3. Correct every deviation directly in the roadmap. A milestone whose stories are all `done`
+   is **`done`** — acceptance happened inside the sprint, through the tests each story wrote,
+   so there is no separate "accepted" state waiting on the user. What a later walk-through
+   finds belongs under "Gaps/notes" or into a new story, not into a milestone reopened after
+   the fact. Do carry criteria that were only covered below the real surface, and every
+   `manual residue` from the sprint reviews, into "Gaps/notes" — that is the honest remainder.
 4. Report compactly: drift corrected, state of the current phase, what is waiting
    unprioritised.
 
@@ -50,14 +53,17 @@ keeps it honest and turns it into the next sprints. Story truth stays in `requir
    - Cut small: one sprint = one playable/verifiable increment, 3–6 stories as a guideline.
    - One file per story from `<requirements>/_TEMPLATE.md` (`status: draft`, next free id per
      the profile's `story-id-format`, determined from `done/INDEX.md` + the open stories):
-     requirement + acceptance criteria from the user's perspective; deliberately open
-     decisions as concrete questions in `## Open Questions` (resolved by
-     `/sprint` in its clarification round). **No** plan/deliverables — that is
-     refine's job.
+     requirement + acceptance criteria from the user's perspective, **numbered `AC1`, `AC2`,
+     … and each one observable** — refine has to map every single one to an automated test, so
+     a criterion phrased as an intention ("the screen feels calm") cannot be accepted by
+     anyone and is cut as a fact instead ("the screen shows exactly one accent colour").
+     Deliberately open decisions as concrete questions in `## Open Questions` (resolved by
+     `/sprint` in its clarification round). **No** plan/deliverables and **no** test mapping —
+     that is refine's job.
 4. Create `<sprints>/<next free sprint id>/sprint.md` from the template: goal, stories in
    build order, `status: planned`, `milestone:` line.
-5. Record the sprint under its milestone in the roadmap (status stays open until built and
-   accepted).
+5. Record the sprint under its milestone in the roadmap (status stays open until the sprint has
+   built it).
 6. Show the user the cut (sprint goal + one sentence per story) for correction. Then the user
    starts `/sprint <id>` themselves.
 

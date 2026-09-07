@@ -5,7 +5,7 @@ model: opus
 effort: high
 ---
 
-<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 3.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Refine the story with ID **$1**.
@@ -90,17 +90,42 @@ into memory. Everything has to be reviewable in the repository.
        `/build` delegates the code review to a fresh agent that sees only spec +
        diff; this line decides its tier. Default is the cheap tier;
        `story-review-hard` (Opus + effort `high`) only for real risk.
-   - **`## Test Plan (manual acceptance)`** — fill only if a human check is needed: exact
-     steps to reproduce that the user can follow.
-     **If `ui-acceptance-required: true` in the profile (P1):** steps that verify a
-     *user-facing action* run through the actual UI — never through a console command or a
-     direct internal call as a substitute for the real path. If that path does not exist
-     yet, that is a story gap → plan it as a deliverable (the UI trigger) instead of
-     papering over it with a console workaround. Pure engine/backend stories without a
-     surface are exempt (accepted via tests).
+   - **`## Acceptance Tests`** — the AC → test mapping, and this is what replaces the manual
+     test plan. **If `ac-tests-required: true` in the profile (P1):** every entry in
+     `## Acceptance Criteria` gets one line naming the test that will prove it — level, file
+     and the test name it will carry:
 
-5. **Coverage gate — every AC needs a D:** walk `## Acceptance Criteria` top to bottom and
-   name, for each entry, the deliverable that delivers it. Only then set `status: ready`.
+     ```
+     - AC1 → e2e `tests/e2e/day-view.spec.ts` › "the day view reads top to bottom"
+     - AC2 → unit `tests/core/journal/close-day.test.ts` › "a text-less day proposes nothing"
+     - AC3 → manual residue: SmartScreen warns on an unsigned build — needs a signed
+       certificate we do not have.
+     ```
+
+     Rules for that mapping:
+     - **The test belongs to the deliverable that implements the behaviour.** Name it inside
+       the D as well ("D2 — … plus its test in `<file>`"). A trailing "D5 — write the tests"
+       is the anti-pattern: it is the D that gets dropped when time runs short, and the
+       coverage was the point.
+     - **`ui-acceptance-required: true`:** a criterion describing something the *user does* is
+       mapped to the `e2e` command from the profile's `## Verify` — the real surface. A
+       console command, a direct call into an internal module, or a renderer test with a faked
+       backend is not a substitute for the real path. If the profile's `e2e` is `none`, the
+       harness does not exist: plan it as the story's **first deliverable** where the scope
+       carries it, otherwise map the criterion one level down *and* write the gap into this
+       section and into `## Open Questions` for the sprint review. Never turn it into a manual
+       step — that is exactly what this workflow is getting rid of.
+     - **A missing trigger is a story gap, not a test problem.** If a user-facing action has no
+       path through the real surface yet, plan that trigger as a deliverable.
+     - **`manual residue`** (only if `manual-residue-allowed: true`) is for a criterion that
+       cannot be automated for a *real* reason: an OS-level dialog, specific hardware, a paid
+       external service. It needs the reason on the line. "Hard to test" and "would need a
+       fixture" are not reasons — they are work. Residues are listed in the sprint review and
+       block nothing.
+
+5. **Coverage gate — every AC needs a D and a test:** walk `## Acceptance Criteria` top to
+   bottom and name, for each entry, (a) the deliverable that delivers it and (b) the test line
+   from `## Acceptance Tests` that proves it. Only then set `status: ready`.
 
    An uncovered criterion is the most expensive failure this workflow has. It is invisible on
    the way through: every D ticks green, the build reports success, and only the code review
@@ -108,8 +133,14 @@ into memory. Everything has to be reviewable in the repository.
    routinely the single most expensive agent of the whole story — more than the implementation
    agents together, because it re-establishes context the build already had.
 
+   An untested criterion is the second most expensive: it ends up on a human's list, and that
+   list is what this workflow exists to keep empty. A criterion nobody can write a test for is
+   usually a criterion nobody can check at all — reformulate it here, with the user, into
+   something observable, rather than shipping it as an unverifiable promise.
+
    If a criterion has no deliverable: cut one for it, or take the criterion back to the user.
-   Do not set `ready` with a gap, and do not silently drop the criterion.
+   If it has no test and no residue reason: give it one. Do not set `ready` with either gap,
+   and do not silently drop the criterion.
 
 6. **Hand off:** summarise in **a few lines** what was refined and whether open questions
    remain. Say: the plan is in the file, corrections welcome, then `/build $1` —
@@ -120,13 +151,18 @@ into memory. Everything has to be reviewable in the repository.
 - All `## Open Questions` must be resolved before `status: ready`.
 - **No `status: ready` while an acceptance criterion has no deliverable covering it** (step 5).
   `/build` re-checks this and sends the story back here.
-- **Acceptance = UI (P1)**, if enabled in the profile: every user-facing capability needs a
-  real path through the actual UI. An acceptance or test-plan step for a *user action* that
-  requires a console command or a direct internal call is a story gap, not a valid test. If
-  a requirement contains such an action without a path, plan the trigger as a deliverable.
+- **Acceptance is the test suite (P1)**, if `ac-tests-required: true`: no `status: ready`
+  while a criterion has neither a named test nor a `manual residue` reason. There is no
+  manual acceptance gate behind this — whatever is not tested here is not checked at all.
+- **The real surface**, if `ui-acceptance-required: true`: a criterion about a *user action*
+  maps to the `e2e` command, not to a console call or a faked-backend test. Missing trigger or
+  missing harness = deliverable, or a named gap; never a manual step.
 - Keep the plan skimmable — the user wants to iterate, not read every detail.
 - Do not commit, do not push. Refine only writes the story file.
 - **Older story files** may use the previous German headings (`## Anforderung`,
   `## Akzeptanzkriterien`, `## Offene Fragen`, `## Modell-Hinweise`, `## Testplan
   (manuelle Abnahme)`). Treat them as equivalent to the English ones and keep the file's
-  existing language and headings — do not rename sections of a story in flight.
+  existing language and headings — do not rename sections of a story in flight. A story that
+  still carries `## Test Plan (manual acceptance)` / `## Testplan (manuelle Abnahme)` instead
+  of `## Acceptance Tests` gets the AC → test mapping written into that existing section,
+  under a `### Acceptance tests` sub-heading; do not restructure the file for it.

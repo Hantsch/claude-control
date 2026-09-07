@@ -5,7 +5,7 @@ model: sonnet
 effort: medium
 ---
 
-<!-- ai-scrum:managed 2.1.1 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 3.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Implement the story with ID **$1**.
@@ -25,15 +25,21 @@ Open `<requirements>/$1-*.md`. Status must be **`ready`**.
 - `done` → stop, say "already done".
 - Not found → look in `<requirements>/done/$1-*.md`; if it is there, also "already done".
 
-Then check coverage: every entry in `## Acceptance Criteria` must be covered by at least one
-deliverable. If one is not, **stop** and name the uncovered criterion — that is a refine gap,
-and building around it is the most expensive mistake available here: the Ds all go green, the
-code review finds the hole at the very end, and the fix cycle costs more than the
-implementation agents together. Back to `/refine $1`.
+Then check coverage — **both halves**:
+
+- every entry in `## Acceptance Criteria` is covered by at least one deliverable, and
+- if `ac-tests-required: true` in the profile, every entry has a line in
+  `## Acceptance Tests` naming its test or declaring a `manual residue` with a reason.
+
+If either is missing, **stop** and name the uncovered criterion — that is a refine gap, and
+building around it is the most expensive mistake available here: the Ds all go green, the code
+review finds the hole at the very end, and the fix cycle costs more than the implementation
+agents together. An untested criterion is worse than that, because nothing downstream catches
+it: there is no manual acceptance round behind this command. Back to `/refine $1`.
 
 ## Delegation rules
 
-You delegate every line of code in this command, so these four decide whether the build
+You delegate every line of code in this command, so these five decide whether the build
 finishes or quietly stops with nothing in the working tree to show for it.
 
 - **Never start a background child.** Put `run_in_background: false` on every `Agent` call you
@@ -52,6 +58,25 @@ finishes or quietly stops with nothing in the working tree to show for it.
   was delivered. Look at the working tree first — a terminated agent often leaves partial
   edits behind — then re-dispatch that one deliverable once with the same prompt. Only if it
   fails twice is it a blocker.
+- **Progress trail — the timestamp is never typed, only produced.** When the caller (`/sprint`)
+  names a progress file, every delegation event gets ONE shell command that reads the clock and
+  appends the line in the same step. You fill in only story id, deliverable and status:
+
+  ```powershell
+  Add-Content -Encoding utf8 <progress-file> ("- " + (Get-Date -Format "yyyy-MM-dd HH:mm") + " · <id> · D<n> <short title> · started")
+  ```
+  ```bash
+  echo "- $(date '+%Y-%m-%d %H:%M') · <id> · D<n> <short title> · started" >> <progress-file>
+  ```
+
+  Run it **immediately before** each `Agent` call (`started`) and **immediately after** it
+  returns (`done` or `blocked`) — one command per event, at the moment it happens. Never write
+  the line with `Edit`/`Write`, never batch several events into one command, never fill the
+  timestamp in yourself, not even when you "know" it. Every previous wording of this rule
+  ("read the clock, then write the line") produced trails with invented times: hours off, in
+  the future, running backwards. A trail like that is worse than none — the user reads it to
+  decide whether the build is alive, and a plausible-looking lie tells them nothing. Standalone
+  `/build` (no progress file named) skips this rule.
 
 ## Flow (scrum-like: small deliverables, acceptance at the end)
 
@@ -79,7 +104,9 @@ finishes or quietly stops with nothing in the working tree to show for it.
      complicated. No marking means default tier. If an unmarked D turns out to feel risky
      enough for the hard tier while implementing, that is a plan-gap signal → stop briefly
      and ask the user instead of silently escalating.
-   - **Delegate:** ONE `Agent` call with **`run_in_background: false`** spelled out, and a
+   - **Delegate:** if a progress file was named, run the `started` trail command first (see
+     the delegation rules — one command, timestamp produced by the shell). Then ONE `Agent`
+     call with **`run_in_background: false`** spelled out, and a
      self-contained prompt. Spelling it out is the point: `false` is *not* the default, and a
      background child never wakes you again — see the delegation rules above. The agent
      cannot see this conversation, so give it:
@@ -90,6 +117,13 @@ finishes or quietly stops with nothing in the working tree to show for it.
        Exploration is the biggest cost driver in a build, because an agent's whole context is
        re-read on every turn: a wide search early makes every later turn more expensive. The
        plan already did that search — the agent should not repeat it.
+     - **the test lines from `## Acceptance Tests` that belong to this D** (verbatim: level,
+       file, test name, and the criterion they prove), with the instruction to write them as
+       part of this deliverable — same agent, same turn sequence, not as a follow-up. The test
+       asserts the *criterion* as a user would observe it; a test that merely mirrors what the
+       implementation happens to do proves nothing and will be rejected in the review. If the
+       named test file does not exist yet, it creates it next to the project's existing ones
+       and follows their shape.
      - for `deliverable-hard`, the risk justification from `## Model Hints`,
      - the instruction to read and honour `CLAUDE.md` plus every file listed under
        `## Context to read before coding` in `.claude/ai-scrum.md` **before writing code**,
@@ -99,9 +133,10 @@ finishes or quietly stops with nothing in the working tree to show for it.
        result, and anything genuinely notable — no diffs, no pasted file contents, no
        restatement of the deliverable. Every line it returns lands in your context and is
        paid for again on each of your remaining turns.
-   - **Check and continue:** review the agent's result briefly (file diff, build relevance),
-     tick `- [ ] D…` to `- [x]` in the file and start the next D immediately — no stop at the
-     user. Tick it **right away, not at the end of the story**: that tick is the only liveness
+   - **Check and continue:** if a progress file was named, run the `done` (or `blocked`) trail
+     command now, before anything else. Review the agent's result briefly (file diff, build
+     relevance), tick `- [ ] D…` to `- [x]` in the file and start the next D immediately — no
+     stop at the user. Tick it **right away, not at the end of the story**: that tick is the only liveness
      signal the user has — they watch the working tree, where a healthy build and a dead one
      look identical except that the ticks keep moving.
      **Keep a note of which files each D actually changed** — the code review in step 6
@@ -115,15 +150,19 @@ finishes or quietly stops with nothing in the working tree to show for it.
    - Run the `build`, `test` (and `lint`/`typecheck`, if set) commands from the profile's
      `## Verify` section. Entries set to `none` are skipped. Run `test` when tests exist or
      were touched.
+   - **Run `e2e` too, if the profile sets it and this story mapped any criterion to it.**
+     That run *is* the acceptance of those criteria — there is no manual round behind it, so a
+     skipped or red e2e suite is a blocker, not a note for the user. If the harness cannot run
+     here (no display, missing dependency), say exactly that and treat it as a blocker: leave
+     `status: in-progress`, name what is missing, and let the sprint report it. Do **not**
+     substitute a screenshot, a console call or your own reading of the code for it.
    - **Run each command once.** A green result stays valid until something changes — do not
      re-run a suite "to be sure" while the tree is untouched. The deliverable agents already
      verified their own work; this pass is the story-level gate, not a repeat of theirs.
-   - **If `live-smoke-required: true` and the story has a visible surface (P2):** green
-     build/test is NOT enough. Drive the actual flow through the running app, the way
-     `live-smoke-how` in the profile describes, and look at the result yourself. If that is
-     impossible for lack of a live environment (headless agents cannot drive a GUI), the
-     story is NOT `done`: status stays `in-progress`, you report "built, acceptance pending"
-     and hand the manual acceptance to the user.
+   - **Then walk `## Acceptance Tests` line by line** and confirm that each named test exists,
+     ran, and passed in this verification. A criterion whose test was never written is not
+     done — send that D back rather than ticking the criterion. A `manual residue` line needs
+     no run; it is carried into the Done section as-is.
    - Report the result honestly — name failing tests, gloss over nothing.
 6. **Code review (clean agent):** the review is NOT done by this session — whoever
    implemented does not verify. Delegate to a fresh `Agent` (foreground):
@@ -139,9 +178,19 @@ finishes or quietly stops with nothing in the working tree to show for it.
        has been committed,
      - the deliverable → changed-files mapping you kept in step 3, so the reviewer goes
        straight to the relevant code instead of rediscovering which D produced what,
+     - the story's `## Acceptance Tests` mapping, and the instruction that this is now the
+       story's whole acceptance — nobody walks it by hand afterwards,
      - the review assignment:
        (a) each acceptance criterion individually: PASS / FAIL / UNCLEAR with evidence
            (`file:line`),
+       (a2) **the test named for each criterion: does it actually prove it?** The reviewer
+           opens each one and judges whether a broken implementation would make it fail.
+           Report as a finding: a test that asserts nothing meaningful, that re-states the
+           implementation instead of the criterion (asserting the value the code happens to
+           produce), that mocks away the very thing under test, that is skipped or
+           conditionally skipped, or that covers a narrower case than the criterion claims.
+           This item exists because whoever implements also wrote the test, and a green
+           tautology looks exactly like acceptance from the outside.
        (b) weakened or deleted tests, disabled assertions, suppressed warnings, silenced
            null checks or commented-out validations without a justifying comment on the
            same line,
@@ -153,13 +202,17 @@ finishes or quietly stops with nothing in the working tree to show for it.
    - **Handle findings:** fix confirmed ones, then repeat the verification from step 5;
      document deliberately unfixed findings with a reason in the Done section. Max. 3
      review-fix cycles, then stop and ask the user. Only then continue.
-7. **`## Test Plan (manual acceptance)`**: if a manual check is needed and the section is
-   still empty, write the exact steps to reproduce now.
+7. **`## Acceptance Tests`**: bring the section in line with what was actually written — the
+   real test names and paths, if a deliverable ended up placing one differently. Do not write
+   a manual click list here; a human step is only ever a `manual residue` line with its
+   reason.
 8. **Fill `## Done`:**
    - Short summary (2–5 lines): what was done.
    - Commit message (1–2 lines, keywords are enough — no full sentence needed; story ID
      first, e.g. `042: finish team-based combat`).
-   - Verification: build/test/lint status + review outcome; open points and blockers.
+   - Verification: build/test/lint/e2e status + review outcome; **the AC → test mapping as
+     verified** (which criterion, which test, passed), every `manual residue` with its reason,
+     and open points or blockers.
 9. Check all `## Acceptance Criteria` and tick the ones that are met.
 9b. **If `changelog-path` is set in the profile:** every user-facing feature or fix in this
     story gets an entry there, under `# Features` or `# Fixes` of the **current** version
@@ -168,8 +221,12 @@ finishes or quietly stops with nothing in the working tree to show for it.
     internal changes get no entry, because they change nothing for the user. A story with no
     user-facing change adds nothing at all — an empty entry is worse than none. When
     `changelog-path` is `none`, skip this step entirely.
-10. Set `status: done` — for user-facing stories **only** after a passed live smoke or a
-    confirmed user acceptance (P2, if enabled); otherwise leave `in-progress` and hand over.
+10. Set `status: done` once verification (step 5) is green and the review (step 6) is through.
+    **That is the whole gate** — there is no user acceptance round to wait for, and a story is
+    not held open so someone can look at it later. `in-progress` is only for a real blocker:
+    red tests you cannot fix, a criterion whose test was never written, an e2e harness that
+    cannot run, or review-fix cycles exhausted. Name the blocker in the story file; anything
+    a walk-through finds *after* this becomes a new story, not a reopened one.
     Then `git mv` the file to `<requirements>/done/` and append a line to
     `<requirements>/done/INDEX.md`
     (`- NNN — <title> · <sprint or —> · <one-sentence result>`) — move and index line are
@@ -187,9 +244,14 @@ finishes or quietly stops with nothing in the working tree to show for it.
   commit message. (Inside `/sprint` the orchestrator commits — see that command.)
 - **No stop after individual deliverables.** The whole story is pulled through in one go;
   the user accepts once at the end based on `## Done`, not after every `D`.
-- Never weaken tests to go green. A red test is reported, not silenced.
+- Never weaken tests to go green. A red test is reported, not silenced. That now cuts both
+  ways: the acceptance tests this story writes are the only check the criteria will ever get,
+  so a test trimmed until it passes is not a shortcut — it is the story shipping unverified.
 - If you notice while implementing that the plan has gaps: stop, say so, back to
   `/refine`.
 - **Older story files** may use the previous German headings (`## Akzeptanzkriterien`,
   `## Modell-Hinweise`, `## Testplan (manuelle Abnahme)`, `## Done`) — treat them as
-  equivalent and keep the file's existing language.
+  equivalent and keep the file's existing language. A story refined before
+  `## Acceptance Tests` existed has no mapping to check: verify its criteria against the
+  tests that exist, note in the Done section that the story predates the mapping, and do not
+  retrofit the section.

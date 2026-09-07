@@ -13,13 +13,14 @@
     5. Everything is pushed and a GitHub release is created from the tag, with the notes from
        the changelog plus the download hint, and the EXE + checksum attached as assets.
 
-    The first release has no tag to measure against, so it is not derived at all: pass
-    -Version explicitly (the workflow_dispatch "version" input). Without a v* tag and without
-    -Version the run stops rather than guessing a bootstrap version.
+    The first release has no tag to measure against, so nothing can be derived - and deriving
+    from the whole history would land on 0.1.1 rather than the version the project calls its
+    first. That case reads package.json instead and releases its version verbatim, without
+    bumping it. So the first merge to main releases too; no manual dispatch is needed.
 .PARAMETER ForceBump
     Ignore the commit messages and use this level (for a manual workflow_dispatch run).
 .PARAMETER Version
-    Release exactly this version instead of bumping. Required for the first release.
+    Release exactly this version instead of bumping.
 .PARAMETER DryRun
     Do everything except commit, tag, push and create the release. Files are still modified
     and the EXE is still built, so you can inspect both - revert with `git checkout -- .`.
@@ -56,26 +57,22 @@ $plan | ForEach-Object { Write-Host "  $_" }
 
 $hasTag = @(git -C $repoRoot tag --list 'v*').Count -gt 0
 
+$bootstrap = $false
+
 if ($Version) {
     if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "-Version '$Version' is not semver" }
     Write-Host "  -> explicit version $Version" -ForegroundColor Yellow
+} elseif (-not $hasTag) {
+    # First release. There is no tag to measure against, so a bump cannot be derived - and
+    # deriving one from the whole history is wrong anyway (it lands on 0.1.1, not on the
+    # version the project considers its first). package.json is the answer instead: release
+    # exactly what it says, verbatim, without bumping it. Every later run has a tag and takes
+    # the derived path below.
+    $Version = (Get-Content -Path (Join-Path $repoRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "package.json version '$Version' is not semver" }
+    $bootstrap = $true
+    Write-Host "  -> first release: no v* tag yet, releasing package.json's $Version verbatim" -ForegroundColor Yellow
 } else {
-    if (-not $hasTag) {
-        Write-Host ''
-        Write-Host 'No v* tag exists yet, so there is no baseline to derive a version from.' -ForegroundColor Yellow
-        Write-Host 'Bootstrap the first release with a workflow_dispatch run and an explicit' -ForegroundColor Yellow
-        Write-Host 'version input (e.g. 1.0.0). Nothing released.' -ForegroundColor Yellow
-        if ($env:GITHUB_STEP_SUMMARY) {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Value @'
-## Nothing released
-
-No `v*` tag exists yet. Bootstrap the first release with a **Run workflow** dispatch and an
-explicit `version` input (e.g. `1.0.0`).
-'@
-        }
-        exit 0
-    }
-
     $bump = $ForceBump
     if (-not $ForceBump) {
         $bumpLine = $plan | Where-Object { $_ -match '^bump=' } | Select-Object -First 1
@@ -101,6 +98,9 @@ Write-Host '=== version + notes ===' -ForegroundColor Cyan
 $notesPath = Join-Path ([IO.Path]::GetTempPath()) "release-notes-$PID.md"
 $releaseArgs = @{ PromoteUnreleased = $true; NotesOut = $notesPath }
 if ($Version) { $releaseArgs['Version'] = $Version } else { $releaseArgs['Bump'] = $bump }
+# The bootstrap release is package.json's own version, so release.ps1 would otherwise refuse
+# it as "already that version - nothing to do". Everything else it does still applies.
+if ($bootstrap) { $releaseArgs['AllowUnchangedVersion'] = $true }
 
 try {
     & (Join-Path $PSScriptRoot 'release.ps1') @releaseArgs

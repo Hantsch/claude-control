@@ -9,6 +9,10 @@
     CHANGELOG.md must already hold the notes; release.ps1 -ValidateNotesOnly then applies the
     identical check the release itself would.
 
+    Before the first release there is no tag and therefore no bump to derive: the merge
+    bootstraps instead, releasing package.json's version verbatim. That is still a release,
+    so the notes are checked just the same.
+
     Nothing is written and nothing is committed - this only reports.
 
     Needs the full history and the tags, so the workflow checks out with fetch-depth: 0.
@@ -22,25 +26,27 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $hasTag = @(git -C $repoRoot tag --list 'v*').Count -gt 0
+
 if (-not $hasTag) {
-    # Before the first release there is no baseline, and ci-release.ps1 refuses to guess one -
-    # so no merge to main can trigger a release and there is nothing to block on.
-    Write-Host 'No v* tag yet - the first release is a manual dispatch, nothing to check.' -ForegroundColor DarkGray
-    exit 0
+    # No tag yet, so the merge triggers the bootstrap release: ci-release.ps1 ships
+    # package.json's version verbatim. That is a release, so the notes have to be ready -
+    # there is no bump level to consult and nothing that can make it "none".
+    $next = (Get-Content -Path (Join-Path $repoRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+    $bump = 'first release'
+} else {
+    $plan = & (Join-Path $PSScriptRoot 'plan-release.ps1')
+    $bumpLine = $plan | Where-Object { $_ -match '^bump=' } | Select-Object -First 1
+    if (-not $bumpLine) { throw 'plan-release.ps1 returned no bump level' }
+    $bump = ($bumpLine -split '=', 2)[1].Trim()
+
+    if ($bump -eq 'none') {
+        Write-Host 'No releasable commits - nothing to check.' -ForegroundColor DarkGray
+        exit 0
+    }
+
+    $nextLine = $plan | Where-Object { $_ -match '^next=' } | Select-Object -First 1
+    $next = ($nextLine -split '=', 2)[1].Trim()
 }
-
-$plan = & (Join-Path $PSScriptRoot 'plan-release.ps1')
-$bumpLine = $plan | Where-Object { $_ -match '^bump=' } | Select-Object -First 1
-if (-not $bumpLine) { throw 'plan-release.ps1 returned no bump level' }
-$bump = ($bumpLine -split '=', 2)[1].Trim()
-
-if ($bump -eq 'none') {
-    Write-Host 'No releasable commits - nothing to check.' -ForegroundColor DarkGray
-    exit 0
-}
-
-$nextLine = $plan | Where-Object { $_ -match '^next=' } | Select-Object -First 1
-$next = ($nextLine -split '=', 2)[1].Trim()
 
 try {
     & (Join-Path $PSScriptRoot 'release.ps1') -ValidateNotesOnly

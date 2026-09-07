@@ -920,8 +920,17 @@ function Popover(): React.JSX.Element {
                     </button>
                     <StatusDot status={session.status} />
                     <span className="idx">{index + 1}</span>
-                    <span className="branch" title={session.branch ?? session.project.name}>
-                      {session.branch ? session.branch : session.project.name}
+                    {/* Identity, in the order you ask about it: *which run is this* first,
+                        then where it runs. The branch alone cannot tell two sessions on the
+                        same branch apart — a routine case (two agents on one sprint branch) —
+                        so the name leads and the branch trails it, quieter. */}
+                    <span className="ident">
+                      <span className="name" title={sessionLabel(session)}>
+                        {sessionLabel(session)}
+                      </span>
+                      <span className="branch" title={session.branch ?? session.project.name}>
+                        {session.branch ? session.branch : session.project.name}
+                      </span>
                     </span>
                     <ContextBar context={session.context} valueFormat="tokens" />
                     <span className="model" title={session.model ?? undefined}>

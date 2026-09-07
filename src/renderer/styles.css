@@ -1142,9 +1142,31 @@ table.history .title {
   text-align: right;
 }
 
-.popover-row .branch {
+/* Identity cell: the session's own name, then the branch behind it. The name gets the
+   emphasis and whatever width is left, because it is the only part that tells two sessions
+   on the same branch apart; the branch keeps a slice of the cell for itself (`flex: 0 1 auto`
+   plus a cap) so it never disappears entirely behind a long name. */
+.popover-row .ident {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.popover-row .name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 600;
   font-size: 12px;
+}
+
+.popover-row .branch {
+  /* `0 0` on purpose: a long *name* must not squeeze the branch — the name shrinks and
+     ellipsizes first, and the branch only clips once it alone exceeds its 45% cap. */
+  flex: 0 0 auto;
+  max-width: 45%;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 /* Muted sessions still show up in the popover, just quieter — same treatment as the main
@@ -1195,6 +1217,7 @@ table.history .title {
   background: var(--bg-hover);
 }
 
+.popover-row .name,
 .popover-row .branch,
 .popover-row .model,
 .popover-row .l2 .txt {

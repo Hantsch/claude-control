@@ -13,6 +13,7 @@ import type {
 } from '../../shared/ipc.ts';
 import { acceleratorFromChord, formatAccelerator } from '../../shared/accelerator.ts';
 import { api } from '../api.ts';
+import { formatUpdateStatusLine } from '../lib/updateStatusLine.ts';
 
 /** Renders the age of a fetched table for the checkbox's inline result and the diagnostics line. */
 function formatAgeMs(ageMs: number | null): string {
@@ -44,6 +45,8 @@ export function SettingsView(): React.JSX.Element {
   const [saved, setSaved] = useState(false);
   const [modelWindowsPending, setModelWindowsPending] = useState(false);
   const [modelWindowsResult, setModelWindowsResult] = useState<string | null>(null);
+  const [updatesPending, setUpdatesPending] = useState(false);
+  const [updatesResult, setUpdatesResult] = useState<string | null>(null);
   /**
    * The data directory is committed on blur or Enter, not on every keystroke: changing it
    * tears down and rebuilds the file watchers, so saving per character would restart them
@@ -106,6 +109,41 @@ export function SettingsView(): React.JSX.Element {
       .catch((error: unknown) => {
         setModelWindowsPending(false);
         setModelWindowsResult(error instanceof Error ? `Refresh failed: ${error.message}` : 'Refresh failed.');
+      });
+  };
+
+  const toggleUpdates = (checked: boolean): void => {
+    void apply({
+      ...settings,
+      updates: { ...settings.updates, enabled: checked },
+    });
+    setUpdatesResult(null);
+    if (!checked) {
+      // Same reasoning as `toggleOnlineTable` above: no check happens with the setting off, but
+      // the Diagnostics line should flip to "off — no network requests" right away rather than
+      // keep showing the stale "on · …" text.
+      setDiagnostics((prev) =>
+        prev && prev.updates ? { ...prev, updates: { ...prev.updates, enabled: false } } : prev,
+      );
+      return;
+    }
+    setUpdatesPending(true);
+    void api
+      .refreshUpdateCheck()
+      .then((status) => {
+        setUpdatesPending(false);
+        setDiagnostics((prev) => (prev ? { ...prev, updates: status } : prev));
+        if (!status) {
+          setUpdatesResult('Check did not run.');
+        } else if (status.lastOutcome === 'ok') {
+          setUpdatesResult(status.updateAvailable ? `Update ${status.latestVersion} staged.` : 'Up to date.');
+        } else {
+          setUpdatesResult(status.lastError ? `Check failed: ${status.lastError}` : 'Check failed.');
+        }
+      })
+      .catch((error: unknown) => {
+        setUpdatesPending(false);
+        setUpdatesResult(error instanceof Error ? `Check failed: ${error.message}` : 'Check failed.');
       });
   };
 
@@ -466,6 +504,23 @@ export function SettingsView(): React.JSX.Element {
         {!modelWindowsPending && modelWindowsResult && <span className="hint">{modelWindowsResult}</span>}
       </div>
 
+      <div className="section-title">Updates</div>
+      <div className="field">
+        <span>Check for updates</span>
+        <input
+          type="checkbox"
+          checked={settings.updates.enabled}
+          onChange={(event) => toggleUpdates(event.target.checked)}
+        />
+        <span className="hint">
+          Checks GitHub for a newer release and stages the installer in the background, at most
+          once per calendar day. This is the second (and only other) network request Claude
+          Control ever makes, alongside the exact-context-window lookup above; off by default.
+        </span>
+        {updatesPending && <span className="hint">Checking…</span>}
+        {!updatesPending && updatesResult && <span className="hint">{updatesResult}</span>}
+      </div>
+
       <div className="row-actions">
         <button type="button" onClick={() => void api.resetSettings().then(setSettings)}>
           Reset to defaults
@@ -504,6 +559,16 @@ export function SettingsView(): React.JSX.Element {
             >
               {diagnostics.modelWindows ? formatModelWindowsLine(diagnostics.modelWindows) : 'off — no network requests'}
             </dd>
+            <dt>Self-update</dt>
+            <dd
+              className={
+                diagnostics.updates?.enabled && diagnostics.updates.lastOutcome === 'failed'
+                  ? 'warning'
+                  : undefined
+              }
+            >
+              {diagnostics.updates ? formatUpdateStatusLine(diagnostics.updates) : 'off — no network requests'}
+            </dd>
             <dt>Version</dt>
             <dd>
               {diagnostics.appVersion} · Electron {diagnostics.electronVersion} · {diagnostics.platform}
@@ -512,8 +577,9 @@ export function SettingsView(): React.JSX.Element {
           <div className="estimate">
             Claude Control is read-only: it never writes to Claude Code&rsquo;s data, never sends
             input to a session. It has no listening socket, sends no telemetry, and by default
-            sends nothing over the network &mdash; the exact-context-window lookup above is the
-            only exception, making exactly one outbound request while it is turned on.
+            sends nothing over the network &mdash; the exact-context-window lookup above and the
+            update check are the two exceptions, each making its own request only while it is
+            turned on.
           </div>
         </>
       )}

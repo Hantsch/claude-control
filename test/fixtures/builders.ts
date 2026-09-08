@@ -83,6 +83,19 @@ export function prompt(uuid: string, at: number, text = 'do the thing'): Record<
   };
 }
 
+/**
+ * The record an aborted turn leaves behind. Structurally a prompt — that is the whole point:
+ * Claude Code writes the marker as a plain `user` text record, which is why it has to be
+ * recognised by its text.
+ */
+export function interrupt(
+  uuid: string,
+  at: number,
+  text = '[Request interrupted by user]',
+): Record<string, unknown> {
+  return prompt(uuid, at, text);
+}
+
 /** Tool result: a `user` record with `toolUseResult` + `sourceToolAssistantUUID`. */
 export function toolResult(
   uuid: string,

@@ -13,6 +13,7 @@ import {
   T0,
   assistant,
   fileHistorySnapshot,
+  interrupt,
   lastPrompt,
   prompt,
   queueOperation,
@@ -304,6 +305,56 @@ const rows: Row[] = [
     records: [assistant({ uuid: 'a1', at: 0, stopReason: 'stop_sequence' })],
     at: 2 * SECOND,
     expected: 'working',
+  },
+  {
+    // The bug this state exists for: the marker is a plain `user` record, so it used to read
+    // as "a prompt was just submitted" → `working`, i.e. a turn in flight forever.
+    name: 'an interrupted turn → interrupted, not working',
+    records: [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] }),
+      interrupt('u1', 1_000),
+    ],
+    at: 3 * SECOND,
+    expected: 'interrupted',
+  },
+  {
+    name: 'the "for tool use" wording is the same interrupt',
+    records: [
+      assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] }),
+      interrupt('u1', 1_000, '[Request interrupted by user for tool use]'),
+    ],
+    at: 3 * SECOND,
+    expected: 'interrupted',
+  },
+  {
+    // Age never changes a status, and this one least of all: it is a statement about what the
+    // user did, not about how long ago they did it.
+    name: 'an interrupt from hours ago is still interrupted',
+    records: [interrupt('u1', 0)],
+    at: 5 * 60 * MINUTE,
+    expected: 'interrupted',
+  },
+  {
+    name: 'typing again after an interrupt puts the session back to working',
+    records: [interrupt('u1', 0), prompt('u2', 1_000, 'weiter bitte')],
+    at: 3 * SECOND,
+    expected: 'working',
+  },
+  {
+    // A prompt that *quotes* the marker is still a prompt — the pattern matches the whole
+    // text, so an interrupt cannot be faked (or accidentally triggered) by talking about one.
+    name: 'a prompt merely mentioning the marker is not an interrupt',
+    records: [prompt('u1', 0, 'why does [Request interrupted by user] show as working?')],
+    at: 3 * SECOND,
+    expected: 'working',
+  },
+  {
+    // An interrupt is not pending work, so a prompt waiting in the queue behind it is the
+    // more specific fact — same rule that lets `queued` beat `done`.
+    name: 'a prompt queued after an interrupt reads as queued',
+    records: [interrupt('u1', 0), queueOperation('enqueue', 1_000)],
+    at: 3 * SECOND,
+    expected: 'queued',
   },
 ];
 

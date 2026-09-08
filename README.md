@@ -21,8 +21,9 @@ if you want to verify the download:
 (Get-FileHash .\ClaudeControl-1.0.0-portable.exe -Algorithm SHA256).Hash
 ```
 
-Settings are stored in `%APPDATA%\claude-control\settings.json`. There is no auto-update —
-watch the releases page, or the repository, for a new version.
+Settings are stored in `%APPDATA%\claude-control\settings.json`. Auto-update is opt-in and off
+by default, same as the exact-context-window lookup — leave it off and watch the releases page,
+or the repository, for a new version.
 
 **Requirements:** Windows 10/11, and Claude Code with its state in `~/.claude` (or point the
 app at another directory in Settings). The packaged EXE bundles its own runtime; you do not
@@ -55,8 +56,9 @@ need Node to run it.
 - Send prompts to sessions, approve permissions, or start/kill sessions — it is read-only
 - Track cost in USD (explicitly out of scope for v1)
 - Expose anything over the network — no listening socket, no HTTP server, no telemetry, and by
-  default no outbound requests either; the optional exact-context-window lookup (opt-in, off by
-  default) is the one exception, making exactly one outbound request while it is on
+  default no outbound requests either; the optional exact-context-window lookup and the optional
+  update check (both opt-in, off by default) are the two exceptions, each making its own request
+  only while it is turned on
 - Support agents other than Claude Code (the adapter boundary is designed for it; a second
   agent is the next milestone)
 - See sessions running inside WSL — the app reads one Windows-side `~/.claude` root

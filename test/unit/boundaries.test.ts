@@ -8,9 +8,10 @@
  *  - **N1: no network.** No HTTP server, no client, no socket, anywhere.
  *  - **N2: nothing under `core/` opens a file for writing.**
  *
- * Story 005 renegotiated N1 and N2 for exactly ONE file — the opt-in model-window source.
- * The exception is a single named path, not a directory, and it is paid for by the extra
- * rule at the bottom of this file, which pins what that one file may do.
+ * Story 005 renegotiated N1 and N2 for exactly ONE file — the opt-in model-window source —
+ * and story 019 added a second, the opt-in update source. Both exceptions are single named
+ * paths, not directories, and each is paid for by its own rule further down this file, which
+ * pins what that one file may do.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -51,10 +52,13 @@ const NETWORK_MODULES =
   'node:(?:http|https|http2|net|dgram|tls)|http|https|http2|net|dgram|tls|axios|undici|node-fetch|ws|socket\\.io|socket\\.io-client';
 
 /**
- * The single file story 005 allowlisted out of N1 (`fetch(`) and N2 (the cache write).
- * A path, not a prefix: `core/context/` as a whole stays under both rules.
+ * The two files allowlisted out of N1 (`fetch(`) and N2 (the cache write / the update
+ * staging): story 005's model-window source and story 019's update source. Paths, not
+ * prefixes — `core/context/` and `core/updates/` as a whole stay under both rules.
  */
 const WINDOW_SOURCE = join('core', 'context', 'windowSource.ts');
+const UPDATE_SOURCE = join('core', 'updates', 'updateSource.ts');
+const NETWORK_FS_ALLOWLIST = [WINDOW_SOURCE, UPDATE_SOURCE];
 
 /** N1's inline forms, split so the allowlist can forgive `fetch(` and nothing else. */
 const INLINE_FETCH = /\bfetch\s*\(/;
@@ -78,8 +82,8 @@ describe('architecture boundaries', () => {
     const writeHandle = /\bopen\s*\([^)]*['"](?:w\+?|a\+?|r\+)['"]|\b(?:handle|file|stream|fd)\.write\s*\(/i;
     const offenders: string[] = [];
     for (const file of await sourceFiles(join(SRC, 'core'))) {
-      // The one allowlisted writer (005 D3) — pinned by its own rule below.
-      if (relative(SRC, file) === WINDOW_SOURCE) continue;
+      // The allowlisted writers (005 D3, 019 D3) — each pinned by its own rule below.
+      if (NETWORK_FS_ALLOWLIST.includes(relative(SRC, file))) continue;
       const body = await code(file);
       if (write.test(body) || writeHandle.test(body)) offenders.push(relative(SRC, file));
     }
@@ -104,9 +108,10 @@ describe('architecture boundaries', () => {
     for (const file of await sourceFiles(SRC)) {
       const rel = relative(SRC, file);
       const body = await code(file);
-      // Only `fetch(`, and only in the one allowlisted file (005 D3); every other inline
-      // form, and every network module import, still applies to it too.
-      const inline = INLINE_OTHER_NETWORK.test(body) || (INLINE_FETCH.test(body) && rel !== WINDOW_SOURCE);
+      // Only `fetch(`, and only in the two allowlisted files (005 D3, 019 D3); every other
+      // inline form, and every network module import, still applies to them too.
+      const inline =
+        INLINE_OTHER_NETWORK.test(body) || (INLINE_FETCH.test(body) && !NETWORK_FS_ALLOWLIST.includes(rel));
       if (rule.test(body) || inline) offenders.push(rel);
     }
     expect(offenders).toEqual([]);
@@ -140,6 +145,53 @@ describe('architecture boundaries', () => {
     expect(body).toMatch(/mkdirSync\(dirname\(this\.file\)/);
     // No other filesystem verb: no delete, no chmod, no second file.
     expect(body).not.toMatch(/\b(rm|rmdir|unlink|chmod|chown|symlink|copyFile|appendFileSync|createWriteStream)\s*\(/);
+  });
+
+  it('the second allowlisted network+writing module stays inside its exception (019 D3)', async () => {
+    const body = await code(join(SRC, UPDATE_SOURCE));
+
+    // 1. The global `fetch` and nothing else: no network module in any import form, and a
+    //    single bounded call site all three requests (API, sums, exe) go through.
+    expect(importsAny(NETWORK_MODULES).test(body)).toBe(false);
+    expect(body.match(/\bfetch\s*\(/g) ?? []).toHaveLength(1);
+    expect(body).toMatch(/fetch\(url, \{/);
+    expect(body).toMatch(/new AbortController\(\)/);
+    expect(body).toMatch(/signal: controller\.signal/);
+    // Against the one endpoint the story named, and only it.
+    expect(body).toMatch(
+      /RELEASES_LATEST_URL =\s*'https:\/\/api\.github\.com\/repos\/Hantsch\/claude-control\/releases\/latest'/,
+    );
+    expect(body.match(/https?:\/\//g) ?? []).toHaveLength(1);
+
+    // 2. Every path it writes or deletes is rooted in `<dataDir>/updates/`, whose name comes
+    //    from the caller. No Claude-Code-owned location is nameable — read-only stays absolute.
+    expect(body).not.toMatch(/claudeDir|claudeHome|claudeRoot|\.claude\b/i);
+    expect(body).toMatch(/this\.dir = join\(dataDir, UPDATES_DIR\)/);
+    for (const field of ['exeFile', 'manifestFile', 'tmpFile', 'checkFile']) {
+      expect(body).toMatch(new RegExp(`this\\.${field} = join\\(this\\.dir, [A-Z_]+\\)`));
+    }
+    const targets = [...body.matchAll(/\b(?:writeFileSync|renameSync|mkdirSync|unlinkSync)\s*\(\s*([^,)]+)/g)].map(
+      (match) => match[1]?.trim(),
+    );
+    expect(targets.length).toBeGreaterThan(0);
+    expect(targets.filter((target) => !/^(?:this\.\w+|temp|file)$/.test(target ?? ''))).toEqual([]);
+
+    // 3. Deleting goes through one helper, and only ever with one of this class's own paths —
+    //    no name from the network can become something this module removes.
+    expect(body.match(/\bunlinkSync\s*\(/g) ?? []).toHaveLength(1);
+    const discarded = [...body.matchAll(/this\.discard\(\s*([^)]+?)\s*\)/g)].map((match) => match[1]);
+    expect(discarded.length).toBeGreaterThan(0);
+    expect(discarded.filter((arg) => !/^(?:this\.\w+|`\$\{this\.\w+\}\.tmp`)$/.test(arg ?? ''))).toEqual([]);
+    // The staged file's name is a constant, never taken from the release payload.
+    expect(body).toMatch(/STAGED_EXE_FILE = 'staged\.exe'/);
+
+    // 4. The verify/stage boundary: the download is hashed and compared before anything is
+    //    written, and exactly one call site moves a file into the staged exe's path.
+    expect(body).toMatch(/createHash\('sha256'\)/);
+    expect(body).toMatch(/if \(actual !== expected\)/);
+    expect(body.match(/renameSync\(this\.tmpFile, this\.exeFile\)/g) ?? []).toHaveLength(1);
+    // No other filesystem verb: no directory walk, no chmod, no copy, no recursive remove.
+    expect(body).not.toMatch(/\b(rm|rmdir|readdir|readdirSync|chmod|chown|symlink|copyFile|createWriteStream)\s*\(/);
   });
 
   it('every renderer window is locked down (contextIsolation, no nodeIntegration)', async () => {

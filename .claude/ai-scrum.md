@@ -14,7 +14,7 @@
   update those files (`/ai-scrum:setup`). Hashes of the managed copies: .claude/ai-scrum.lock
 -->
 
-ai-scrum-version: 3.0.0
+ai-scrum-version: 4.0.0
 project: claude-control
 
 ## Verify

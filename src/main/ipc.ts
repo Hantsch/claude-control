@@ -6,6 +6,7 @@
 
 import { BrowserWindow, app, clipboard, ipcMain, shell } from 'electron';
 import type { WindowSource } from '../core/context/windowSource.ts';
+import type { UpdateSource } from '../core/updates/updateSource.ts';
 import type { ControlEngine } from '../core/engine.ts';
 import type { HistoryQuery, SessionId } from '../core/model/types.ts';
 import { IPC, type AppState, type DiagnosticsInfo, type FocusResult } from '../shared/ipc.ts';
@@ -29,6 +30,8 @@ export interface IpcDeps {
   protocolRegistration: ProtocolRegistration;
   /** Null when no data dir was supplied (story 005, D6) — no fetch is possible, only an estimate. */
   windowSource: WindowSource | null;
+  /** Null unless this is a packaged portable install (story 019, D4) — no update is possible otherwise. */
+  updateSource: UpdateSource | null;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -109,6 +112,7 @@ export function registerIpc(deps: IpcDeps): void {
     platform: `${process.platform} ${process.arch}`,
     protocolTarget: deps.protocolRegistration,
     modelWindows: deps.windowSource?.status() ?? null,
+    updates: deps.updateSource?.status() ?? null,
   }));
 
   ipcMain.handle(IPC.quit, () => {
@@ -120,6 +124,13 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC.refreshModelWindows, async () => {
     if (!deps.windowSource) return null;
     return deps.windowSource.refresh({ force: true });
+  });
+
+  // Mirrors the model-windows handler above: a forced check happens inside the call, so a
+  // later "Check now" Settings button can show its own outcome immediately (story 019, D5).
+  ipcMain.handle(IPC.refreshUpdateCheck, async () => {
+    if (!deps.updateSource) return null;
+    return deps.updateSource.refresh({ force: true });
   });
 
   // The popover sizes itself to its content, so it can ask for the height it needs (§8).

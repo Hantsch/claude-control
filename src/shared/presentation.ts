@@ -18,6 +18,7 @@ export const STATUS_COLOR_VAR: Record<SessionStatus, string> = {
   working: '--status-working',
   queued: '--status-queued',
   starting: '--status-starting',
+  interrupted: '--status-interrupted',
   ended: '--status-ended',
   unknown: '--status-unknown',
 };
@@ -49,6 +50,10 @@ export const STATUS_HINT: Record<SessionStatus, string> = {
     'worth a look, not a claim that anything failed.',
   done: 'The turn finished and control is back with you.',
   queued: 'A prompt is enqueued and has not started yet.',
+  interrupted:
+    'The last turn was stopped (Esc) — the session is open and idle at its prompt. Nothing ' +
+    'is running and no result is waiting, so this never notifies; the row leaves the popover ' +
+    'on its own, or right away with "Mark as seen".',
   starting:
     'The session is open but has not exchanged a single message yet — a freshly opened ' +
     'Claude Code window looks like this until the first prompt.',
@@ -69,6 +74,7 @@ export const HISTORY_FINAL_LABEL: Record<SessionStatus, string> = {
   waiting: 'ended on a prompt',
   stale: 'ended mid-tool',
   queued: 'prompt still queued',
+  interrupted: 'stopped mid-turn',
   // `deriveHistoricalStatus` only reaches `unknown` when the transcript held no
   // user/assistant record at all, so that is what the history table should say.
   starting: 'never used',

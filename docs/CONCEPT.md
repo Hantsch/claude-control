@@ -17,8 +17,8 @@ have my sessions been doing* over time.
 
 It is a read-only observer. It never writes to Claude Code's state, never sends input to a
 session, has no listening socket, sends no telemetry, and by default touches the network not at
-all — the one exception is the opt-in exact-context-window lookup, which makes exactly one
-outbound request while turned on and none otherwise.
+all — the opt-in exact-context-window lookup and the opt-in update check are the two
+exceptions, each making its own request only while it is on.
 
 ---
 
@@ -44,7 +44,7 @@ outbound request while turned on and none otherwise.
 
 | # | Requirement |
 |---|-------------|
-| N1 | Local machine only. No listening socket, no telemetry, no outbound requests by default — the opt-in exact-context-window lookup is the sole exception, making exactly one outbound request only while it is on |
+| N1 | Local machine only. No listening socket, no telemetry, no outbound requests by default — the opt-in exact-context-window lookup and the opt-in update check are the two exceptions, each making its own request only while it is on |
 | N2 | Read-only with respect to all Claude Code data |
 | N3 | Portable EXE, started manually. No installer, no autostart in v1 |
 | N4 | Detection latency for a status change: under ~2 s |
@@ -234,6 +234,7 @@ That is a deliberate seam, not speculative generality — see §12.
 | `done` | Turn finished, control handed back to the human | **yes** |
 | `queued` | Prompt enqueued but not yet started | no |
 | `starting` | Session is open but has not exchanged a single message yet | no |
+| `interrupted` | The last turn was stopped (Esc); the session is idle at its prompt | no |
 | `ended` | Process no longer alive; moves to history | no |
 | `unknown` | Could not derive a state (parse failure, truncated file) | no |
 
@@ -263,6 +264,14 @@ a presentation filter in `getSnapshot`, not a hole in the state machine: the sto
 session, the first prompt moves it out of `starting`, and `Settings → Hide unused sessions`
 turns the filter off for anyone who wants to see open windows too.
 
+`interrupted` was added because leaving it out was a bug, not a gap. Aborting a turn writes a
+`user` record (`[Request interrupted by user]`), which the derivation below read as "a prompt
+was just submitted" → `working`. `working` means a turn is in flight, and §6.5 never drops
+those and refuses to dismiss them — so one Esc pinned a row to the popover permanently with
+no way to remove it. It is not `done` either: nothing finished, no result is waiting, and the
+user is the one who stopped it, so it never notifies and never counts towards the badge. It
+leaves the tray surfaces the ordinary way, through the recency window or "Mark as seen".
+
 ### 6.2 Derivation
 
 Given the last *semantic* record `R` of a live session and `now`:
@@ -275,6 +284,7 @@ R.type == "assistant" && stop_reason == "tool_use"
         && age(R) >= T_work(tool) && tool is fast         → waiting
         && age(R) >= T_work(tool) && tool is slow         → stale
 R.type == "user"  (a real prompt, or a tool result)       → working
+R.type == "user"  && R is an interrupt marker             → interrupted
 enqueue seen with no matching dequeue                     → queued
 ```
 
@@ -423,17 +433,27 @@ Two surfaces, both English.
 A compact popover — the fast path, no window management:
 
 ```
-Claude Control · 4 sessions · 3 settled                  📌  ✕
+Claude Control · 4 sessions · 3 settled               ⟳  📌  ✕
 ● Icons nacharbeiten     claude-control · main      done        3m ago
 ◐ G0 freigegeben        Hantsch-MMO · feature/x    working     now
 ◑ AI scrum sprint 02    ai-diary · main            needs you?  1m ago
 ○ Repo-Audit            claude · main              stale       42m ago
 ─────────────────────────────────────────────────────────
-Open Claude Control                    Settings      Quit
+Open Claude Control     Mark all as seen (2)    Settings   Quit
 ```
 
 The rows are the tray-worthy sessions of §6.5, not every live one; the "· 3 settled" hint
 names what was left out and the main window shows them.
+
+**Refresh (⟳)** forces a re-read of every live transcript, skipping the size+mtime shortcut
+the 5 s tick relies on. Nothing about the popover *needs* it — the engine pushes every
+snapshot — and that is exactly why it is there: it is how a doubt ("is this list actually
+now?") gets settled instead of watched. Its tooltip carries the snapshot's age, so the
+question can be answered without clicking at all.
+
+**Mark all as seen** is present only when it would do something; with nothing settled to
+clear, the button is gone rather than greyed out. The buttons to its right are anchored to
+the footer's right edge, so only its own slot disappears.
 
 It is sized to its content and wide enough that every column fits on one line — a
 horizontal scrollbar in a menu-sized surface is unusable. The title bar is a drag region, so

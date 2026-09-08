@@ -197,8 +197,13 @@ export const STATUS_SORT_RANK: Record<SessionStatus, number> = {
   working: 3,
   queued: 4,
   starting: 5,
-  unknown: 6,
-  ended: 7,
+  // Below every state that says something is pending: an interrupted session is idle, and
+  // the user is the one who stopped it. Above `unknown`/`ended`, which are not sessions
+  // asking for anything at all. `ended` stays the highest rank — `popoverGroupRank` uses it
+  // as the base of its demoted band.
+  interrupted: 6,
+  unknown: 7,
+  ended: 8,
 };
 
 export function compareSessions(a: SessionView, b: SessionView): number {

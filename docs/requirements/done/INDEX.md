@@ -72,3 +72,9 @@ second roadmap.
   tiles as unreadable, so the tile is now drawn in code from the app's own status-dot vocabulary
   and the contrast test measures an absolute floor per theme; accepted 2026-08-23 (AC 3, theme
   flip without restart, left unticked).
+- 019 — The app updates itself · — · Gave the portable EXE an opt-in, off-by-default self-update:
+  a daily GitHub-release check, SHA256-verified download and stage, an in-place swap right before
+  the single-instance lock on the next launch, a one-time toast on the following start, a
+  Settings toggle and status line, and a second named exception in N1/the README/Diagnostics —
+  two `story-review-hard` rounds, the first catching stale single-exception wording plus four
+  hardening gaps in the download/swap paths, both fixed and confirmed.

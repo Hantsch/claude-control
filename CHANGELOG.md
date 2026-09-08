@@ -11,6 +11,25 @@ while that section is empty, and promotes it to the new version section on relea
 
 <!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
 
+- **An aborted turn is its own status.** Interrupting a session (Esc) leaves a `user` record
+  behind, which read as "a prompt was just submitted" → `working`. Because `working` means a
+  turn is in flight, the row could never leave the popover and "Mark as seen" refused to touch
+  it. Such a session now reads `interrupted`: it never notifies, never counts towards the
+  badge, and leaves the popover the ordinary way. The marker no longer becomes the row's label
+  or resets the run clock either.
+- **Refresh in the popover** (⟳ in its header) forces a re-read of every live transcript, for
+  when you want the list confirmed rather than watched. Its tooltip says how old the current
+  snapshot is.
+- **"Mark all as seen" is hidden instead of greyed out** when there is nothing settled to
+  clear.
+- **The app can update itself now — if you let it.** Flip it on in Settings and it checks
+  GitHub once a day, downloads and checksum-verifies the release, and swaps itself in the next
+  time you start it. No relaunch, no releases page to babysit, no EXE to overwrite by hand. Off
+  by default, and Settings tells you exactly when it last checked, what's staged, and why it
+  didn't work if it didn't.
+- **A one-time "Updated to vX.Y.Z" toast** on the first start that's actually running the new
+  version, so you know it happened.
+
 ## 1.0.0 — 2026-09-07
 
 - First public release.
@@ -45,4 +64,3 @@ while that section is empty, and promotes it to the new version section on relea
   "Hide sessions already done at start" turns it off; history is unaffected.
 - **Show in Claude Control** in a popover row's right-click menu: opens the main window on that
   session, whose detail now shows the **session ID with a copy button**.
-

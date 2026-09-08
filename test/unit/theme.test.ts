@@ -155,6 +155,7 @@ const STATUSES = [
   'status-stale',
   'status-queued',
   'status-starting',
+  'status-interrupted',
   'status-ended',
   'status-unknown',
 ];
@@ -174,6 +175,9 @@ const DARK_SEMANTIC: Scheme = {
   'status-stale': '#ac8e68',
   'status-queued': '#bf5af2',
   'status-starting': '#64d2ff',
+  // Added with the `interrupted` state; chosen so neither scheme's worst status pair moves
+  // (both stay `stale`/`unknown` in dark and `waiting`/`stale` in light).
+  'status-interrupted': '#ff6b8a',
   'status-ended': '#5a5a60',
   'status-unknown': '#7a7a80',
   'band-green': '#30d158',
@@ -237,7 +241,7 @@ describe('styles.css theme structure', () => {
     expect(css.split(LIGHT_MEDIA)).toHaveLength(2);
   });
 
-  it('leaves the shipped dark values for all twelve semantic tokens untouched', () => {
+  it('leaves the shipped dark values for every semantic token untouched', () => {
     for (const [name, hex] of Object.entries(DARK_SEMANTIC)) {
       expect(token(dark, name).toLowerCase(), `dark --${name} moved`).toBe(hex);
     }
@@ -353,7 +357,7 @@ describe('both schemes contrast to target', () => {
 });
 
 describe('light scheme distinguishability (OKLab)', () => {
-  it('separates the eight statuses at least as well as the dark scheme does', () => {
+  it('separates every status at least as well as the dark scheme does', () => {
     const darkWorst = worstPair(palette(dark, STATUSES));
     const lightWorst = worstPair(palette(light, STATUSES));
     expect(

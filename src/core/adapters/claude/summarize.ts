@@ -24,6 +24,7 @@ import {
   clipOneLine,
   aiTitleOf,
   isAssistantRecord,
+  isInterruptRecord,
   isPromptRecord,
   isSemanticRecord,
   isToolResultRecord,
@@ -96,7 +97,8 @@ function describeLast(record: TranscriptRecord): NonNullable<TranscriptTailFacts
 
 export function semanticKind(record: TranscriptRecord): SemanticRecordKind {
   if (isAssistantRecord(record)) return 'assistant';
-  return isToolResultRecord(record) ? 'tool-result' : 'prompt';
+  if (isToolResultRecord(record)) return 'tool-result';
+  return isInterruptRecord(record) ? 'interrupt' : 'prompt';
 }
 
 /**

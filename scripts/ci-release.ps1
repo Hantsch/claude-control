@@ -131,6 +131,21 @@ if (-not (Test-Path $exePath)) { throw "expected artifact not found: $exePath" }
 $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLower()
 $sumsPath = Join-Path $repoRoot 'release/SHA256SUMS.txt'
 [IO.File]::WriteAllText($sumsPath, "$hash *$exeName`n", (New-Object System.Text.UTF8Encoding($false)))
+
+# Self-check: the update-checker (built elsewhere in this story) trusts this exact producing
+# format - "<sha256> *<filename>" per line - so a corrupted write here must fail the release
+# loudly instead of shipping a checksums file consumers can't parse.
+$sumsLines = Get-Content -Path $sumsPath -Encoding UTF8
+foreach ($line in $sumsLines) {
+    if ($line -notmatch '^[0-9a-f]{64} \*.+$') {
+        throw "SHA256SUMS.txt self-check failed: line '$line' does not match '<sha256> *<filename>'"
+    }
+}
+$expectedLine = "$hash *$exeName"
+if ($sumsLines -notcontains $expectedLine) {
+    throw "SHA256SUMS.txt self-check failed: expected line '$expectedLine' not found in $sumsPath"
+}
+
 $sizeMb = [math]::Round((Get-Item $exePath).Length / 1MB, 1)
 Write-Host "  $exeName ($sizeMb MB)" -ForegroundColor Green
 Write-Host "  sha256 $hash" -ForegroundColor Green

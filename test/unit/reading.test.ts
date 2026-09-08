@@ -13,7 +13,11 @@ import {
   projectRefForCwd,
   slugForCwd,
 } from '../../src/core/adapters/claude/paths.ts';
-import { isPromptRecord, isSemanticRecord } from '../../src/core/adapters/claude/records.ts';
+import {
+  isInterruptRecord,
+  isPromptRecord,
+  isSemanticRecord,
+} from '../../src/core/adapters/claude/records.ts';
 import { summarizeRecords } from '../../src/core/adapters/claude/summarize.ts';
 import { runningSubagentCount } from '../../src/core/state/subagents.ts';
 import { readHead, readTail, scanRecordsFromEnd } from '../../src/core/adapters/claude/tail.ts';
@@ -27,6 +31,7 @@ import {
   aiTitle,
   fileHistorySnapshot,
   ideLock,
+  interrupt,
   lastPrompt,
   makeFixtureTree,
   prompt,
@@ -246,6 +251,50 @@ describe('readHead', () => {
     );
     const head = await readHead(path, 32 * 1024);
     expect(head.records[0]!.uuid).toBe('u1');
+  });
+});
+
+describe('interrupt markers', () => {
+  it('is a kind of its own, and never the session label or the run start', () => {
+    const records = [
+      prompt('u0', 0, 'sprint 15 bauen'),
+      assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 't1', name: 'Bash' }] }),
+      interrupt('u1', 2_000),
+    ];
+    const facts = summarizeRecords(records as never, { now: T0 + 5_000, read: READ_DIAG });
+
+    expect(facts.last?.kind).toBe('interrupt');
+    // Both of these read the newest *prompt*. Counting the marker as one would label the row
+    // "[Request interrupted by user]" and restart the run clock at the abort.
+    expect(facts.lastPromptText).toBe('sprint 15 bauen');
+    expect(facts.runStartedAt).toBe(T0);
+    expect(isPromptRecord(records[2] as never)).toBe(false);
+    expect(isInterruptRecord(records[2] as never)).toBe(true);
+  });
+
+  it('does not fire on a tool result that merely contains the marker', () => {
+    // Real shape, and the reason the predicate excludes tool results before matching text: a
+    // `grep`/`cat` over a transcript returns the marker as tool output.
+    const output = {
+      type: 'user',
+      uuid: 'u1',
+      timestamp: new Date(T0 + 1_000).toISOString(),
+      message: {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 't1', content: '[Request interrupted by user]' },
+        ],
+      },
+      toolUseResult: { stdout: '[Request interrupted by user]' },
+      sourceToolAssistantUUID: 'a1',
+    };
+    expect(isInterruptRecord(output as never)).toBe(false);
+
+    const facts = summarizeRecords(
+      [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Bash' }] }), output] as never,
+      { now: T0 + 2_000, read: READ_DIAG },
+    );
+    expect(facts.last?.kind).toBe('tool-result');
   });
 });
 

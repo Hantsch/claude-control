@@ -133,6 +133,15 @@ export interface ContextWindowsSettings {
   useOnlineTable: boolean;
 }
 
+/**
+ * Opt-in self-update settings (019). Off by default, so a fresh install stays exactly as
+ * network-quiet as before this story: no update check runs, and nothing is downloaded, until
+ * the user turns this on themselves.
+ */
+export interface UpdateSettings {
+  enabled: boolean;
+}
+
 export interface AppSettings {
   /** See `SETTINGS_SCHEMA_VERSION`. Absent in files written before migrations existed. */
   schemaVersion: number;
@@ -149,6 +158,8 @@ export interface AppSettings {
   indexHistoryOnStart: boolean;
   /** Opt-in exact context-window lookup (005). Read by `core/`. */
   contextWindows: ContextWindowsSettings;
+  /** Opt-in self-update (019). Read by `core/`. */
+  updates: UpdateSettings;
 }
 
 /**
@@ -229,6 +240,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   contextWindows: {
     useOnlineTable: false,
   },
+  updates: {
+    enabled: false,
+  },
 };
 
 /** `T_work` for a specific tool, falling back to the default (§6.3). */
@@ -288,6 +302,7 @@ export function mergeSettings(partial: unknown): AppSettings {
     list: { ...DEFAULT_SETTINGS.list },
     ui: { ...DEFAULT_SETTINGS.ui },
     contextWindows: { ...DEFAULT_SETTINGS.contextWindows },
+    updates: { ...DEFAULT_SETTINGS.updates },
   };
   if (!partial || typeof partial !== 'object') return base;
   const p = migrate(partial as Record<string, unknown>);
@@ -343,6 +358,11 @@ export function mergeSettings(partial: unknown): AppSettings {
   const cw = p.contextWindows as Record<string, unknown> | undefined;
   if (cw && typeof cw === 'object') {
     if (typeof cw.useOnlineTable === 'boolean') base.contextWindows.useOnlineTable = cw.useOnlineTable;
+  }
+
+  const upd = p.updates as Record<string, unknown> | undefined;
+  if (upd && typeof upd === 'object') {
+    if (typeof upd.enabled === 'boolean') base.updates.enabled = upd.enabled;
   }
 
   if (base.reading.maxTailWindowBytes < base.reading.tailWindowBytes) {

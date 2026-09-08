@@ -24,6 +24,14 @@
  * an unreadable session, it is one that has not been used yet — every freshly opened Claude
  * Code window looks like this until the first prompt. `unknown` is kept for what it was
  * meant for: the transcript could not be read, or its tail window held no answer.
+ *
+ * `interrupted` is the second addition, and it exists because leaving it out was a bug: an
+ * aborted turn leaves a `user` record behind (`[Request interrupted by user]`), which the
+ * machine read as "a prompt was just submitted" → `working`. `working` means a turn is in
+ * flight, and `isTrayWorthy` never drops those and `isDismissible` refuses to hide them, so
+ * one Esc pinned a row to the popover permanently with no way to remove it. It is its own
+ * state rather than `done` because nothing finished and no result is waiting: the session is
+ * simply idle at its prompt, and that is not news — so it never notifies and never badges.
  */
 
 export const SESSION_STATUSES = [
@@ -33,6 +41,7 @@ export const SESSION_STATUSES = [
   'done',
   'queued',
   'starting',
+  'interrupted',
   'ended',
   'unknown',
 ] as const;
@@ -92,6 +101,7 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   done: 'done',
   queued: 'queued',
   starting: 'no prompt yet',
+  interrupted: 'interrupted',
   ended: 'ended',
   unknown: 'unreadable',
 };

@@ -193,7 +193,12 @@ export interface SubagentNode {
   children: SubagentNode[];
 }
 
-export type SemanticRecordKind = 'prompt' | 'tool-result' | 'assistant';
+/**
+ * `interrupt` is a `user` record too, but a distinct kind: it is the marker an aborted turn
+ * leaves behind, not a prompt. Kept apart so the state machine can say "this session was
+ * stopped" instead of reading the abort as a turn that just started.
+ */
+export type SemanticRecordKind = 'prompt' | 'tool-result' | 'assistant' | 'interrupt';
 
 /**
  * A tool invocation, normalized away from any agent's record format. The adapter produces

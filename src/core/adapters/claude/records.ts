@@ -98,9 +98,31 @@ export function isToolResultRecord(record: TranscriptRecord): boolean {
   return contentBlocks(record).some((b) => b.type === 'tool_result');
 }
 
-/** A `user` record that is an actual human prompt. */
+/**
+ * The record Claude Code writes when a turn is interrupted (Esc, or the IDE's stop button).
+ * It is a `user` record and carries no `toolUseResult`, so without this it reads as a fresh
+ * human prompt — which is why an aborted session used to sit at `working` forever.
+ *
+ * Two wordings are observed: `[Request interrupted by user]` and `[Request interrupted by
+ * user for tool use]`. The pattern is anchored to the *whole* text so a prompt that merely
+ * quotes the phrase (or a tool result containing a transcript, as `grep` output can) is not
+ * mistaken for one.
+ */
+const INTERRUPT_TEXT = /^\[request interrupted by user[^\]]*\]$/i;
+
+export function isInterruptRecord(record: TranscriptRecord): boolean {
+  if (!isUserRecord(record) || isToolResultRecord(record)) return false;
+  const text = recordText(record);
+  return text !== null && INTERRUPT_TEXT.test(text.trim());
+}
+
+/**
+ * A `user` record that is an actual human prompt. Interrupt markers are excluded: they are
+ * user records, but nobody asked for anything — counting one as a prompt would also make it
+ * the session's label fallback ("[Request interrupted by user]") and reset the run start.
+ */
 export function isPromptRecord(record: TranscriptRecord): boolean {
-  return isUserRecord(record) && !isToolResultRecord(record);
+  return isUserRecord(record) && !isToolResultRecord(record) && !isInterruptRecord(record);
 }
 
 /** ISO timestamp → epoch ms. Returns null for missing/garbage values. */

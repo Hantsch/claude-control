@@ -335,6 +335,29 @@ describe('tray aggregation', () => {
     expect(dismissibleCount([])).toBe(0);
   });
 
+  it('lets an interrupted session leave the tray — the reason the state exists', () => {
+    const recentMs = 30 * 60_000;
+    // Interrupted half an hour ago and never acknowledged. As `working` (what the machine used
+    // to derive for an abort) rule 1 kept this forever and `isDismissible` refused to hide it,
+    // so the row could not be removed by any means the popover offers.
+    const aborted = view({
+      sessionId: 'aborted',
+      status: 'interrupted',
+      lastActivityAt: T0 - 31 * 60_000,
+    });
+    expect(isDismissible(aborted)).toBe(true);
+    expect(selectTraySessions([aborted], T0, recentMs)).toEqual([]);
+    // Still inside the recency window it stays reachable — you were just in that session — but
+    // "Mark as seen" now takes it off immediately, and it never counts as attention.
+    const justAborted = { ...aborted, lastActivityAt: T0 - 60_000 };
+    expect(selectTraySessions([justAborted], T0, recentMs).map((s) => s.sessionId)).toEqual([
+      'aborted',
+    ]);
+    expect(selectTraySessions([{ ...justAborted, dismissed: true }], T0, recentMs)).toEqual([]);
+    expect(attentionCount([justAborted])).toBe(0);
+    expect(trayStateFor([justAborted])).toBe('none');
+  });
+
   it('falls back to the start time for a session that never recorded activity', () => {
     const noActivity = view({
       sessionId: 'x',
@@ -1211,5 +1234,22 @@ describe('contextWindows setting (005)', () => {
   it('falls back to false when the persisted value is garbage', () => {
     const merged = mergeSettings({ contextWindows: { useOnlineTable: 'yes' } });
     expect(merged.contextWindows.useOnlineTable).toBe(false);
+  });
+});
+
+describe('updates setting (019)', () => {
+  it('defaults enabled to false, so an empty file never triggers an update check', () => {
+    const merged = mergeSettings({});
+    expect(merged.updates.enabled).toBe(false);
+  });
+
+  it('round-trips an explicit true', () => {
+    const merged = mergeSettings({ updates: { enabled: true } });
+    expect(merged.updates.enabled).toBe(true);
+  });
+
+  it('falls back to false when the persisted value is garbage', () => {
+    const merged = mergeSettings({ updates: { enabled: 'yes' } });
+    expect(merged.updates.enabled).toBe(false);
   });
 });

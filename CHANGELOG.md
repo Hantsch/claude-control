@@ -22,6 +22,13 @@ while that section is empty, and promotes it to the new version section on relea
   snapshot is.
 - **"Mark all as seen" is hidden instead of greyed out** when there is nothing settled to
   clear.
+- **The app can update itself now — if you let it.** Flip it on in Settings and it checks
+  GitHub once a day, downloads and checksum-verifies the release, and swaps itself in the next
+  time you start it. No relaunch, no releases page to babysit, no EXE to overwrite by hand. Off
+  by default, and Settings tells you exactly when it last checked, what's staged, and why it
+  didn't work if it didn't.
+- **A one-time "Updated to vX.Y.Z" toast** on the first start that's actually running the new
+  version, so you know it happened.
 
 ## 1.0.0 — 2026-09-07
 

@@ -5,7 +5,7 @@ model: sonnet
 effort: medium
 ---
 
-<!-- ai-scrum:managed 3.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 4.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Run sprint **$1**.
@@ -182,14 +182,23 @@ and only on the sprint branch (never push, never on a `protected-branches` entry
      (where to click, what to type), **expected result**. Only use cases from stories actually
      implemented in this sprint, no invented features.
    - **`off`:** skip the file entirely.
-3. **Update the roadmap** (`roadmap-path`): record the sprint under its milestone and set the
-   milestone status from the real state — all its stories done means **`done`**, not "built,
-   acceptance pending". There is no user acceptance step gating this: the criteria were proven
-   by their tests, and what a later walk-through finds becomes a new story in a new sprint.
-   Add lasting gaps from the findings under the milestone's "Gaps/notes" — including criteria
-   that could only be covered below the real surface, and every `manual residue`. If a concept
-   is thereby fully implemented (all stories done): `git mv` it to `systems-path` and update
-   its status line.
+3. **Update the roadmap** (`roadmap-path`) — it is a one-screen map, and this step touches
+   exactly three places in it, never more:
+   - **The milestone's table row:** sprint link (to `review.md`), status from the real state —
+     all its stories done means **`done <date>`**, not "built, acceptance pending"; there is no
+     user acceptance step gating this, the criteria were proven by their tests, and what a
+     later walk-through finds becomes a new story in a new sprint. The row's note is at most
+     one sentence (a blocked story, a deliberate omission) or empty. Gaps, manual residue and
+     criteria covered below the real surface stay in `review.md` — the roadmap **never** gets a
+     "Gaps/notes" paragraph.
+   - **"Follow-ups worth doing":** one line per finding that is worth doing, needs no decision
+     and is not a story yet, with `[SNN review](…/review.md)` as its source. Remove lines this
+     sprint has made obsolete. Anything bigger is a story proposal for the review's findings
+     section, not a roadmap line.
+   - **"Where we stand"** and "As of": rewrite the block (max. five lines) — what was just
+     finished, what is next, what is waiting on the user (the merge).
+   If a concept is thereby fully implemented (all stories done): `git mv` it to
+   `systems-path` and update its status line.
 4. **If `changelog-path` is set in the profile:** check that every story done in this sprint
    with a user-facing change has its entry there, under `# Features` / `# Fixes` of the current
    version section. `/build` writes them per story; this is the sweep that catches the ones it
@@ -219,8 +228,9 @@ A `protected-branches` entry is never the target of a sprint branch merge you ma
   refine, not at review.
 - **The real surface (P1)**, if `ui-acceptance-required: true`: criteria about user actions are
   proven through the profile's `e2e` command. Where a story could only cover one a level below
-  that — a missing harness, a missing trigger — it is named as a gap in `review.md` and under
-  the milestone's "Gaps/notes", never quietly converted into a manual step.
+  that — a missing harness, a missing trigger — it is named as a gap in `review.md` (and, if
+  closing it is worth doing, as one follow-up line in the roadmap), never quietly converted
+  into a manual step.
 - **Manual residue is the exception and it is bounded.** Only criteria that cannot be automated
   for a real reason (an OS dialog, specific hardware, a paid external service) land on a human,
   each with that reason. They are listed in the review and, per the `testplan` setting, in

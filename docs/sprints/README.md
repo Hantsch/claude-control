@@ -52,8 +52,8 @@ sprints/
      sprint — they are marked and explained in the review doc.
    - **Review:** `review.md` (stories + short description, the acceptance record — which test
      proved which criterion — findings & decisions, blockers) is written, `testplan.md` only if
-     there is manual residue to walk, the roadmap is updated at the milestone, then committed,
-     `status: done`.
+     there is manual residue to walk, the roadmap gets its milestone row, its follow-up lines
+     and a fresh "Where we stand" (nothing more), then committed, `status: done`.
 3. **You** read `review.md`, plan the next sprint on top of it (correction stories if needed)
    and decide about the **merge back into `branch-base`**. There is nothing to accept by hand
    first. A protected branch only ever receives a deliberate release merge, never a sprint

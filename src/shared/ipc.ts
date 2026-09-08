@@ -130,6 +130,31 @@ export interface ModelWindowStatus {
   source: string;
 }
 
+/**
+ * Mirrors `core/updates/updateSource.ts`'s `UpdateStatus` (story 019, D3) — duplicated for the
+ * same boundary reason as `ModelWindowStatus` above: `core/updates` touches the filesystem and
+ * network and is therefore excluded from `tsconfig.web.json`. Keep the two shapes in sync by
+ * hand.
+ */
+export interface UpdateStatus {
+  enabled: boolean;
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  staged: {
+    version: number;
+    releaseVersion: string;
+    assetName: string;
+    sha256: string;
+    stagedAt: number;
+    file: string;
+  } | null;
+  checkedAt: number | null;
+  lastOutcome: RefreshOutcome;
+  lastError?: string;
+  source: string;
+}
+
 export interface DiagnosticsInfo {
   claudeDir: string;
   adapterId: string;
@@ -146,6 +171,8 @@ export interface DiagnosticsInfo {
   protocolTarget: ProtocolRegistration;
   /** Status of the opt-in exact-context-window table (story 005, D3/D6). Null with no data dir. */
   modelWindows: ModelWindowStatus | null;
+  /** Status of the opt-in self-update check (story 019, D3/D5). Null where no update source exists. */
+  updates: UpdateStatus | null;
 }
 
 export const IPC = {
@@ -172,6 +199,7 @@ export const IPC = {
   diagnostics: 'cc:diagnostics',
   quit: 'cc:quit',
   refreshModelWindows: 'cc:refresh-model-windows',
+  refreshUpdateCheck: 'cc:refresh-update-check',
 
   // main → renderer (send)
   stateChanged: 'cc:state-changed',
@@ -214,6 +242,8 @@ export interface RendererApi {
   quit(): Promise<void>;
   /** Forces an immediate fetch of the exact-context-window table (Settings toggle, D6). */
   refreshModelWindows(): Promise<ModelWindowStatus | null>;
+  /** Forces an immediate self-update check (Settings button, story 019, D5). */
+  refreshUpdateCheck(): Promise<UpdateStatus | null>;
   onStateChanged(listener: (state: AppState) => void): () => void;
   onHistoryChanged(listener: (info: { count: number; done: boolean }) => void): () => void;
   onSettingsChanged(listener: (settings: AppSettings) => void): () => void;

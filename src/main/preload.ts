@@ -13,6 +13,7 @@ import {
   type NavigateTarget,
   type RendererApi,
   type ShortcutStatus,
+  type UpdateStatus,
 } from '../shared/ipc.ts';
 
 /** `payload` is typed by the `RendererApi` signature that calls this. */
@@ -53,6 +54,8 @@ const api: RendererApi & {
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,
   refreshModelWindows: () =>
     ipcRenderer.invoke(IPC.refreshModelWindows) as Promise<ModelWindowStatus | null>,
+  refreshUpdateCheck: () =>
+    ipcRenderer.invoke(IPC.refreshUpdateCheck) as Promise<UpdateStatus | null>,
   onStateChanged: (listener) => subscribe(IPC.stateChanged, listener as (payload: never) => void),
   onHistoryChanged: (listener) => subscribe(IPC.historyChanged, listener as (payload: never) => void),
   onSettingsChanged: (listener) => subscribe(IPC.settingsChanged, listener as (payload: never) => void),

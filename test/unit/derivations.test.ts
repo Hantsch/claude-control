@@ -1236,3 +1236,20 @@ describe('contextWindows setting (005)', () => {
     expect(merged.contextWindows.useOnlineTable).toBe(false);
   });
 });
+
+describe('updates setting (019)', () => {
+  it('defaults enabled to false, so an empty file never triggers an update check', () => {
+    const merged = mergeSettings({});
+    expect(merged.updates.enabled).toBe(false);
+  });
+
+  it('round-trips an explicit true', () => {
+    const merged = mergeSettings({ updates: { enabled: true } });
+    expect(merged.updates.enabled).toBe(true);
+  });
+
+  it('falls back to false when the persisted value is garbage', () => {
+    const merged = mergeSettings({ updates: { enabled: 'yes' } });
+    expect(merged.updates.enabled).toBe(false);
+  });
+});

@@ -15,12 +15,19 @@ import { join } from 'node:path';
 import { REFRESH_CADENCE_MS } from '../core/context/windowSource.ts';
 import { createEngine } from '../core/createEngine.ts';
 import type { SessionId } from '../core/model/types.ts';
+import { UPDATES_DIR, UpdateSource } from '../core/updates/updateSource.ts';
 import { IPC, type AppState, type FocusResult } from '../shared/ipc.ts';
 import { applyAutostart, AUTOSTART_FLAG, healAutostartPath } from './autostart.ts';
 import { WindowFocuser } from './focus/focuser.ts';
 import { createWindowProbe } from './focus/windowProbe.ts';
 import { broadcast, registerIpc } from './ipc.ts';
 import { Notifier } from './notifier.ts';
+import {
+  applyStagedUpdate,
+  selfUpdateTarget,
+  showAppliedNotice,
+  UPDATE_CHECK_TICK_MS,
+} from './selfUpdate.ts';
 import { SettingsStore } from './settings.ts';
 import { ShortcutManager } from './shortcuts.ts';
 import {
@@ -34,6 +41,22 @@ import {
 import { TrayPresenter } from './tray.ts';
 import { WindowManager, type MainTab } from './windows.ts';
 
+/**
+ * Story 019 D4, and deliberately the very first thing this process does — before the lock, so
+ * the swap is the same one-per-launch event whether or not another instance is already running,
+ * and before anything has a file handle of its own. It only ever acts on a packaged, portable
+ * install (AC10), never quits or relaunches (AC3), and swallows every failure (AC6): a null
+ * return is the normal case. This session goes on running the old code either way; the flag is
+ * kept only so the "Updated to …" toast is left to the *next* start, which is the one actually
+ * running the new file.
+ */
+const appliedUpdate = applyStagedUpdate({
+  env: process.env,
+  isPackaged: app.isPackaged,
+  updatesDir: join(app.getPath('userData'), UPDATES_DIR),
+  currentVersion: app.getVersion(),
+});
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -45,13 +68,26 @@ async function bootstrap(): Promise<void> {
   // Required on Windows for toasts to be attributed to this app (F5).
   app.setAppUserModelId('solutions.aidu.claude-control');
   const protocolRegistration = registerToastProtocol();
-  // No outbound requests by default (N1) — the opt-in exact-context-window lookup is the sole
-  // exception, so there is nothing here for Electron's HTTP cache to usefully retain.
+  // No outbound requests by default (N1) — the opt-in exact-context-window lookup and the
+  // opt-in update check are the two exceptions, so there is nothing here for Electron's HTTP
+  // cache to usefully retain.
   app.commandLine.appendSwitch('disable-http-cache');
 
   await app.whenReady();
 
   const settings = new SettingsStore(app.getPath('userData'));
+
+  // The update source exists only where an update could actually be applied — packaged and
+  // portable, the same gate the swap above uses. A dev run constructs nothing at all, so there
+  // is no object that could check or download anything (AC10). `enabled` follows the opt-in
+  // setting; `refresh()` re-reads it on every call, so nothing is requested while it is off.
+  const updateSource =
+    selfUpdateTarget(process.env, app.isPackaged) !== null
+      ? new UpdateSource(app.getPath('userData'), {
+          currentVersion: installedVersion(),
+          enabled: settings.get().updates.enabled,
+        })
+      : null;
 
   // Heal first (a login item from an earlier install may point at an old EXE path), then
   // apply — so the setting always wins over whatever is currently registered.
@@ -128,6 +164,7 @@ async function bootstrap(): Promise<void> {
 
   settings.onChange((next) => {
     void engine.updateSettings(next);
+    updateSource?.setEnabled(next.updates.enabled);
     applyAutostart(next.ui.autostart);
     shortcutManager.apply(next.ui.globalShortcut);
     broadcast(IPC.shortcutStatusChanged, shortcutManager.status());
@@ -147,6 +184,7 @@ async function bootstrap(): Promise<void> {
     quit,
     protocolRegistration,
     windowSource,
+    updateSource,
   });
 
   // Opt-in exact-context-window refresh (story 005, D6). `refresh()` is a no-op while the
@@ -162,6 +200,30 @@ async function bootstrap(): Promise<void> {
     windowRefreshTimer.unref?.();
     app.on('before-quit', () => clearInterval(windowRefreshTimer));
   }
+
+  // The same shape for the opt-in update check (story 019, D4). `updateSource` is null unless
+  // this is a packaged portable install, so a dev run arms no timer and makes no request at
+  // all (AC10); `refresh()` is a no-op while `updates.enabled` is off, keeps to one real check
+  // per calendar day on its own, and never throws — so firing it unawaited cannot delay or
+  // break startup (AC6). The tick is hourly only so a machine left running crosses midnight.
+  if (updateSource) {
+    void updateSource.refresh();
+    const updateCheckTimer = setInterval(() => {
+      void updateSource.refresh();
+    }, UPDATE_CHECK_TICK_MS);
+    updateCheckTimer.unref?.();
+    app.on('before-quit', () => clearInterval(updateCheckTimer));
+  }
+
+  // The other half of D4: the one-time "Updated to vX.Y.Z" toast, shown on the first start that
+  // is actually running the new version. Skipped when *this* run did the swap — that session is
+  // still the old build and the marker is left on disk for the next start to announce.
+  showAppliedNotice({
+    env: process.env,
+    isPackaged: app.isPackaged,
+    updatesDir: join(app.getPath('userData'), UPDATES_DIR),
+    swappedThisRun: appliedUpdate !== null,
+  });
 
   // Live tier first (N5), tray immediately afterwards.
   await engine.start();
@@ -294,6 +356,22 @@ function registerToastProtocol(): ProtocolRegistration {
     outcome = { ok: false, error };
   }
   return buildProtocolRegistration(process.platform, target, outcome, process.execPath);
+}
+
+/**
+ * What is *installed*, which in exactly one session is not what this process is running: the
+ * start that swapped a staged update in keeps executing the old code it already loaded, so
+ * `app.getVersion()` reports the old version until the next launch (D4's whole premise).
+ *
+ * Handing that stale version to `UpdateSource` would make this session compare the release it
+ * just applied against the version it no longer has on disk, decide it is outdated — the stage
+ * that would have said otherwise was consumed by the swap — and download the entire release a
+ * second time for nothing. The applied tag is the truthful baseline, and it is what Settings
+ * should name too. `v1.3.0` and `1.3.0` both come out as `1.3.0`.
+ */
+function installedVersion(): string {
+  const applied = appliedUpdate?.version;
+  return applied ? applied.replace(/^[vV]/, '') : app.getVersion();
 }
 
 /** Parses the `--show` dev flag. Returns null when the app should start tray-only. */

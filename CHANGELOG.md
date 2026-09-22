@@ -9,7 +9,11 @@ while that section is empty, and promotes it to the new version section on relea
 
 ## Unreleased
 
-<!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
+- **Contributing guide split out of the README.** Build instructions, the source layout, the
+  release process and project status now live in [CONTRIBUTING.md](CONTRIBUTING.md); the README
+  stays focused on installing and using the app.
+- The README's auto-update section now spells out the full check → download → verify → stage →
+  swap sequence, instead of a one-line mention.
 
 ## 1.1.0 — 2026-09-08
 

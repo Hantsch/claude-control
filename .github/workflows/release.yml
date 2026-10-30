@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
 
       - run: npm ci
@@ -70,3 +70,11 @@ jobs:
           if ('${{ inputs.bump }}') { $params['ForceBump'] = '${{ inputs.bump }}' }
           if ('${{ inputs.dry_run }}' -eq 'true') { $params['DryRun'] = $true }
           ./scripts/ci-release.ps1 @params
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vitest-timings
+          path: test-results/vitest.json
+          retention-days: 14
+          if-no-files-found: ignore

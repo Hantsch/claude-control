@@ -7,6 +7,7 @@ import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
 import { resolveClaudePaths } from '../../src/core/adapters/claude/paths.ts';
 import type { ControlEngine } from '../../src/core/engine.ts';
 import { DEFAULT_THRESHOLDS } from '../../src/core/model/settings.ts';
+import { deadPids } from './pids.ts';
 import type { ProcessProbe } from '../../src/core/registry/liveness.ts';
 import {
   agentResult,
@@ -131,11 +132,14 @@ export async function writeColdStartTree(
 
   // Six live sessions, as measured, each with its own big transcript.
   const liveIds = ['live-0', 'live-1', 'live-2', 'live-3', 'live-4', 'live-5'];
+  // Only session 0 has a PID that is really alive; the others are listed by discovery (the
+  // probe is told they are alive) but signal 0 reads them as dead, so they resolve as ended.
+  const pids = [LIVE_PID, ...deadPids(liveIds.length - 1)];
   for (const [index, sessionId] of liveIds.entries()) {
     const cwd = `c:\\development\\project-${index}`;
     await tree.writeRegistry(
-      LIVE_PID + index,
-      registryEntry({ pid: LIVE_PID + index, sessionId, cwd, name: `sess-${index}` }),
+      pids[index]!,
+      registryEntry({ pid: pids[index]!, sessionId, cwd, name: `sess-${index}` }),
     );
     await tree.writeTranscript(
       `c--development-project-${index}`,
@@ -158,17 +162,18 @@ export async function writeColdStartTree(
     );
   }
 
-  return { liveIds, livePids: liveIds.map((_, index) => LIVE_PID + index) };
+  return { liveIds, livePids: pids };
 }
 
 /** Guards that the cold-start tree exercised the paths it exists for; throws on violation. */
 export function assertColdStartPremise(
-  snapshot: { sessions: ReadonlyArray<{ subagents: ReadonlyArray<{ finalText: string | null }> }> },
+  snapshot: { sessions: ReadonlyArray<{ status: string; subagents: ReadonlyArray<{ finalText: string | null }> }> },
   historyEntries: ReadonlyArray<{ usage: { inputTokens: number } | null }>,
   liveCount: number,
 ): void {
-  // Only sessions whose PID is alive resolve; the rest are reported as ended.
+  // All six are listed; only session 0's PID is alive for signal 0, the other five are `ended`.
   expect(snapshot.sessions.length).toBe(liveCount);
+  expect(snapshot.sessions.filter((session) => session.status === 'ended').length).toBe(liveCount - 1);
 
   // finalText is clipped to the row limit (120) with the ellipsis marker.
   const finalTexts = snapshot.sessions.flatMap((session) =>

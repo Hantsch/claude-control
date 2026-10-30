@@ -12,9 +12,9 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { makeTempDir } from '../fixtures/tempDir.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SelfUpdateFs } from '../../src/main/selfUpdate.ts';
 
@@ -61,7 +61,7 @@ let markerFile: string;
 let env: NodeJS.ProcessEnv;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'cc-selfupdate-'));
+  root = await makeTempDir('cc-selfupdate-');
   target = join(root, 'ClaudeControl.exe');
   updatesDir = join(root, 'userData', UPDATES_DIR);
   stagedExe = join(updatesDir, STAGED_EXE_FILE);

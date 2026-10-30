@@ -9,9 +9,9 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { makeTempDir } from '../fixtures/tempDir.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHECK_BACKOFF_MS,
@@ -23,6 +23,7 @@ import {
   UPDATES_DIR,
   UpdateSource,
 } from '../../src/core/updates/updateSource.ts';
+import { jsonResponse, stubFetch } from '../fixtures/http.ts';
 
 const EXE_NAME = 'ClaudeControl-1.3.0-portable.exe';
 const DOWNLOAD_BASE = 'https://github.com/Hantsch/claude-control/releases/download/v1.3.0';
@@ -47,17 +48,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 let dir: string;
 let clock: number;
-const originalFetch = globalThis.fetch;
-
-function stubFetch(handler: (url: string) => Response | Promise<Response>) {
-  const spy = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => handler(String(url)));
-  globalThis.fetch = spy as unknown as typeof globalThis.fetch;
-  return spy;
-}
-
-function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
-}
 
 /** A stub serving a complete, consistent v1.3.0 release; each part is individually overridable. */
 function stubRelease(overrides: { release?: unknown; sums?: string; exe?: Buffer } = {}) {
@@ -113,12 +103,12 @@ async function writePriorStage(): Promise<{ bytes: Buffer; manifest: string }> {
 }
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'cc-update-source-'));
+  dir = await makeTempDir('cc-update-source-');
   clock = START;
 });
 
 afterEach(async () => {
-  globalThis.fetch = originalFetch;
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 });

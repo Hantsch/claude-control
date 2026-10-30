@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Test hygiene: fake timers, dead PIDs, shared helpers, one Node pin, tighter timeouts, timing artifact
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -38,32 +38,32 @@ This story follows 023, which moves N5 and its tree into the perf lane and touch
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — The debounce/ceiling test uses `vi.useFakeTimers()`: `rg "sleep\(" test/unit/pipeline.test.ts`
+- [x] **AC1** — The debounce/ceiling test uses `vi.useFakeTimers()`: `rg "sleep\(" test/unit/pipeline.test.ts`
       shows only the :1213 negative wait and the helper definition; the test still fails if the
       ceiling flush is removed (seeded defect in `FileWatcher`)
-- [ ] **AC2** — The debounce test derives its waits from the configured `debounceMs` / `maxWaitMs`:
+- [x] **AC2** — The debounce test derives its waits from the configured `debounceMs` / `maxWaitMs`:
       `rg "sleep\(400\)|advanceTimersByTime\(400\)" test/unit/pipeline.test.ts` returns nothing, and
       fake timers are restored in `afterEach` (a following real-fs test in the same file passes)
-- [ ] **AC3** — N5's fabricated sessions no longer use `LIVE_PID + index`:
+- [x] **AC3** — N5's fabricated sessions no longer use `LIVE_PID + index`:
       `rg "LIVE_PID \+ " test/unit/pipeline.test.ts` returns nothing for the N5 block, and its
       session count assertion matches its comment
-- [ ] **AC4** — One dedicated test still exercises the real signal-0 liveness path (`process.pid`
+- [x] **AC4** — One dedicated test still exercises the real signal-0 liveness path (`process.pid`
       reads alive, a clearly dead pid reads not alive)
-- [ ] **AC5** — `test/fixtures/http.ts` exports one `stubFetch` and `jsonResponse`;
+- [x] **AC5** — `test/fixtures/http.ts` exports one `stubFetch` and `jsonResponse`;
       `rg "function stubFetch" test/unit` returns nothing, and updateSource.test.ts and
       windowSource.test.ts import it
-- [ ] **AC6** — One temp-dir helper replaces the 5 `mkdtemp` sites: `rg "mkdtemp" test` returns only
+- [x] **AC6** — One temp-dir helper replaces the 5 `mkdtemp` sites: `rg "mkdtemp" test` returns only
       the helper
-- [ ] **AC7** — The `view()`, `entry()` and `detail()` factories stay where they are:
+- [x] **AC7** — The `view()`, `entry()` and `detail()` factories stay where they are:
       `rg "function view|function entry|function detail" test/unit` still finds all three
-- [ ] **AC8** — `.node-version` contains `22`; `rg "node-version: 22" .github/workflows` returns
+- [x] **AC8** — `.node-version` contains `22`; `rg "node-version: 22" .github/workflows` returns
       nothing, both workflows use `node-version-file: .node-version`, and CONTRIBUTING.md names the file
-- [ ] **AC9** — `vitest.config.ts` has `testTimeout: 15_000` and `hookTimeout: 60_000`, and `npm test`
+- [x] **AC9** — `vitest.config.ts` has `testTimeout: 15_000` and `hookTimeout: 60_000`, and `npm test`
       exits 0
-- [ ] **AC10** — Both workflows run the Test step with `--reporter=default --reporter=json` and an
+- [x] **AC10** — Both workflows run the Test step with `--reporter=default --reporter=json` and an
       output file, followed by an `actions/upload-artifact` step with `if: always()` and a 14-day
       retention; `rg -c "upload-artifact" .github/workflows` shows both files
-- [ ] **AC11** — The helper moves lose no test: the suite's test count after the story equals the
+- [x] **AC11** — The helper moves lose no test: the suite's test count after the story equals the
       count before plus the tests this story adds explicitly (the real signal-0 test)
 
 ## Open Questions
@@ -114,7 +114,7 @@ No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/syst
 
 ## Deliverables
 
-- [ ] D1 — **Baseline and tighter test timeout.** Before touching anything, run
+- [x] D1 — **Baseline and tighter test timeout.** Before touching anything, run
   `npx vitest run --reporter=verbose` and record (a) the total test count and (b) the slowest
   test with its duration; report both in your result (the build keeps the count as the AC11
   baseline). If the slowest test in `npm test` takes more than 5 s, stop and report instead of
@@ -122,7 +122,7 @@ No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/syst
   `hookTimeout: 60_000` and any per-test override in a perf config/file untouched. Acceptance:
   `vitest.config.ts` shows `testTimeout: 15_000` and `hookTimeout: 60_000`; `npm test` exits 0.
   Files: `vitest.config.ts`.
-- [ ] D2 — **Debounce/ceiling test on fake timers.** In `test/unit/pipeline.test.ts`, the test
+- [x] D2 — **Debounce/ceiling test on fake timers.** In `test/unit/pipeline.test.ts`, the test
   "coalesces a burst of events and never waits longer than the ceiling" (drives a
   `FileWatcher` from `src/core/watch/watcher.ts` through its private `enqueue`, injected
   `now: () => clock`) today waits with real `sleep(400)` and 12 x `sleep(100)`. Change it to:
@@ -139,7 +139,7 @@ No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/syst
   `rg "sleep\(400\)|advanceTimersByTime\(400\)" test/unit/pipeline.test.ts` is empty; the next
   test in the file ("changes no file after a full pipeline run (N2)", real fs) passes in the same
   run. Files: `test/unit/pipeline.test.ts`.
-- [ ] D3 — **Dead PIDs for N5, plus one real signal-0 test.** New `test/fixtures/pids.ts`
+- [x] D3 — **Dead PIDs for N5, plus one real signal-0 test.** New `test/fixtures/pids.ts`
   exporting `deadPids(count: number): number[]`: start at `0x7FFFFFFC`, step down by 4 (Windows
   ignores the low two PID bits), keep each pid for which `isAliveSync` from
   `src/core/registry/liveness.ts` returns false, until `count` are collected. In every N5 site
@@ -156,7 +156,7 @@ No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/syst
   `rg "LIVE_PID \+ " test/unit/pipeline.test.ts test/perf` finds no N5 line; both N5 tests and
   the new test pass. Files: `test/fixtures/pids.ts`, `test/unit/pipeline.test.ts`,
   `test/perf/*` (023's N5 file), `test/unit/derivations.test.ts`.
-- [ ] D4 — **One shared fetch stub.** New `test/fixtures/http.ts` exporting
+- [x] D4 — **One shared fetch stub.** New `test/fixtures/http.ts` exporting
   `stubFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>)`,
   which builds `vi.fn(async (url, init) => handler(String(url), init))`, installs it with
   `vi.stubGlobal('fetch', spy)` and returns the spy, and `jsonResponse(payload, status = 200)`
@@ -168,7 +168,7 @@ No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/syst
   `rg "function stubFetch" test/unit` empty; both files import `stubFetch` from the fixture; both
   files' tests pass with the same count as before. Files: `test/fixtures/http.ts`,
   `test/unit/updateSource.test.ts`, `test/unit/windowSource.test.ts`.
-- [ ] D5 — **One temp-dir helper.** New `test/fixtures/tempDir.ts` exporting
+- [x] D5 — **One temp-dir helper.** New `test/fixtures/tempDir.ts` exporting
   `makeTempDir(prefix: string): Promise<string>` (`mkdtemp(join(tmpdir(), prefix))`) that also
   registers the path with the fixture-tree cleanup list in `test/fixtures/builders.ts` (export a
   small `registerTempDir(path)` there, or move the list; `cleanupFixtureTrees` in
@@ -185,7 +185,7 @@ No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/syst
   `npx vitest run` total equals the D1 baseline + 1 (D3's signal-0 test). Files:
   `test/fixtures/tempDir.ts`, `test/fixtures/builders.ts`, `test/fixtures/README.md`, the four
   test files above.
-- [ ] D6 — **One Node pin and a timing artifact in CI.** Create `.node-version` containing `22`.
+- [x] D6 — **One Node pin and a timing artifact in CI.** Create `.node-version` containing `22`.
   In `.github/workflows/validate.yml` and `.github/workflows/release.yml`, replace
   `node-version: 22` with `node-version-file: .node-version` (keep `cache: npm`). In
   `CONTRIBUTING.md`, next to "Node 22+ required.", name `.node-version` as the pinned version
@@ -231,13 +231,18 @@ Review: → default
 - AC9 → check: `vitest.config.ts` values and `npm test` exit 0 (D1; re-confirmed by the build gate)
 - AC10 → check: reporter flags, `upload-artifact` with `if: always()` and `retention-days: 14` in
   both workflows, plus the local json-reporter run (D6)
-- AC11 → check: `npx vitest run` total after D5 = D1 baseline + 1 (D5)
+- AC11 → check: `npx vitest run` total = D1 baseline 592 + 2 explicit adds (D3 signal-0 test, review-fix guard test for the ended count) = 594
 
 No e2e: every criterion is about tests and CI, nothing the user does in the app.
 
 ## Done
 
-<Leave empty. Filled by `/build 026` after implementation:
-- Short summary (2–5 lines): what was done.
-- Commit message (1–2 lines, keywords are enough).
-- Verification: build/test/lint result + review outcome; open points/blockers, if any.>
+Fake timers for the debounce/ceiling test, dead-PID range for N5 (shared `writeColdStartTree`/`assertColdStartPremise` in `test/fixtures/engine.ts`, so blocking and perf N5 both covered) plus a real signal-0 test, shared `stubFetch`/`jsonResponse` (`test/fixtures/http.ts`), one `makeTempDir` (`test/fixtures/tempDir.ts`), `.node-version` pin, `testTimeout` 15 s, vitest JSON timing artifact in both workflows. No `src/` change, no CHANGELOG entry.
+
+Commit message: `026: test hygiene sweep - fake timers, dead PIDs, shared fetch/tempdir helpers, .node-version, 15 s timeout, timing artifact`
+
+Verification (narrow gate: `npm run build`, `npm run typecheck`, `npm test` as test-story; no e2e): all green, 42 files, 594 tests (baseline 592 + signal-0 test + ended-count guard test). Seeded defect (`Math.min` removed in `watcher.ts`) turned the ceiling test red, reverted. Review: PASS, 4 findings fixed in one cycle (ciRelease negative filters, detached comment, stale N5 title, missing negative test for the ended count). AC1-AC11 all mapped to the tests named above and passed; no manual residue.
+
+Decisions: perf.yml also moved to `node-version-file` (AC8's workflow-wide check); temp-dir list lives in `tempDir.ts` (no import cycle) and `ciRelease.test.ts` (a sixth `mkdtempSync` site from 024) converted so AC6 holds; ciRelease assertions carry an `NPM_TEST` constant because `scripts/ci-release.ps1` now passes the reporter flags; `assertColdStartPremise` takes session `status` and expects `liveCount - 1` ended; AC3's `LIVE_PID + 1` huge-name key stays by decision.
+
+tiers: D 6 / hard 0 · review default · cycles 1 · agents 9

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assertColdStartPremise, budgetMessage } from '../fixtures/engine.ts';
 
 const clipped = `${'x'.repeat(110)}…`;
-const session = (finalText: string | null) => ({ subagents: [{ finalText }] });
+const session = (finalText: string | null) => ({ status: 'live', subagents: [{ finalText }] });
 const usage = [{ usage: { inputTokens: 5 } }];
 
 describe('perf lane guards', () => {
@@ -25,5 +25,11 @@ describe('perf lane guards', () => {
   it('the cold-start premise rejects an unclipped final text', () => {
     const unclipped = 'x'.repeat(110);
     expect(() => assertColdStartPremise({ sessions: [session(unclipped)] }, usage, 1)).toThrow();
+  });
+
+  it('the cold-start premise rejects a wrong ended count', () => {
+    const ended = { status: 'ended', subagents: [{ finalText: clipped }] };
+    expect(() => assertColdStartPremise({ sessions: [session(clipped), session(clipped)] }, usage, 2)).toThrow();
+    expect(() => assertColdStartPremise({ sessions: [session(clipped), ended] }, usage, 2)).not.toThrow();
   });
 });

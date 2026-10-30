@@ -4,6 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { isAliveSync } from '../../src/core/registry/liveness.ts';
+import { deadPids } from '../fixtures/pids.ts';
 import { parseRegistryEntry, readRegistry } from '../../src/core/registry/registry.ts';
 import {
   epochMsToFileTime,
@@ -613,6 +615,11 @@ describe('fallback session titles', () => {
 });
 
 describe('registry', () => {
+  it('signal 0 reads this process as alive and a dead pid as not alive', () => {
+    expect(isAliveSync(process.pid)).toBe(true);
+    expect(isAliveSync(deadPids(1)[0]!)).toBe(false);
+  });
+
   it('parses an entry in the RESEARCH.md §1 shape', () => {
     const entry = parseRegistryEntry(
       JSON.stringify(registryEntry({ pid: 17_152, sessionId: 'abc', name: 'claude-control-d5' })),

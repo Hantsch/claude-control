@@ -292,7 +292,7 @@ Push-Location $repoRoot
 try {
     # Tests the merge result on main, which nothing else does: a direct push has no PR and
     # validate.yml only tests the PR head. Only a due release gets here, so docs-only merges run none.
-    & npm test
+    & npm test -- --reporter=default --reporter=json --outputFile.json=test-results/vitest.json
     if ($LASTEXITCODE -ne 0) { throw "npm test failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location

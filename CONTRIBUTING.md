@@ -15,7 +15,7 @@ see [docs/ROADMAP.md](docs/ROADMAP.md) for where each milestone stands.
 
 ## Development
 
-Node 22+ required.
+Node 22+ required; `.node-version` pins the version CI uses.
 
 ```powershell
 npm install

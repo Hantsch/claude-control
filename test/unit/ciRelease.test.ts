@@ -5,12 +5,14 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { makeTempDir } from '../fixtures/tempDir.ts';
 
 const repoRoot = path.resolve(__dirname, '../..');
+/** The release lane's test run also writes the timing report that release.yml uploads. */
+const NPM_TEST = 'npm test -- --reporter=default --reporter=json --outputFile.json=test-results/vitest.json';
 
 // One stub for both tools: logs "<tool> <args>"; `npm run package` leaves the artifact the
 // script expects; the exit codes of `gh release view|create` come from the environment.
@@ -44,8 +46,8 @@ interface Fixture {
 
 const fixtures: Fixture[] = [];
 
-function makeFixture(): Fixture {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ci-release-'));
+async function makeFixture(): Promise<Fixture> {
+  const dir = await makeTempDir('ci-release-');
   const origin = path.join(dir, 'origin.git');
   const clone = path.join(dir, 'clone');
   const bin = path.join(dir, 'bin');
@@ -126,27 +128,27 @@ afterEach(() => {
 });
 
 describe('ci-release test gate', () => {
-  it('a docs-only push releases nothing and runs no tests', () => {
-    const fx = makeFixture();
+  it('a docs-only push releases nothing and runs no tests', async () => {
+    const fx = await makeFixture();
     fx.commit('docs: reword the readme');
 
     const { code, output } = fx.run(['-DryRun']);
 
     expect(code, output).toBe(0);
     expect(output).toContain('nothing to release');
-    expect(fx.log().filter((l) => l === 'npm test')).toEqual([]);
+    expect(fx.log().filter((l) => l.startsWith('npm test'))).toEqual([]);
   });
 
-  it('a due release runs the suite once before anything is committed', () => {
-    const fx = makeFixture();
+  it('a due release runs the suite once before anything is committed', async () => {
+    const fx = await makeFixture();
     fx.commit('feat: add a thing');
 
     const { code, output } = fx.run(['-DryRun']);
 
     expect(code, output).toBe(0);
     const log = fx.log();
-    expect(log.filter((l) => l === 'npm test')).toHaveLength(1);
-    expect(log.indexOf('npm test')).toBeLessThan(log.indexOf('npm run package'));
+    expect(log.filter((l) => l === NPM_TEST)).toHaveLength(1);
+    expect(log.indexOf(NPM_TEST)).toBeLessThan(log.indexOf('npm run package'));
     expect(output).toContain('=== test ===');
     expect(output.indexOf('=== test ===')).toBeLessThan(output.indexOf('[dry-run] git commit'));
   });
@@ -189,8 +191,8 @@ function tagRelease(fx: Fixture): void {
 }
 
 describe('ci-release with a tag at HEAD', () => {
-  it('a tag whose release creation failed is published by re-running the job', () => {
-    const fx = makeFixture();
+  it('a tag whose release creation failed is published by re-running the job', async () => {
+    const fx = await makeFixture();
     fx.commit('feat: add a thing');
 
     const failed = fx.run([], { STUB_GH_CREATE_EXIT: '1' });
@@ -218,7 +220,7 @@ describe('ci-release with a tag at HEAD', () => {
     expect(output).toContain('=== recover ===');
     expect(output).toContain('notes from CHANGELOG: ## 1.1.0');
     const log = fx.log().slice(logBefore);
-    expect(log.filter((l) => l === 'npm test')).toEqual([]);
+    expect(log.filter((l) => l.startsWith('npm test'))).toEqual([]);
     expect(log.filter((l) => l === 'npm run package')).toHaveLength(1);
     expect(log.filter((l) => l.startsWith('gh release create '))).toHaveLength(1);
     expect(log.filter((l) => l.startsWith('gh release create v1.1.0 '))).toHaveLength(1);
@@ -226,8 +228,8 @@ describe('ci-release with a tag at HEAD', () => {
     expect(fx.git('ls-remote', '--tags', 'origin')).toBe(originTags);
   });
 
-  it("recovery in a dry run names the path and prints the version's notes heading", () => {
-    const fx = makeFixture();
+  it("recovery in a dry run names the path and prints the version's notes heading", async () => {
+    const fx = await makeFixture();
     tagRelease(fx);
 
     const { code, output } = fx.run(['-DryRun'], { STUB_GH_VIEW_EXIT: '1' });
@@ -239,8 +241,8 @@ describe('ci-release with a tag at HEAD', () => {
     expect(output).toContain('- A new thing.');
   });
 
-  it('a tag that already has its release is left alone', () => {
-    const fx = makeFixture();
+  it('a tag that already has its release is left alone', async () => {
+    const fx = await makeFixture();
     tagRelease(fx);
 
     const { code, output } = fx.run([], { STUB_GH_VIEW_EXIT: '0' });

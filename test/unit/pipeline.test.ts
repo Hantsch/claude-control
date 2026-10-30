@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
 import { resolveClaudePaths } from '../../src/core/adapters/claude/paths.ts';
 import { ControlEngine } from '../../src/core/engine.ts';
@@ -1186,7 +1186,7 @@ describe('engine', () => {
     await engine.stop();
   });
 
-  it('the cold-start tree resolves every live session with a clipped final text and summed usage (N5 premise)', async () => {
+  it('the cold-start tree lists every session, ends all but the live one, and resolves a clipped final text and summed usage (N5 premise)', async () => {
     const tree = await makeFixtureTree('cc-coldstart-');
     const { liveIds, livePids } = await writeColdStartTree(tree, 20);
 
@@ -1206,14 +1206,22 @@ describe('engine', () => {
     await engine.stop();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   /** §5.3: a burst of appends must produce one re-read, and no change may wait longer than the ceiling. */
+
   it('coalesces a burst of events and never waits longer than the ceiling', async () => {
+    vi.useFakeTimers();
+    const debounceMs = 250;
+    const maxWaitMs = 1_000;
     const flushes: number[] = [];
     let clock = 0;
     const watcher = new FileWatcher({
       roots: [],
-      debounceMs: 250,
-      maxWaitMs: 1_000,
+      debounceMs,
+      maxWaitMs,
       now: () => clock,
       onChange: (changes) => flushes.push(changes.length),
     });
@@ -1230,16 +1238,17 @@ describe('engine', () => {
 
     // Fifty appends to the same file inside one debounce window → exactly one flush.
     for (let i = 0; i < 50; i += 1) enqueue('a.jsonl');
-    await sleep(400);
+    vi.advanceTimersByTime(debounceMs + 1);
     expect(flushes).toEqual([1]);
 
     // A stream of events with gaps shorter than the debounce would reset the timer forever;
-    // the ceiling has to break that. 12 × 100 ms = 1.2 s of continuous activity.
+    // the ceiling has to break that.
     flushes.length = 0;
-    for (let i = 0; i < 12; i += 1) {
-      clock += 100;
+    const step = debounceMs / 2.5;
+    for (let i = 0; clock <= maxWaitMs; i += 1) {
       enqueue(`file-${i}.jsonl`);
-      await sleep(100);
+      clock += step;
+      vi.advanceTimersByTime(step);
     }
     expect(flushes.length).toBeGreaterThan(0);
     await watcher.stop();

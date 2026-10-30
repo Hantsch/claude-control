@@ -20,6 +20,9 @@ while that section is empty, and promotes it to the new version section on relea
 - **Refresh in the popover** (⟳ in its header) forces a re-read of every live transcript, for
   when you want the list confirmed rather than watched. Its tooltip says how old the current
   snapshot is.
+- **Claude Code's own word on status now counts.** A session Claude Code calls busy is no
+  longer shown as done or hidden at start; one it calls idle is no longer shown as working.
+  Waiting rows now say what Claude Code is waiting for, instead of making you guess.
 - **"Mark all as seen" is hidden instead of greyed out** when there is nothing settled to
   clear.
 - **The app can update itself now — if you let it.** Flip it on in Settings and it checks

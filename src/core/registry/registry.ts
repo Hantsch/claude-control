@@ -27,11 +27,12 @@ export interface RegistryEntry {
   file: string;
   mtimeMs: number;
   /**
-   * Optional, agent-reported facts. Absent on all Claude Code versions observed so far
-   * (RESEARCH.md §1) — kept for forward compatibility only.
+   * Optional, agent-reported facts (RESEARCH.md §1). Claude Code 2.1.312 publishes
+   * `status` (`busy` / `idle` / `waiting`); older versions omit them, so every one may be null.
    */
   reportedStatus: string | null;
   waitingFor: string | null;
+  /** When `reportedStatus` was set: `statusUpdatedAt`, falling back to the entry's `updatedAt`. */
   reportedAt: number | null;
 }
 
@@ -111,7 +112,9 @@ export function parseRegistryEntry(
     // avoid colliding with the derived `SessionStatus` elsewhere in the model.
     reportedStatus: str(raw.status)?.trim().toLowerCase() ?? null,
     waitingFor: str(raw.waitingFor),
-    reportedAt: dateMs(raw.updatedAt),
+    // `updatedAt` moves on any registry write (a rename, a version bump), so it only stands in
+    // for the status stamp when the entry carries no `statusUpdatedAt` of its own.
+    reportedAt: dateMs(raw.statusUpdatedAt) ?? dateMs(raw.updatedAt),
   };
 }
 

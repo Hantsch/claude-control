@@ -336,6 +336,12 @@ export interface SessionView {
   statusReason: string;
   /** Where `status` came from: the agent's own registry report, or our own inference (§1). */
   statusSource: 'reported' | 'inferred';
+  /**
+   * What Claude Code says it is waiting for, verbatim from its registry entry. Non-null only
+   * while `status` is `waiting` *because of that report* — an inferred wait, or a stale report
+   * the transcript has since outranked, must not carry text that no longer applies.
+   */
+  waitingFor: string | null;
   /** When the session entered `status`. */
   statusSince: number;
   /**

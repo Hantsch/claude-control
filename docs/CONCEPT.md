@@ -274,6 +274,15 @@ leaves the tray surfaces the ordinary way, through the recency window or "Mark a
 
 ### 6.2 Derivation
 
+**Registry status first** (Claude Code `2.1.312`+, RESEARCH §6). The registry's own `status` is the primary input; the transcript below only fills in what it does not say.
+
+- `waiting` → `waiting`, and `waitingFor` is shown on the row, toast and detail.
+- `busy` → never `done`, `interrupted` or `starting`; lifted to `working`. An `end_turn` under `busy` stays `working` (background agents).
+- `idle` (stamp not more than 2 s older than the newest transcript record) → never `working` or `queued`; in-flight verdicts become `interrupted`. `done`, `interrupted` and `starting` still come from the transcript.
+- Any other value, or no `status` → the transcript rules below, unchanged.
+
+The transcript still supplies the sub-state (tool, working/stale split).
+
 Given the last *semantic* record `R` of a live session and `now`:
 
 ```
@@ -306,6 +315,8 @@ Default `T_work = 25 s`, configurable, with per-tool overrides. `Agent` gets 20 
 and the session it belongs to should read `working` the whole time.
 
 ### 6.3 The honest limitation
+
+Where the registry carries `status`, a `waiting` is exact (and says what it waits for); the heuristic below only remains for registries without it.
 
 Transcript watching **cannot see a permission prompt.** The prompt is rendered in the
 terminal; nothing is written to the transcript while it waits. So `waiting` is a heuristic:
@@ -593,4 +604,4 @@ UI exists.
 | **Registry staleness on crash** | Unverified whether `sessions/<pid>.json` is always cleaned up. Mitigated by PID + `procStart` cross-check on every 5 s tick. |
 | **Transcript schema drift** | The JSONL format is internal to Claude Code and can change without notice (observed version: `2.1.222`). The parser must degrade to `unknown` rather than crash, and the version is recorded per record so drift is detectable. |
 | **Electron footprint** | ~150 MB RSS, knowingly accepted for a tool that runs all day. Revisit only if it becomes a problem in practice. |
-| **Reported status field** | Not found (see RESEARCH.md §1): `status`, `waitingFor`, and `updatedAt` are all absent from the registry across 10 sampled `claude-vscode` sessions (2026-08-13, Claude Code `2.1.228`/`2.1.229`). If Claude Code later exposes an authoritative upstream status field, it would supersede the §6.2 derivation for the states it covers. |
+| **Reported status field** | Present since `2.1.312`, authoritative for busy/idle/waiting; transcript supplies sub-state; older registries fall back to §6.2. |

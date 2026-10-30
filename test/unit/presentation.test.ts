@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { acceleratorFromChord, formatAccelerator } from '../../src/shared/accelerator.ts';
-import { formatShownOf, modelDisplayName } from '../../src/shared/presentation.ts';
+import { formatShownOf, modelDisplayName, waitingOnText } from '../../src/shared/presentation.ts';
 import { formatAge } from '../../src/renderer/lib/format.ts';
 
 describe('modelDisplayName', () => {
@@ -134,5 +134,37 @@ describe('formatAccelerator', () => {
 
   it('returns a non-empty accelerator unchanged', () => {
     expect(formatAccelerator('Ctrl+Alt+C')).toBe('Ctrl+Alt+C');
+  });
+});
+
+describe('waitingOnText', () => {
+  const bash = { name: 'Bash', hint: 'npm test' };
+
+  it('a waiting session says what Claude Code reports it is waiting for', () => {
+    expect(waitingOnText({ status: 'waiting', waitingFor: 'permission prompt', pendingTool: bash })).toBe(
+      'Waiting for permission prompt',
+    );
+    expect(waitingOnText({ status: 'waiting', waitingFor: 'a question', pendingTool: null })).toBe(
+      'Waiting for a question',
+    );
+  });
+
+  it('an inferred wait keeps the pending-tool wording', () => {
+    expect(waitingOnText({ status: 'waiting', waitingFor: null, pendingTool: bash })).toBe(
+      'Bash has been pending: npm test',
+    );
+    expect(waitingOnText({ status: 'waiting', waitingFor: null, pendingTool: { name: 'Read' } })).toBe(
+      'Read has been pending',
+    );
+  });
+
+  it('an inferred wait with no pending tool says a fast tool is overdue', () => {
+    expect(waitingOnText({ status: 'waiting', waitingFor: null, pendingTool: null })).toBe(
+      'A fast tool is overdue — probably a prompt waiting for you',
+    );
+  });
+
+  it('yields null for any status other than waiting', () => {
+    expect(waitingOnText({ status: 'done', waitingFor: 'permission prompt', pendingTool: bash })).toBeNull();
   });
 });

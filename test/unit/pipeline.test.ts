@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
 import { resolveClaudePaths } from '../../src/core/adapters/claude/paths.ts';
 import { ControlEngine } from '../../src/core/engine.ts';
+import { NotificationGate } from '../../src/core/state/notifications.ts';
 import { FileWatcher } from '../../src/core/watch/watcher.ts';
 import { DEFAULT_SETTINGS, DEFAULT_THRESHOLDS, mergeSettings } from '../../src/core/model/settings.ts';
 import type { ProcessProbe } from '../../src/core/registry/liveness.ts';
@@ -24,6 +25,7 @@ import type { StatusTransition } from '../../src/core/model/types.ts';
 import {
   T0,
   agentResult,
+  agentLaunchedResult,
   assistant,
   aiTitle,
   fileHistorySnapshot,
@@ -169,6 +171,26 @@ describe('discovery and status through the adapter', () => {
 
     const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
     const refs = await adapter.discoverLiveSessions();
+    expect(refs[0]!.reportedAt).toBe(T0);
+  });
+
+  it('prefers `statusUpdatedAt` over `updatedAt` as the registry status stamp', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(
+      LIVE_PID,
+      registryEntry({
+        pid: LIVE_PID,
+        sessionId: 'sess-stamp',
+        status: 'busy',
+        // A later unrelated write (rename, heartbeat) must not make the status look fresher.
+        updatedAt: T0 + 60_000,
+        statusUpdatedAt: new Date(T0).toISOString(),
+      }),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
+    const refs = await adapter.discoverLiveSessions();
+    expect(refs[0]!.reportedStatus).toBe('busy');
     expect(refs[0]!.reportedAt).toBe(T0);
   });
 
@@ -830,6 +852,74 @@ describe('engine', () => {
 
     const latency = (await observed) - appendedAt;
     expect(latency).toBeLessThan(2_000);
+    await engine.stop();
+  });
+
+  it('a delegating session turns done only when the registry goes idle, without waiting for the tick', async () => {
+    const tree = await makeFixtureTree();
+    const registry = (status: string): Record<string, unknown> =>
+      registryEntry({
+        pid: LIVE_PID,
+        sessionId: 'sess-deleg',
+        name: 'cc-deleg',
+        status,
+        statusUpdatedAt: Date.now(),
+      });
+    await tree.writeRegistry(LIVE_PID, registry('busy'));
+    const stamp = (record: Record<string, unknown>): Record<string, unknown> => ({
+      ...record,
+      timestamp: new Date().toISOString(),
+    });
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-deleg',
+      toJsonl([
+        stamp(assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent' }] })),
+        stamp(agentLaunchedResult('u1', 1_000, { assistantUuid: 'a1', toolUseId: 't1' })),
+        stamp(assistant({ uuid: 'a2', at: 2_000, stopReason: 'end_turn', text: 'Delegated.' })),
+      ]),
+    );
+
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID]))),
+      settings: mergeSettings({
+        ...DEFAULT_SETTINGS,
+        indexHistoryOnStart: false,
+        // Only the registry file event may trigger the re-read.
+        reading: { ...DEFAULT_SETTINGS.reading, tickIntervalMs: 60_000 },
+      }),
+    });
+
+    const gate = new NotificationGate();
+    const settings = mergeSettings(DEFAULT_SETTINGS).notifications;
+    let notified = 0;
+    const toDone: StatusTransition[] = [];
+    let flippedAt = 0;
+    let doneBeforeFlip = 0;
+    const observed = new Promise<number>((resolve) => {
+      engine.on('transitions', (batch) => {
+        for (const transition of batch) {
+          if (gate.evaluate(transition, settings).notify) notified += 1;
+          if (transition.to !== 'done' || transition.seeded) continue;
+          toDone.push(transition);
+          if (flippedAt === 0) doneBeforeFlip += 1;
+          else resolve(Date.now());
+        }
+      });
+    });
+
+    await engine.start();
+    expect(engine.getSnapshot().sessions[0]!.status).toBe('working');
+
+    flippedAt = Date.now();
+    await tree.writeRegistry(LIVE_PID, registry('idle'));
+
+    expect((await observed) - flippedAt).toBeLessThan(2_000);
+    await sleep(300);
+    expect(doneBeforeFlip).toBe(0);
+    expect(toDone).toHaveLength(1);
+    expect(notified).toBe(1);
+    expect(engine.getSnapshot().sessions[0]!.status).toBe('done');
     await engine.stop();
   });
 

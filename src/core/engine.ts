@@ -584,6 +584,8 @@ export class ControlEngine {
       status: derived.status,
       statusReason: derived.reason,
       statusSource: derived.statusSource,
+      waitingFor:
+        derived.status === 'waiting' && derived.statusSource === 'reported' ? ref.waitingFor : null,
       // 0 lets the store stamp the moment the status actually changed.
       statusSince: 0,
       // The store owns acknowledgement and dismissal — the only things that survive a re-read.

@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Claude Code's own status outranks the transcript
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -36,25 +36,25 @@ surface, the moment the registry file changes, not on the next poll.
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — A live session whose registry says `busy` is never shown as `done`,
+- [x] **AC1** — A live session whose registry says `busy` is never shown as `done`,
       `interrupted` or `starting`, whatever its transcript's last record is — including a
       session whose last record is `end_turn` after an async `Agent` launch
-- [ ] **AC2** — A live session whose registry says `idle` is never shown as `working` or
+- [x] **AC2** — A live session whose registry says `idle` is never shown as `working` or
       `queued` — e.g. a turn that died mid-tool and left a tool result as the last record
-- [ ] **AC3** — A registry `waiting` keeps today's behaviour, and its `waitingFor` text is
+- [x] **AC3** — A registry `waiting` keeps today's behaviour, and its `waitingFor` text is
       what the row, the toast and the detail pane say the session is waiting for
-- [ ] **AC4** — Transcript-only distinctions survive where the registry has no word for them:
+- [x] **AC4** — Transcript-only distinctions survive where the registry has no word for them:
       `idle` still resolves to `done` vs `interrupted` vs `starting` from the transcript, and
       `busy` still shows the current tool and the `working` / `stale` split
-- [ ] **AC5** — Every status says where it came from: the reason line (detail pane, CLI `-v`)
+- [x] **AC5** — Every status says where it came from: the reason line (detail pane, CLI `-v`)
       distinguishes "Claude Code reports busy" from an inference
-- [ ] **AC6** — A registry file without a `status` field (older Claude Code, another
+- [x] **AC6** — A registry file without a `status` field (older Claude Code, another
       entrypoint) behaves exactly as today — every existing machine test that passes no
       registry status stays green unchanged (the one test asserting that `busy`/`idle` are
       ignored encodes the rule this story reverses and is narrowed to unrecognised values)
-- [ ] **AC7** — A change to the registry file alone (status flips, transcript untouched)
+- [x] **AC7** — A change to the registry file alone (status flips, transcript untouched)
       reaches the live surfaces within the watcher debounce, not on the next 5 s tick
-- [ ] **AC8** — No `done` toast fires while the registry says `busy`; the `done` toast for a
+- [x] **AC8** — No `done` toast fires while the registry says `busy`; the `done` toast for a
       delegating session fires once, when the registry goes `idle`
 
 ## Open Questions
@@ -116,7 +116,7 @@ is serialised as a whole).
 
 ## Deliverables
 
-- [ ] **D1 — Registry status is the primary input of the state machine.** Files:
+- [x] **D1 — Registry status is the primary input of the state machine.** Files:
       `src/core/state/machine.ts`, `src/core/registry/registry.ts`,
       `test/fixtures/builders.ts`, `test/unit/machine.test.ts`, `test/unit/pipeline.test.ts`
       (adapter-parsing block only).
@@ -146,7 +146,7 @@ is serialised as a whole).
       acting on it" to `['running', '', null]` (busy/idle now act); every other existing
       machine test stays unchanged. In `pipeline.test.ts` add one adapter test:
       "prefers `statusUpdatedAt` over `updatedAt` as the registry status stamp".
-- [ ] **D2 — `waitingFor` in the view model and the toast.** Files:
+- [x] **D2 — `waitingFor` in the view model and the toast.** Files:
       `src/core/model/types.ts` (`SessionView.waitingFor: string | null`, doc comment),
       `src/core/engine.ts` (`toView`: `waitingFor: derived.status === 'waiting' &&
       derived.statusSource === 'reported' ? ref.waitingFor : null`),
@@ -160,7 +160,7 @@ is serialised as a whole).
       *Test:* `presentation.test.ts` › "a waiting session says what Claude Code reports it is
       waiting for" — reported text wins over a pending tool; inferred `waiting` keeps today's
       text; a non-waiting status yields `null`.
-- [ ] **D3 — `waitingFor` on the main-window row and detail pane.** Files:
+- [x] **D3 — `waitingFor` on the main-window row and detail pane.** Files:
       `src/renderer/components/SessionsView.tsx` (row, around `:164` — when
       `waitingOnText(session)` is non-null and `session.waitingFor` is set, show it in place of
       the pending-tool name), `src/renderer/components/SessionDetailPane.tsx` (the
@@ -169,7 +169,7 @@ is serialised as a whole).
       popover row already prints `statusReason` for waiting rows — leave it. *Accept:*
       `npm run typecheck` + `npm run build` green; behaviour proven by D2's helper test (no
       renderer test environment exists).
-- [ ] **D4 — Registry-only flips are event-driven and toast once.** File:
+- [x] **D4 — Registry-only flips are event-driven and toast once.** File:
       `test/unit/pipeline.test.ts` (`engine` block; mirror "observes a status change within 2 s
       of an append (N4)": real `FileWatcher`, `tickIntervalMs: 60_000`, real timestamps).
       Fixture: registry `status: 'busy'`, transcript ending `Agent` launch → tool result →
@@ -179,7 +179,7 @@ is serialised as a whole).
       flip, and a `NotificationGate` (`src/core/state/notifications.ts`, default notification
       settings) fed the batches notifies exactly once. If the test fails, fix the cause in
       `src/core/engine.ts` (`handleChanges` / `snapshotFor`), not the test.
-- [ ] **D5 — Concept and changelog.** Files: `docs/CONCEPT.md` — §6.2 gains a "Registry status
+- [x] **D5 — Concept and changelog.** Files: `docs/CONCEPT.md` — §6.2 gains a "Registry status
       first" block before the transcript rules (the D1 table in five lines, citing RESEARCH §6),
       §6.3 notes that a registry `waiting` is exact and the heuristic only remains for
       registries without `status`, §12 row "Reported status field" reworded to "Present since
@@ -210,3 +210,18 @@ is serialised as a whole).
 Coverage: AC1/2/4/5/6 → D1 · AC3 → D2+D3 · AC7/8 → D4 · CONCEPT rewording (Requirement) → D5.
 
 ## Done
+
+Registry `status` is now the primary input of `deriveStatus`: `busy` lifts passive transcript verdicts to `working`, a fresh `idle` turns in-flight ones into `interrupted` and never queued, `waiting` as before; the transcript only supplies the sub-state. `waitingFor` reaches toast, row and detail pane through `waitingOnText`. CONCEPT §6.2/§6.3/§12 and CHANGELOG updated.
+
+Commit message: `020: registry busy/idle/waiting outranks transcript inference; waitingFor on surfaces`
+
+Verification (narrow gate, `npx vitest run --changed HEAD`: 9 files / 290 tests green; `npm run build`, `npm run typecheck` green; e2e none, full gate pending sprint). Review: default tier, 1 cycle; one finding (whole-file reformat of the two renderer files) fixed and re-verified.
+AC -> test, all passed: AC1/2/4/5 machine.test.ts (names as in Acceptance Tests) · AC6 existing table + narrowed "carries any other reported status…" · AC3 presentation.test.ts helper test · AC7/AC8 pipeline.test.ts "a delegating session turns done only when the registry goes idle…". No manual residue. Gap: row/detail-pane rendering of `waitingFor` has no renderer test env — proven via the helper.
+
+Decisions:
+- Busy reasons for interrupted/starting/queued verdicts and for a fast tool over budget use new wording (`Claude Code reports busy — …`); slow-tool stale reason kept.
+- `idle` with no stamp or no transcript record is trusted (stamp guard only applies when both exist).
+- No engine change needed for AC7/AC8 — the real-watcher test passed as written.
+- Review untested edge (idle with `reported.at === null`) left as is: spec-mandated, harmless.
+
+tiers: D 5 / hard 1 · review default · cycles 1 · agents 10

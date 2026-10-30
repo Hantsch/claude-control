@@ -54,6 +54,7 @@ function view(overrides: Partial<SessionView> & { sessionId: string; status: Ses
     title: null,
     statusReason: 'test',
     statusSource: 'inferred',
+    waitingFor: null,
     statusSince: 0,
     seen: false,
     dismissed: false,

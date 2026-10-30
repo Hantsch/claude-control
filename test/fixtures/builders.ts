@@ -390,6 +390,7 @@ export function registryEntry(options: {
   status?: string;
   waitingFor?: string;
   updatedAt?: number | string;
+  statusUpdatedAt?: number | string;
 }): Record<string, unknown> {
   const entry: Record<string, unknown> = {
     pid: options.pid,
@@ -407,6 +408,7 @@ export function registryEntry(options: {
   if (options.status !== undefined) entry.status = options.status;
   if (options.waitingFor !== undefined) entry.waitingFor = options.waitingFor;
   if (options.updatedAt !== undefined) entry.updatedAt = options.updatedAt;
+  if (options.statusUpdatedAt !== undefined) entry.statusUpdatedAt = options.statusUpdatedAt;
   return entry;
 }
 

@@ -1,1 +1,22 @@
 - 2026-10-30 11:45:28 · refine · 016 017 018 020 021 022 · started
+- 2026-10-30 11:51:47 · refine · 016 017 018 020 021 022 · done
+- 2026-10-30 11:51:47 · 020 · build · started
+- 2026-10-30 11:52:02 · 020 · D1 registry status in state machine · started
+- 2026-10-30 11:56:19 · 020 · D1 registry status in state machine · done
+- 2026-10-30 11:56:19 · 020 · D2 waitingFor view model and toast · started
+- 2026-10-30 11:57:00 · 020 · D2 waitingFor view model and toast · done
+- 2026-10-30 11:57:01 · 020 · D3 waitingFor row and detail pane · started
+- 2026-10-30 11:57:01 · 020 · D4 registry-only flip engine test · started
+- 2026-10-30 11:57:42 · 020 · D3 waitingFor row and detail pane · done
+- 2026-10-30 11:57:42 · 020 · D4 registry-only flip engine test · done
+- 2026-10-30 11:57:42 · 020 · D5 concept and changelog · started
+- 2026-10-30 11:58:08 · 020 · D5 concept and changelog · done
+- 2026-10-30 11:58:08 · 020 · verify · started
+- 2026-10-30 11:58:37 · 020 · verify · done
+- 2026-10-30 11:58:37 · 020 · review 1 · started
+- 2026-10-30 11:59:27 · 020 · review 1 · done
+- 2026-10-30 11:59:27 · 020 · D3 fix revert formatting · started
+- 2026-10-30 12:00:09 · 020 · D3 fix revert formatting · done
+- 2026-10-30 12:00:09 · 020 · verify · started
+- 2026-10-30 12:00:26 · 020 · verify · done
+- 2026-10-30 12:00:26 · 020 · story · done

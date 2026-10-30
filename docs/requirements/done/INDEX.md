@@ -78,3 +78,4 @@ second roadmap.
   Settings toggle and status line, and a second named exception in N1/the README/Diagnostics —
   two `story-review-hard` rounds, the first catching stale single-exception wording plus four
   hardening gaps in the download/swap paths, both fixed and confirmed.
+- 020 — Claude Code's own status outranks the transcript · S06 · registry busy/idle/waiting is the primary status input, transcript only supplies sub-state; waitingFor shown on toast, row and detail pane

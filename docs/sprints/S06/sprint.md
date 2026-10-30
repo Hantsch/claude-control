@@ -1,7 +1,7 @@
 ---
 sprint: S06
-status: planned # planned | in-progress | done
-branch: # set by /sprint
+status: in-progress
+branch: sprint/S06
 milestone: M8 — Trust the live list
 ---
 

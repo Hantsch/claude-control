@@ -38,6 +38,12 @@ export interface AgentAdapter {
   /** Tail-read one session and return normalized facts (§5.2). */
   readStatus(ref: LiveSessionRef): Promise<SessionSnapshot>;
 
+  /**
+   * Re-derive facts that live outside the transcript (a subagent's own files) for a snapshot
+   * whose transcript is unchanged. Optional: an adapter with no such facts omits it.
+   */
+  refreshSubagentActivity?(snapshot: SessionSnapshot, now: number): Promise<SessionSnapshot>;
+
   /** Cheap, cancellable background walk over past transcripts (§5.1). */
   indexHistory(signal: AbortSignal): AsyncIterable<HistoryEntry>;
 

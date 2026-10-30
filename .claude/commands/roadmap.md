@@ -5,7 +5,7 @@ model: sonnet
 effort: medium
 ---
 
-<!-- ai-scrum:managed 4.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 4.9.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Run the roadmap ritual: **$1** (no argument: run `check` first, then offer `plan`).
@@ -57,8 +57,8 @@ paragraph in the roadmap.
      row mentions.
    - `<sprints>/` — open sprints (`sprint.md` outside `done/`) and the most recent review
      under `done/`.
-   - `<concepts>/` — concepts without a line in the roadmap; concepts whose stories are all
-     done (→ they belong in `<systems>/`).
+   - `<concepts>/` — concepts without a line in the roadmap; concepts whose phase has every
+     milestone `done` in the roadmap (→ they belong in `<systems>/`).
 3. Correct every deviation directly in the roadmap:
    - A milestone whose stories are all `done` is **`done`** with the date of its last
      sprint — acceptance happened inside the sprint through the tests, there is no separate
@@ -68,18 +68,35 @@ paragraph in the roadmap.
      move to **History** (one row each), and the next phase becomes the current one.
    - Stories with no home get a row under "Open / unprioritised" (grouped by theme, one row
      per theme, not one per story).
-   - Move fully implemented concepts to `<systems>/` (`git mv`, update the status line).
-4. Compact to the budgets: every cell or line that exceeds its budget is cut back to the one
+4. **Age what accumulates — by rule, not by judgement.** Measured without this step: the same
+   four red flows listed three times in one roadmap over five sprints, and three concepts
+   still "Draft" with their phases done.
+   - A follow-up older than three sprints (by its source link) becomes a story draft (as in
+     `plan` step 3, with a row under "Open / unprioritised") or is deleted — the reason goes
+     in the report either way.
+   - An entry in the profile's `e2e-quarantine` list older than two sprints (its `since`)
+     becomes a story draft the same way.
+   - Every concept whose phase has every milestone `done` in the roadmap (its stories done is
+     how a milestone becomes `done`, step 3) moves to `<systems>/` now (`git mv`, update the
+     status line), named in the report.
+   - Every sprint with `status: done` still outside `<sprints>/done/` moves there now
+     (`git mv <sprints>/SNN <sprints>/done/SNN`), named in the report — `/sprint` archives its
+     own sprint in the review commit; this catches the ones finished before it did. Repoint the
+     roadmap's links to its `review.md` and the relative links inside that `review.md`, which
+     now sit one folder deeper. A sprint that is not `done` is never moved.
+   - A systems doc older than its module's last story commit is listed in the report as
+     stale — best effort.
+5. Compact to the budgets: every cell or line that exceeds its budget is cut back to the one
    sentence that carries the status, and the detail is pointed at (linked), not kept. Remove
    follow-ups that are done or have become stories. Rewrite "Where we stand" from the real
    state and set "As of".
-5. **A roadmap in an older shape** (milestone paragraphs, "Gaps/notes", struck-through items)
+6. **A roadmap in an older shape** (milestone paragraphs, "Gaps/notes", struck-through items)
    is rebuilt into the six sections on the first `check`, after an explicit yes from the user
    via `AskUserQuestion`. Say plainly what will not be carried over: the paragraph detail,
    which lives in the sprint reviews and in git history. Follow-ups still worth doing are
    kept as one-liners; everything struck through is dropped.
-6. Report compactly: drift corrected, what was compacted or dropped, state of the current
-   phase, what is waiting unprioritised.
+7. Report compactly: drift corrected, what was aged, moved or found stale (step 4), what was
+   compacted or dropped, state of the current phase, what is waiting unprioritised.
 
 ## Mode `plan` — cut the next sprint (together with the user)
 
@@ -118,8 +135,8 @@ paragraph in the roadmap.
 - Milestone granularity, table rows, one sentence: never copy story status lists, findings or
   decisions into the roadmap. If you are about to write a second sentence into a cell, link
   instead.
-- History is deleted here, not preserved: done follow-ups go, struck-through text goes, done
-  phases collapse to one row per milestone. Git and the sprint reviews are the archive.
+- History is deleted here, not preserved: done and aged-out follow-ups go, struck-through text
+  goes, done phases collapse to one row per milestone. Git and the sprint reviews are the archive.
 - Concepts stay timeless (what/why) — when/status lives only in the roadmap.
 - Write generated artifacts in the profile's `doc-language`; keep the existing language of
   files you are only editing.

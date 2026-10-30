@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { summarizeRecords } from '../../src/core/adapters/claude/summarize.ts';
 import type { TranscriptRecord } from '../../src/core/adapters/claude/records.ts';
-import { DEFAULT_THRESHOLDS } from '../../src/core/model/settings.ts';
+import { DEFAULT_THRESHOLDS, SUBAGENT_LIVENESS_MS } from '../../src/core/model/settings.ts';
 import type { SessionStatus } from '../../src/core/model/status.ts';
 import { deriveHistoricalStatus, deriveStatus } from '../../src/core/state/machine.ts';
 import {
@@ -418,8 +418,9 @@ describe('deriveStatus', () => {
       records: Record<string, unknown>[],
       reported: { status: string | null; waitingFor: string | null; at: number | null },
       alive = true,
+      atMs = 2 * SECOND,
     ) {
-      const at = T0 + 2 * SECOND;
+      const at = T0 + atMs;
       return deriveStatus({
         alive,
         facts: facts(records, at),
@@ -472,12 +473,143 @@ describe('deriveStatus', () => {
     });
 
     it('carries any other reported status without acting on it', () => {
-      // Only `waiting` overrides. `busy`/`idle`/anything else is registry noise here.
-      for (const status of ['busy', 'idle', 'running', '', null]) {
+      // Only `waiting`, `busy` and `idle` act; anything else is registry noise here.
+      for (const status of ['running', '', null]) {
         const result = withReported(finished, { status, waitingFor: null, at: T0 });
         expect(result.status, `reported=${String(status)}`).toBe('done');
         expect(result.statusSource, `reported=${String(status)}`).toBe('inferred');
       }
+    });
+
+    /** A `busy`/`idle` report stamped at the moment of evaluation. */
+    function reportedNow(status: 'busy' | 'idle', atMs = 2 * SECOND) {
+      return { status, waitingFor: null, at: T0 + atMs };
+    }
+
+    /** An open tool call issued at T0 whose name is `name`. */
+    function openTool(name: string) {
+      return [assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name }] })];
+    }
+
+    it('a session Claude Code reports busy is never done, interrupted or starting, whatever its last record', () => {
+      const cases: { name: string; records: Record<string, unknown>[] }[] = [
+        {
+          // Background agents launched asynchronously: the tool result comes straight back and
+          // the turn ends, while the agents keep running.
+          name: 'end_turn after an async Agent launch',
+          records: [
+            assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent' }] }),
+            toolResult('u1', 500, { assistantUuid: 'a1', toolUseId: 't1' }),
+            assistant({ uuid: 'a2', at: 1_000, stopReason: 'end_turn', text: 'Agents launched.' }),
+          ],
+        },
+        { name: 'interrupt marker', records: [prompt('p1', 0), interrupt('i1', 1_000)] },
+        { name: 'empty transcript', records: [] },
+        {
+          name: 'queued prompt',
+          records: [
+            assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn', text: 'All set.' }),
+            queueOperation('enqueue', 1_000),
+          ],
+        },
+      ];
+      for (const { name, records } of cases) {
+        const result = withReported(records, reportedNow('busy'));
+        expect(result.status, name).toBe('working');
+        expect(result.statusSource, name).toBe('reported');
+      }
+      // No age cut-off: background agents may run for hours after the turn ended.
+      const hoursLater = withReported(cases[0]!.records, reportedNow('busy', 3 * 60 * MINUTE), true, 3 * 60 * MINUTE);
+      expect(hoursLater.status).toBe('working');
+    });
+
+    it('a session Claude Code reports idle is never working or queued — a turn that died mid-tool reads interrupted', () => {
+      const cases: { name: string; records: Record<string, unknown>[]; atMs: number }[] = [
+        { name: 'open Bash call below budget', records: openTool('Bash'), atMs: 2 * SECOND },
+        { name: 'open fast tool over budget', records: openTool('Read'), atMs: 12 * SECOND },
+        { name: 'open slow tool over budget', records: openTool('Bash'), atMs: 121 * SECOND },
+        { name: 'prompt just submitted', records: [prompt('p1', 0)], atMs: 2 * SECOND },
+        { name: 'tool result returned', records: [...openTool('Bash'), toolResult('u1', 500, { assistantUuid: 'a1', toolUseId: 't1' })], atMs: 2 * SECOND },
+      ];
+      for (const { name, records, atMs } of cases) {
+        const result = withReported(records, reportedNow('idle', atMs), true, atMs);
+        expect(result.status, name).toBe('interrupted');
+        expect(result.statusSource, name).toBe('reported');
+      }
+      // A queued prompt nobody is working on does not outrank the finished turn.
+      const queued = withReported(
+        [assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn', text: 'All set.' }), queueOperation('enqueue', 1_000)],
+        reportedNow('idle'),
+      );
+      expect(queued.status).toBe('done');
+    });
+
+    it('under idle the transcript still tells done from interrupted from starting', () => {
+      expect(withReported(finished, reportedNow('idle')).status).toBe('done');
+      expect(withReported([prompt('p1', 0), interrupt('i1', 1_000)], reportedNow('idle')).status).toBe('interrupted');
+      expect(withReported([], reportedNow('idle')).status).toBe('starting');
+    });
+
+    it('under busy an open tool keeps its name and the working/stale split', () => {
+      const below = withReported(openTool('Bash'), reportedNow('busy'));
+      expect(below.status).toBe('working');
+      expect(below.reason).toContain('Bash');
+      expect(below.appliedWorkMs).toBe(DEFAULT_THRESHOLDS.perToolWorkMs.Bash);
+
+      const slowOver = withReported(openTool('Bash'), reportedNow('busy', 121 * SECOND), true, 121 * SECOND);
+      expect(slowOver.status).toBe('stale');
+      expect(slowOver.reason).toContain('Bash');
+
+      // A fast tool over budget would read `waiting` on its own; Claude Code reports prompts
+      // itself, so under busy it is overdue work, not a prompt.
+      const fastOver = withReported(openTool('Read'), reportedNow('busy', 12 * SECOND), true, 12 * SECOND);
+      expect(fastOver.status).toBe('stale');
+      expect(fastOver.reason).toContain('Read');
+
+      // The subagent quiet-clock still holds an Agent call past its budget at `working`.
+      const now = T0 + 21 * MINUTE;
+      const delegating = facts(openTool('Agent'), now);
+      delegating.subagentActivityAt = now - 5 * SECOND;
+      const progressing = deriveStatus({
+        alive: true,
+        facts: delegating,
+        now,
+        thresholds: DEFAULT_THRESHOLDS,
+        reported: { status: 'busy', waitingFor: null, at: now },
+      });
+      expect(progressing.status).toBe('working');
+      expect(progressing.reason).toContain('subagent');
+      expect(withReported(openTool('Agent'), reportedNow('busy', 21 * MINUTE), true, 21 * MINUTE).status).toBe(
+        'stale',
+      );
+    });
+
+    it('a status shaped by the registry says so in its reason and source', () => {
+      const delegated = withReported(
+        [
+          assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent' }] }),
+          toolResult('u1', 500, { assistantUuid: 'a1', toolUseId: 't1' }),
+          assistant({ uuid: 'a2', at: 1_000, stopReason: 'end_turn', text: 'Agents launched.' }),
+        ],
+        reportedNow('busy'),
+      );
+      expect(delegated.reason).toBe('Claude Code reports busy — the turn ended, background agents are still running');
+      expect(delegated.statusSource).toBe('reported');
+
+      const died = withReported(openTool('Bash'), reportedNow('idle'));
+      expect(died.reason.startsWith('Claude Code reports idle')).toBe(true);
+      expect(died.statusSource).toBe('reported');
+
+      // An `idle` stamped well before the newest record lags the transcript: today's inference.
+      const records = [assistant({ uuid: 'a1', at: 10 * SECOND, tools: [{ id: 't1', name: 'Bash' }] })];
+      const lagging = withReported(records, { status: 'idle', waitingFor: null, at: T0 + 7 * SECOND }, true, 12 * SECOND);
+      expect(lagging.status).toBe('working');
+      expect(lagging.statusSource).toBe('inferred');
+      expect(lagging.reason.startsWith('Claude Code')).toBe(false);
+      // …while one within the tolerance still counts.
+      const current = withReported(records, { status: 'idle', waitingFor: null, at: T0 + 8 * SECOND }, true, 12 * SECOND);
+      expect(current.status).toBe('interrupted');
+      expect(current.statusSource).toBe('reported');
     });
 
     it('reports `inferred` when no reported block is passed at all', () => {
@@ -509,5 +641,69 @@ describe('deriveHistoricalStatus', () => {
 
   it('reports unknown when there is nothing semantic', () => {
     expect(deriveHistoricalStatus(facts([lastPrompt('x')]), DEFAULT_THRESHOLDS)).toBe('unknown');
+  });
+});
+
+describe('subagent writes after the turn ended', () => {
+  const ended = [assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn', text: 'Dispatched.' })];
+  const LIVENESS = SUBAGENT_LIVENESS_MS;
+
+  /** Derives at `atMs` with the subagents last having written `wroteAgoMs` earlier. */
+  function deriveWith(
+    wroteAgoMs: number | null,
+    atMs: number,
+    reported?: { status: string | null; waitingFor: string | null; at: number | null },
+  ) {
+    const now = T0 + atMs;
+    const f = facts(ended, now);
+    f.subagentsWrittenAt = wroteAgoMs === null ? null : now - wroteAgoMs;
+    return deriveStatus({ alive: true, facts: f, now, thresholds: DEFAULT_THRESHOLDS, reported });
+  }
+
+  it('a turn that ended while its subagent is still writing stays working and says so', () => {
+    const result = deriveWith(30 * SECOND, 40 * SECOND);
+    expect(result.status).toBe('working');
+    expect(result.statusSource).toBe('inferred');
+    expect(result.reason).toBe(
+      "subagent still running — it wrote 30s ago, so this turn's work is not over",
+    );
+    expect(deriveWith(5 * MINUTE, 6 * MINUTE).reason).toContain('wrote 5 min ago');
+  });
+
+  it('settles to done once the subagents have been quiet for the liveness window, and stays there', () => {
+    const wroteAt = 10 * SECOND;
+    const at = (afterMs: number) => {
+      const now = T0 + wroteAt + afterMs;
+      const f = facts(ended, now);
+      f.subagentsWrittenAt = T0 + wroteAt;
+      return deriveStatus({ alive: true, facts: f, now, thresholds: DEFAULT_THRESHOLDS }).status;
+    };
+    expect(at(LIVENESS - SECOND)).toBe('working');
+    expect(at(LIVENESS)).toBe('done');
+    expect(at(60 * MINUTE)).toBe('done');
+  });
+
+  it('a registry busy session names its subagent evidence in the reason', () => {
+    const busy = { status: 'busy', waitingFor: null, at: T0 };
+    const withEvidence = deriveWith(12 * SECOND, 20 * SECOND, busy);
+    expect(withEvidence.status).toBe('working');
+    expect(withEvidence.statusSource).toBe('reported');
+    expect(withEvidence.reason).toContain('subagent still running, wrote 12s ago');
+    const quiet = deriveWith(2 * LIVENESS, 3 * LIVENESS, busy);
+    expect(quiet.status).toBe('working');
+    expect(quiet.reason).toContain('wrote 20 min ago');
+    expect(deriveWith(null, 20 * SECOND, busy).reason).not.toContain('subagent still running');
+  });
+
+  it('a registry idle session stays settled whatever its subagents wrote', () => {
+    const result = deriveWith(SECOND, 20 * SECOND, { status: 'idle', waitingFor: null, at: T0 + 10 * SECOND });
+    expect(result.status).toBe('done');
+    expect(result.statusSource).toBe('reported');
+  });
+
+  it("a finished session's history status ignores subagent writes after its last record", () => {
+    const f = facts(ended);
+    f.subagentsWrittenAt = T0 + 5 * SECOND;
+    expect(deriveHistoricalStatus(f, DEFAULT_THRESHOLDS)).toBe('done');
   });
 });

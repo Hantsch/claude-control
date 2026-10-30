@@ -143,6 +143,24 @@ export function sessionLabel(view: { name: string; title?: string | null }): str
   return view.title?.trim() || view.name;
 }
 
+/**
+ * What a waiting session is waiting on, for the toast body. Claude Code's own words win over
+ * our tool-age inference; `null` for any other status so callers keep their own fallback.
+ */
+export function waitingOnText(view: {
+  status: SessionStatus;
+  waitingFor: string | null;
+  pendingTool: { name: string; hint?: string | null } | null;
+}): string | null {
+  if (view.status !== 'waiting') return null;
+  if (view.waitingFor) return `Waiting for ${view.waitingFor}`;
+  if (view.pendingTool) {
+    const { name, hint } = view.pendingTool;
+    return `${name} has been pending${hint ? `: ${hint}` : ''}`;
+  }
+  return 'A fast tool is overdue — probably a prompt waiting for you';
+}
+
 /** Single-line label for the tray and the toasts, where long titles must not wrap. */
 export function clampLabel(text: string, max: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();

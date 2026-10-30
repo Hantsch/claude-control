@@ -169,6 +169,9 @@ export interface AppSettings {
  */
 export const MAX_DEBOUNCE_MS = 1_000;
 
+/** How recently a subagent transcript must have been written for the run to count as live. */
+export const SUBAGENT_LIVENESS_MS = 10 * 60_000;
+
 export const DEFAULT_THRESHOLDS: Thresholds = {
   tWorkMs: 25_000,
   perToolWorkMs: {

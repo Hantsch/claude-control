@@ -15,7 +15,7 @@ import {
   TRUNCATED_TOTAL_MARKER,
 } from '../../shared/presentation.ts';
 import { api } from '../api.ts';
-import { formatBytes, formatDateTime, formatDuration, formatTokens } from '../lib/format.ts';
+import { formatBytes, formatDateTime, formatTokens } from '../lib/format.ts';
 import { groupHistory, type HistoryGroup, type HistoryGroupDimension } from '../../core/state/historyGrouping.ts';
 
 const PAGE_SIZE = 200;
@@ -37,7 +37,13 @@ const DIMENSIONS: Array<{ value: HistoryGroupDimension | 'none'; label: string }
 function HistoryRow({ entry, onSelect }: { entry: HistoryEntry; onSelect: () => void }): React.JSX.Element {
   const tokens = entryTokens(entry);
   return (
-    <tr onClick={onSelect}>
+    <tr
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') onSelect();
+      }}
+    >
       <td>{formatDateTime(entry.endedAt ?? entry.mtimeMs)}</td>
       <td title={entry.project.path}>{entry.project.name}</td>
       <td>{entry.branch ?? '—'}</td>
@@ -57,7 +63,6 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
   const [projectKey, setProjectKey] = useState<string>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [selected, setSelected] = useState<HistoryEntry | null>(null);
   const [dimension, setDimension] = useState<HistoryGroupDimension | 'none'>('none');
   // Presence in the set means collapsed (mirrors popover.tsx's `collapsedGroups` convention) —
   // all groups start expanded. Reset whenever the dimension changes.
@@ -174,12 +179,7 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
               <HistoryRow
                 key={entry.sessionId}
                 entry={entry}
-                onSelect={() => {
-                  setSelected(entry);
-                  // Fire-and-forget: upgrades the stored entry's usage to the exact total once
-                  // the full parse completes; the `history` broadcast it emits refreshes this view.
-                  void api.getDetail(entry.sessionId);
-                }}
+                onSelect={() => void api.openSessionDetail(entry.sessionId)}
               />
             ))}
           </tbody>
@@ -251,12 +251,7 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
                         <HistoryRow
                           key={entry.sessionId}
                           entry={entry}
-                          onSelect={() => {
-                            setSelected(entry);
-                            // Fire-and-forget: upgrades the stored entry's usage to the exact
-                            // total; the `history` broadcast it emits refreshes this view.
-                            void api.getDetail(entry.sessionId);
-                          }}
+                          onSelect={() => void api.openSessionDetail(entry.sessionId)}
                         />
                       ))}
                     </tbody>
@@ -271,31 +266,6 @@ export function HistoryView({ state }: { state: AppState }): React.JSX.Element {
       {page.entries.length === 0 && (
         <div className="empty">
           {page.indexing ? 'Building the history index…' : 'No sessions match these filters.'}
-        </div>
-      )}
-
-      {selected && (
-        <div className="notice">
-          <strong>{selected.title ?? selected.sessionId}</strong>
-          <br />
-          {formatDateTime(selected.startedAt)} → {formatDateTime(selected.endedAt)} ·{' '}
-          {formatDuration(
-            selected.startedAt && selected.endedAt ? selected.endedAt - selected.startedAt : null,
-          )}{' '}
-          · {selected.model ?? 'model unknown'} · ~{selected.messageCountEstimate} records
-          <br />
-          <code>{selected.transcriptPath}</code>
-          <div className="row-actions">
-            <button type="button" onClick={() => void api.copyText(selected.transcriptPath)}>
-              Copy path
-            </button>
-            <button type="button" onClick={() => void api.revealPath(selected.transcriptPath)}>
-              Show file
-            </button>
-            <button type="button" onClick={() => setSelected(null)}>
-              Close
-            </button>
-          </div>
         </div>
       )}
     </div>

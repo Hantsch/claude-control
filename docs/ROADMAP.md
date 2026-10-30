@@ -1,7 +1,7 @@
 # Roadmap
 
 **The** one source of status and planning: where we stand, what comes next, what is not planned
-at all yet. As of: 2026-08-23.
+at all yet. As of: 2026-10-30 — S06 (M8) built on `sprint/S06`, merge into `dev` pending; M7 next.
 
 Rules (so this document does not drift):
 
@@ -21,7 +21,7 @@ Rules (so this document does not drift):
 | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | ✔ done |
 | 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ✔ done |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M5 and M6 accepted, M8 cut as S06, M7 last |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M5 and M6 accepted, M8 done 2026-10-30 (S06), M7 next |
 
 ---
 
@@ -255,7 +255,7 @@ Gaps/notes:
   [015](requirements/done/015-s04-residuals.md) in S05, together with the N5/N2 test listener shape the
   same review flagged.
 
-### M8 — Trust the live list — planned (S06, cut 2026-08-23)
+### M8 — Trust the live list — done 2026-10-30
 
 Not from a concept: found by the user on 2026-08-23, watching two sprints run in parallel and not
 being able to tell from the app what was happening. Three separate ways the live surfaces are
@@ -264,11 +264,21 @@ wrong or silent about what is running — a session that has handed its work to 
 two projects on `sprint/NN` are indistinguishable, and two filters remove live sessions with no
 count anywhere to say they did.
 
-Stories: [016](requirements/016-subagent-work-counts-as-session-activity.md) — `draft` ·
-[017](requirements/017-popover-row-names-its-project.md) — `draft` ·
-[018](requirements/018-a-hidden-session-says-it-is-hidden.md) — `draft`
-Sprints: [S06](sprints/S06/sprint.md) — `planned`
+Stories: [020](requirements/done/020-claude-codes-own-status-outranks-the-transcript.md) · [016](requirements/done/016-subagent-work-counts-as-session-activity.md) · 
+[021](requirements/done/021-a-session-is-called-what-vs-code-calls-it.md) · [017](requirements/done/017-popover-row-names-its-project.md) · 
+[018](requirements/done/018-a-hidden-session-says-it-is-hidden.md) · [022](requirements/done/022-a-past-session-opens-in-its-own-window.md) — all done
+Sprints: [S06](sprints/done/S06/sprint.md) — see [review](sprints/done/S06/review.md)
+- **Follow-up:** no e2e harness — every UI criterion of S06 is proven below the rendered app ([S06 review](sprints/done/S06/review.md)).
+- **Follow-up:** 021 — origin markers are only tested together (except `isMeta`); the history sidecar branch and `readDetail` titles have no dedicated test ([S06 review](sprints/done/S06/review.md)).
+- **Follow-up:** 022 — `EventRow.hasMore` is computed but not rendered, so a clipped event row does not say so ([S06 review](sprints/done/S06/review.md)).
 Gaps/notes:
+- **Re-cut 2026-10-30** after a measurement ([RESEARCH.md §6](RESEARCH.md)): Claude Code
+  `2.1.312` publishes its own `busy`/`idle`/`waiting` in the registry (`busy` includes running
+  background agents), which the app ignores except for `waiting`; `hideDoneOnStart` hid 9 of 12
+  live sessions on a cold start, two of them running sprints; labels came from injected
+  `user` records and never from `/rename`. 020 (status) and 021 (naming) were added, 016 now
+  builds on 020, 018 counts the third filter. 022 is a user request from the same day and
+  the one story that can move to S07 without touching the milestone.
 - 016 carries the milestone: the only story here that touches `core/`, and the only one producing
   a false statement rather than a missing one. Its open product question — own status for a
   delegating session, or `working` with a different reason — reaches into tray colour, badge,

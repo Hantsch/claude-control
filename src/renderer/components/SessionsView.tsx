@@ -4,7 +4,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { AppState, ProjectGroup, SessionView } from '../../shared/ipc.ts';
-import { STATUS_LABEL, sessionLabel } from '../../shared/presentation.ts';
+import { STATUS_LABEL, sessionLabel, waitingOnText } from '../../shared/presentation.ts';
 import { api } from '../api.ts';
 import { formatAge } from '../lib/format.ts';
 import { ContextBar } from './ContextBar.tsx';
@@ -133,6 +133,8 @@ function SessionRow({
     void api.setSessionMuted(session.sessionId, !session.muted);
   };
 
+  const waitingOn = waitingOnText(session);
+
   return (
     <div
       ref={row}
@@ -161,9 +163,9 @@ function SessionRow({
       </span>
       <span className="status">
         {STATUS_LABEL[session.status]}
-        {session.pendingTool && (
-          <span className="title" title={session.pendingTool.hint ?? undefined}>
-            {session.pendingTool.name}
+        {(session.pendingTool || (waitingOn && session.waitingFor)) && (
+          <span className="title" title={session.pendingTool?.hint ?? undefined}>
+            {waitingOn && session.waitingFor ? waitingOn : session.pendingTool?.name}
             {session.subagents.some((node) => node.status === 'running') ? ' · subagent' : ''}
           </span>
         )}

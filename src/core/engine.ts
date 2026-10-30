@@ -14,6 +14,8 @@ import type { AppSettings } from './model/settings.ts';
 import type { TrayState } from './model/status.ts';
 import type {
   HistoryEntry,
+  HiddenCause,
+  HiddenSessions,
   HistoryQuery,
   IdeWindowRef,
   LiveSessionRef,
@@ -39,6 +41,7 @@ import {
 import type { WindowSource } from './context/windowSource.ts';
 import { ContextWindowEstimator } from './state/contextPressure.ts';
 import { deriveStatus } from './state/machine.ts';
+import { sessionTitleOf } from './model/sessionTitle.ts';
 import {
   InMemorySessionStore,
   sessionNewsStamp,
@@ -48,6 +51,8 @@ import { FileWatcher, type FileChange } from './watch/watcher.ts';
 import { isTranscriptFile, sessionIdFromTranscriptPath } from './adapters/claude/paths.ts';
 
 export type RefreshReason = 'start' | 'tick' | 'registry' | 'transcript' | 'ide' | 'settings' | 'manual';
+
+export type { HiddenCause, HiddenSessions };
 
 export interface EngineSnapshot {
   sessions: SessionView[];
@@ -64,6 +69,7 @@ export interface EngineSnapshot {
   /** Set while the background history index is still running (§5.1). */
   indexingHistory: boolean;
   historyCount: number;
+  hidden: HiddenSessions;
 }
 
 export interface EngineEvents {
@@ -222,7 +228,10 @@ export class ControlEngine {
     // worth watching, so by default it does not reach any surface. The store still knows
     // about it — this is a presentation filter, not a hole in the state machine, and the
     // moment its first prompt lands it leaves `starting` and shows up.
-    const unstarting = this.settings.list.hideUnusedSessions ? all.filter((s) => s.status !== 'starting') : all;
+    // Claude Code's own report of work in flight is never hidden by any filter.
+    const unstarting = this.settings.list.hideUnusedSessions
+      ? all.filter((s) => s.status !== 'starting' || this.isReportedInFlight(s))
+      : all;
     // A windowless session in the same folder as one that still has a window open is that
     // session's orphan, not a second thing to watch (§4) — but only once the probe actually
     // tells the two apart. `undefined`, from a missing probe or one that has not answered
@@ -231,10 +240,17 @@ export class ControlEngine {
     // `list.hideDoneOnStart`. It leaves `unstarting` alone so the orphan rule below still
     // sees every live session in the folder when it decides who has a window.
     const listed = this.settings.list.hideDoneOnStart
-      ? unstarting.filter((s) => !this.wasDoneOnStart(s))
+      ? unstarting.filter((s) => this.isReportedInFlight(s) || !this.wasDoneOnStart(s))
       : unstarting;
     const hideOrphans = this.settings.list.hideOrphanSessions;
-    const sessions = (hideOrphans ? listed.filter((s) => !this.isOrphan(s, unstarting)) : listed)
+    const visible = hideOrphans
+      ? listed.filter((s) => this.isReportedInFlight(s) || !this.isOrphan(s, unstarting))
+      : listed;
+    const causes: HiddenCause[] = [];
+    if (unstarting.length < all.length) causes.push('unused');
+    if (listed.length < unstarting.length) causes.push('doneOnStart');
+    if (visible.length < listed.length) causes.push('orphan');
+    const sessions = visible
       .sort(compareSessions)
       // Mute is presentation only (§6.6 D4): decorated last, after status/sort/grouping have
       // already been decided from the real, unmuted facts, so a mute can never move a
@@ -264,6 +280,7 @@ export class ControlEngine {
       at,
       indexingHistory: this.indexingHistory,
       historyCount: this.store.historyCount(),
+      hidden: { count: all.length - sessions.length, causes },
     };
   }
 
@@ -279,6 +296,16 @@ export class ControlEngine {
    */
   getLiveSessions(): SessionView[] {
     return this.store.listLive();
+  }
+
+  private isReportedInFlight(session: SessionView): boolean {
+    return (
+      session.statusSource === 'reported' &&
+      (session.status === 'working' ||
+        session.status === 'stale' ||
+        session.status === 'queued' ||
+        session.status === 'waiting')
+    );
   }
 
   /**
@@ -541,7 +568,12 @@ export class ControlEngine {
       if (path && (await this.isUnchanged(path, cached))) {
         // `ref` comes from `discoverLiveSessions`, which already PID-verified the session,
         // so it is alive by construction and only the registry facts can have changed.
-        return { ...cached.snapshot, ref, alive: true, readAt: this.now() };
+        const reused: SessionSnapshot = { ...cached.snapshot, ref, alive: true, readAt: this.now() };
+        // The parent file is quiet while a delegated run works, so its evidence must be
+        // re-read here or it would freeze at the last full read.
+        return this.adapter.refreshSubagentActivity
+          ? this.adapter.refreshSubagentActivity(reused, reused.readAt)
+          : reused;
       }
     }
 
@@ -580,10 +612,12 @@ export class ControlEngine {
     return {
       sessionId: snapshot.sessionId,
       name: ref.name,
-      title: facts.aiTitle ?? facts.lastPromptText ?? null,
+      title: sessionTitleOf(facts),
       status: derived.status,
       statusReason: derived.reason,
       statusSource: derived.statusSource,
+      waitingFor:
+        derived.status === 'waiting' && derived.statusSource === 'reported' ? ref.waitingFor : null,
       // 0 lets the store stamp the moment the status actually changed.
       statusSince: 0,
       // The store owns acknowledgement and dismissal — the only things that survive a re-read.
@@ -600,7 +634,7 @@ export class ControlEngine {
       pid: ref.pid,
       alive: snapshot.alive,
       startedAt: ref.startedAt,
-      lastActivityAt: facts.last?.at ?? null,
+      lastActivityAt: newestOf(facts.last?.at, facts.subagentActivityAt, facts.subagentsWrittenAt),
       run: describeRun(facts, derived.status),
       pendingTool: facts.pendingTool ?? facts.stalledTools[0] ?? null,
       context: this.context.estimate(snapshot.sessionId, facts.model, facts.usage),
@@ -656,6 +690,13 @@ export class ControlEngine {
         /* best effort: the transcript may already be gone */
       });
   }
+}
+
+/** Newest of the given times; null/undefined ones are "no evidence" and ignored. */
+function newestOf(...times: Array<number | null | undefined>): number | null {
+  let newest: number | null = null;
+  for (const at of times) if (at != null && (newest === null || at > newest)) newest = at;
+  return newest;
 }
 
 /** Statuses in which the current run is still going, so its duration keeps ticking. */

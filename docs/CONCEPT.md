@@ -274,6 +274,15 @@ leaves the tray surfaces the ordinary way, through the recency window or "Mark a
 
 ### 6.2 Derivation
 
+**Registry status first** (Claude Code `2.1.312`+, RESEARCH §6). The registry's own `status` is the primary input; the transcript below only fills in what it does not say.
+
+- `waiting` → `waiting`, and `waitingFor` is shown on the row, toast and detail.
+- `busy` → never `done`, `interrupted` or `starting`; lifted to `working`. An `end_turn` under `busy` stays `working` (background agents).
+- `idle` (stamp not more than 2 s older than the newest transcript record) → never `working` or `queued`; in-flight verdicts become `interrupted`. `done`, `interrupted` and `starting` still come from the transcript.
+- No registry `status` at all → the transcript rules below, unchanged, with one fallback: an `end_turn` tail reads `working` (inferred) while a subagent has written to the session's `subagents/` dir within the liveness window (10 min), because the turn's work is not over. It settles to `done` at most 10 min after the newest subagent write, plus one tick. Under a reported `busy` the status is unchanged and the reason names the newest write.
+
+The transcript still supplies the sub-state (tool, working/stale split).
+
 Given the last *semantic* record `R` of a live session and `now`:
 
 ```
@@ -306,6 +315,8 @@ Default `T_work = 25 s`, configurable, with per-tool overrides. `Agent` gets 20 
 and the session it belongs to should read `working` the whole time.
 
 ### 6.3 The honest limitation
+
+Where the registry carries `status`, a `waiting` is exact (and says what it waits for); the heuristic below only remains for registries without it.
 
 Transcript watching **cannot see a permission prompt.** The prompt is rendered in the
 terminal; nothing is written to the transcript while it waits. So `waiting` is a heuristic:
@@ -463,8 +474,8 @@ drops that position and the next open snaps back to the tray icon.
 
 ### Session label
 
-A session is labelled with its generated title (`aiTitle`, falling back to the last prompt)
-on every surface — list, popover, tray menu, toasts, CLI. That is the same string VS Code
+A session is labelled `custom-title › ai-title › last prompt › registry name` on every
+surface — list, popover, tray menu, toasts, CLI, history. That is the same string VS Code
 puts on its Claude Code panel and history, so a row here can be matched to a window by eye.
 The registry slug (`hantsch-mmo-dc`) never appears in the IDE, so it is only a secondary,
 dimmed identifier; it becomes the label just for sessions that have no title yet.
@@ -477,8 +488,9 @@ dimmed identifier; it becomes the label just for sessions that have no title yet
   gauge, model, elapsed time, the current run, the current tool, and the subagent tree. Jump
   to session sits directly under the name, above the facts.
 - **History** — past sessions with a project filter, a date range, and free-text search
-  over titles. Uses `aiTitle` from the transcript as the session label when present, which
-  saves inventing our own summarizer.
+  over titles. Uses the same label as the live list (custom title, else generated title, else
+  last prompt), which saves inventing our own summarizer. A row opens the session in a
+  resizable detail window (header facts, subagent tree, run timeline).
 - **Settings** — thresholds (`T_work` and the per-tool overrides that double as the speed
   classes), how long settled sessions stay in the tray, notification toggles, and the Claude
   data directory path.
@@ -593,4 +605,4 @@ UI exists.
 | **Registry staleness on crash** | Unverified whether `sessions/<pid>.json` is always cleaned up. Mitigated by PID + `procStart` cross-check on every 5 s tick. |
 | **Transcript schema drift** | The JSONL format is internal to Claude Code and can change without notice (observed version: `2.1.222`). The parser must degrade to `unknown` rather than crash, and the version is recorded per record so drift is detectable. |
 | **Electron footprint** | ~150 MB RSS, knowingly accepted for a tool that runs all day. Revisit only if it becomes a problem in practice. |
-| **Reported status field** | Not found (see RESEARCH.md §1): `status`, `waitingFor`, and `updatedAt` are all absent from the registry across 10 sampled `claude-vscode` sessions (2026-08-13, Claude Code `2.1.228`/`2.1.229`). If Claude Code later exposes an authoritative upstream status field, it would supersede the §6.2 derivation for the states it covers. |
+| **Reported status field** | Present since `2.1.312`, authoritative for busy/idle/waiting; transcript supplies sub-state; older registries fall back to §6.2. |

@@ -166,6 +166,7 @@ export interface SubagentNode {
   /**
    * Newest write to the run's *own* transcript (or one of its descendants'), while it runs —
    * `null` once it has finished, and whenever no subagent transcript could be found at all.
+   * A background (`launched`) run counts as running: its end is never recorded.
    *
    * This is the one interim fact a running subagent does offer: Claude Code writes each run
    * to `projects/<slug>/<sessionId>/subagents/agent-<agentId>.jsonl`, so its `mtime` says the
@@ -270,6 +271,8 @@ export interface TranscriptTailFacts {
   branch: string | null;
   model: string | null;
   usage: UsageTotals | null;
+  /** Title set by `/rename` (`custom-title` record). Sticky; wins over `aiTitle`. */
+  customTitle: string | null;
   /** Generated session title (`ai-title` record), when present (§8). */
   aiTitle: string | null;
   /** Newest human prompt text, trimmed. Used as a fallback label. */
@@ -290,6 +293,12 @@ export interface TranscriptTailFacts {
    * budget the call is (§6.2).
    */
   subagentActivityAt: number | null;
+  /**
+   * Newest write across the session's whole `subagents/` dir (any file, pending call or not).
+   * Only filled when the tail ends in `end_turn`; `null` otherwise or with no evidence. The
+   * machine reads it to keep a turn that ended while its subagent still writes at `working`.
+   */
+  subagentsWrittenAt: number | null;
   /** Agent version recorded on the newest record — makes schema drift detectable (§12). */
   agentVersion: string | null;
   /** Diagnostics from the tail read. */
@@ -336,6 +345,12 @@ export interface SessionView {
   statusReason: string;
   /** Where `status` came from: the agent's own registry report, or our own inference (§1). */
   statusSource: 'reported' | 'inferred';
+  /**
+   * What Claude Code says it is waiting for, verbatim from its registry entry. Non-null only
+   * while `status` is `waiting` *because of that report* — an inferred wait, or a stale report
+   * the transcript has since outranked, must not carry text that no longer applies.
+   */
+  waitingFor: string | null;
   /** When the session entered `status`. */
   statusSince: number;
   /**
@@ -472,4 +487,12 @@ export interface StatusTransition {
   /** True for the initial derivation after start — notifications stay silent (§6.6). */
   seeded: boolean;
   view: SessionView;
+}
+
+export type HiddenCause = 'unused' | 'doneOnStart' | 'orphan';
+
+/** Live sessions the presentation filters removed from `sessions`, each counted once. */
+export interface HiddenSessions {
+  count: number;
+  causes: HiddenCause[];
 }

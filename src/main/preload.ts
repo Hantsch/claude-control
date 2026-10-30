@@ -26,6 +26,7 @@ function subscribe(channel: string, listener: (payload: never) => void): () => v
 
 const api: RendererApi & {
   onNavigate(listener: (target: NavigateTarget) => void): () => void;
+  onDetailTarget(listener: (target: { sessionId: string }) => void): () => void;
   setPopoverHeight(height: number): Promise<void>;
   getPopoverPinned(): Promise<boolean>;
   setPopoverPinned(pinned: boolean): Promise<boolean>;
@@ -49,6 +50,8 @@ const api: RendererApi & {
   revealPath: (path) => ipcRenderer.invoke(IPC.revealPath, path) as Promise<void>,
   openMainWindow: (tab, sessionId) =>
     ipcRenderer.invoke(IPC.openMainWindow, tab, sessionId) as Promise<void>,
+  openSessionDetail: (id) => ipcRenderer.invoke(IPC.openSessionDetail, id) as Promise<void>,
+  closeDetailWindow: () => ipcRenderer.invoke(IPC.closeDetailWindow) as Promise<void>,
   closePopover: () => ipcRenderer.invoke(IPC.closePopover) as Promise<void>,
   diagnostics: () => ipcRenderer.invoke(IPC.diagnostics),
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,
@@ -62,6 +65,7 @@ const api: RendererApi & {
   onShortcutStatusChanged: (listener) =>
     subscribe(IPC.shortcutStatusChanged, listener as (payload: never) => void),
   onNavigate: (listener) => subscribe('cc:navigate', listener as (payload: never) => void),
+  onDetailTarget: (listener) => subscribe('cc:detail-target', listener as (payload: never) => void),
   setPopoverHeight: (height) => ipcRenderer.invoke('cc:popover-height', height) as Promise<void>,
   getPopoverPinned: () => ipcRenderer.invoke('cc:popover-pinned') as Promise<boolean>,
   setPopoverPinned: (pinned) => ipcRenderer.invoke('cc:popover-pin', pinned) as Promise<boolean>,

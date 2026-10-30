@@ -13,6 +13,8 @@ import type { SessionStatus, TrayState } from '../core/model/status.ts';
 import type { ProjectGroup } from '../core/state/aggregate.ts';
 import type {
   ContextPressure,
+  HiddenCause,
+  HiddenSessions,
   HistoryEntry,
   HistoryQuery,
   ProjectRef,
@@ -27,6 +29,8 @@ import type {
 export type {
   AppSettings,
   ContextPressure,
+  HiddenCause,
+  HiddenSessions,
   HistoryEntry,
   HistoryQuery,
   ProjectGroup,
@@ -53,6 +57,8 @@ export interface AppState {
   at: number;
   indexingHistory: boolean;
   historyCount: number;
+  /** Live sessions the list filters removed — so a count can say what is not on screen. */
+  hidden: HiddenSessions;
 }
 
 export interface HistoryPage {
@@ -195,6 +201,8 @@ export const IPC = {
   copyText: 'cc:copy-text',
   revealPath: 'cc:reveal-path',
   openMainWindow: 'cc:open-main-window',
+  openSessionDetail: 'cc:open-session-detail',
+  closeDetailWindow: 'cc:close-detail-window',
   closePopover: 'cc:close-popover',
   diagnostics: 'cc:diagnostics',
   quit: 'cc:quit',
@@ -237,6 +245,8 @@ export interface RendererApi {
   revealPath(path: string): Promise<void>;
   /** `sessionId` selects that session in the Sessions tab once the window is up. */
   openMainWindow(tab?: 'sessions' | 'history' | 'settings', sessionId?: SessionId): Promise<void>;
+  openSessionDetail(id: SessionId): Promise<void>;
+  closeDetailWindow(): Promise<void>;
   closePopover(): Promise<void>;
   diagnostics(): Promise<DiagnosticsInfo>;
   quit(): Promise<void>;

@@ -122,7 +122,27 @@ export function isInterruptRecord(record: TranscriptRecord): boolean {
  * the session's label fallback ("[Request interrupted by user]") and reset the run start.
  */
 export function isPromptRecord(record: TranscriptRecord): boolean {
-  return isUserRecord(record) && !isToolResultRecord(record) && !isInterruptRecord(record);
+  return (
+    isUserRecord(record) &&
+    !isToolResultRecord(record) &&
+    !isInterruptRecord(record) &&
+    !isNotHumanOrigin(record)
+  );
+}
+
+const NON_HUMAN_ORIGIN_KINDS = new Set(['peer', 'task-notification']);
+const NON_HUMAN_TURN_ORIGINS = new Set(['peer', 'task_notification']);
+
+/**
+ * Only a positive statement excludes a record: absent origin fields (older transcripts) mean
+ * "human", and `origin.kind: 'plugin'` is a command the user started, so it stays a prompt.
+ */
+function isNotHumanOrigin(record: TranscriptRecord): boolean {
+  if (record.isMeta === true || record.promptSource === 'system') return true;
+  const origin = record.origin;
+  const kind = origin && typeof origin === 'object' ? (origin as { kind?: unknown }).kind : undefined;
+  if (typeof kind === 'string' && NON_HUMAN_ORIGIN_KINDS.has(kind)) return true;
+  return typeof record.turnOrigin === 'string' && NON_HUMAN_TURN_ORIGINS.has(record.turnOrigin);
 }
 
 /** ISO timestamp → epoch ms. Returns null for missing/garbage values. */
@@ -217,20 +237,33 @@ export function aiTitleOf(record: TranscriptRecord): string | null {
   return null;
 }
 
+function trimmedString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** Title set by `/rename` (`custom-title` record). Sticky, and wins over the generated one. */
+export function customTitleOf(record: TranscriptRecord): string | null {
+  return trimmedString(record.customTitle);
+}
+
+export function isCustomTitleRecord(record: TranscriptRecord): boolean {
+  return record.type === 'custom-title' && customTitleOf(record) !== null;
+}
+
+/** Claude Code's own record of the newest prompt (`last-prompt`). */
+export function lastPromptOf(record: TranscriptRecord): string | null {
+  return trimmedString(record.lastPrompt);
+}
+
+export function isLastPromptRecord(record: TranscriptRecord): boolean {
+  return record.type === 'last-prompt' && lastPromptOf(record) !== null;
+}
+
 /** How much transcript text fits on one row of the tree or the popover. */
 export const ROW_TEXT_CHARS = 120;
 
-/**
- * Collapse to one line and truncate to `max` characters, ending in `…` when clipped.
- *
- * The single convention for row-sized text taken out of a transcript: `toolInputHint` has
- * always used it and `finalTextOf` reuses it, so a hint and a subagent report cannot end up
- * clipped by two slightly different rules.
- */
-export function clipOneLine(text: string, max: number): string {
-  const oneLine = text.replace(/\s+/g, ' ').trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max - 3)}…` : oneLine;
-}
+export { clipOneLine } from '../../model/text';
+import { clipOneLine } from '../../model/text';
 
 /** Short hint from a tool input: the most identifying field we can find. */
 export function toolInputHint(input: Record<string, unknown>): string | null {

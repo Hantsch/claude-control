@@ -78,3 +78,9 @@ second roadmap.
   Settings toggle and status line, and a second named exception in N1/the README/Diagnostics —
   two `story-review-hard` rounds, the first catching stale single-exception wording plus four
   hardening gaps in the download/swap paths, both fixed and confirmed.
+- 020 — Claude Code's own status outranks the transcript · S06 · registry busy/idle/waiting is the primary status input, transcript only supplies sub-state; waitingFor shown on toast, row and detail pane
+- 016 — A session working through a subagent is not `done` · S06 · subagent writes after end_turn keep the session working (registry-less fallback, 10 min window), last activity and reason carry the evidence
+- 021 — A session is called what VS Code calls it · S06 · label follows VS Code (custom-title › ai-title › last prompt), machine-injected records never name a session or restart the run
+- 017 — The popover row says which project it is · S06 · each popover row reads `project · branch` (project emphasised, branch shrinks first), project alone without a branch
+- 018 — A hidden session says it is hidden · S06 · engine counts what the three list filters removed; main tab and popover show "N hidden" with a tooltip naming the filters; registry busy/waiting never hidden
+- 022 — A past session opens in its own, resizable window · S06 · History rows open one reusable resizable detail window with header facts, subagent tree and run timeline; geometry persisted.

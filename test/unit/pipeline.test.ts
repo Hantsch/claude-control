@@ -10,12 +10,14 @@
  */
 
 import { createHash } from 'node:crypto';
-import { appendFile, readFile, readdir, stat } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
 import { resolveClaudePaths } from '../../src/core/adapters/claude/paths.ts';
 import { ControlEngine } from '../../src/core/engine.ts';
+import { sessionTitleOf } from '../../src/core/model/sessionTitle.ts';
+import { NotificationGate } from '../../src/core/state/notifications.ts';
 import { FileWatcher } from '../../src/core/watch/watcher.ts';
 import { DEFAULT_SETTINGS, DEFAULT_THRESHOLDS, mergeSettings } from '../../src/core/model/settings.ts';
 import type { ProcessProbe } from '../../src/core/registry/liveness.ts';
@@ -24,12 +26,15 @@ import type { StatusTransition } from '../../src/core/model/types.ts';
 import {
   T0,
   agentResult,
+  agentLaunchedResult,
   assistant,
   aiTitle,
+  customTitle,
   fileHistorySnapshot,
   ideLock,
   lastPrompt,
   makeFixtureTree,
+  peerHandBack,
   prompt,
   registryEntry,
   toJsonl,
@@ -138,6 +143,80 @@ describe('discovery and status through the adapter', () => {
     expect(snapshot.facts.aiTitle).toBe('Sprint 14');
   });
 
+  it('a rename written while the app is watching reaches the next read', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-renamed', name: 'cc-renamed-7e' }));
+    const padding = (from: number) =>
+      Array.from({ length: 40 }, (_, index) =>
+        assistant({ uuid: `pad${from + index}`, at: 2_000 + from + index, text: 'x'.repeat(400) }),
+      );
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-renamed',
+      toJsonl([prompt('u1', 0), aiTitle('Generated title', 1_100), ...padding(0)]),
+    );
+    const adapter = new ClaudeAdapter({
+      paths: resolveClaudePaths(tree.root),
+      tailWindowBytes: 1024,
+      maxTailWindowBytes: 1024,
+      probe: new FakeProbe(new Set([LIVE_PID])),
+      thresholds: DEFAULT_THRESHOLDS,
+    });
+    const ref = (await adapter.discoverLiveSessions())[0]!;
+    expect(sessionTitleOf((await adapter.readStatus(ref)).facts)).toBe('Generated title');
+
+    await appendFile(path, toJsonl([customTitle('Release train', 9_000)]), 'utf8');
+    expect(sessionTitleOf((await adapter.readStatus(ref)).facts)).toBe('Release train');
+
+    // Once the rename has scrolled out of the tail window, the label must not fall back.
+    await appendFile(path, toJsonl(padding(100)), 'utf8');
+    const later = await adapter.readStatus(ref);
+    expect(later.facts.read.startOffset).toBeGreaterThan(0);
+    expect(sessionTitleOf(later.facts)).toBe('Release train');
+  });
+
+  it('finds the custom title far outside the tail window, and from the sidecar beyond the scan budget', async () => {
+    const tree = await makeFixtureTree();
+    const slug = 'c--development-Hantsch-claude-control';
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-far-name', name: 'cc-far-7e' }));
+    await tree.writeRegistry(LIVE_PID + 1, registryEntry({ pid: LIVE_PID, sessionId: 'sess-huge-name', name: 'cc-huge-7e' }));
+    const padding = (count: number, chars: number) =>
+      Array.from({ length: count }, (_, index) =>
+        assistant({ uuid: `pad${index}`, at: 2_000 + index, text: 'x'.repeat(chars) }),
+      );
+    await tree.writeTranscript(
+      slug,
+      'sess-far-name',
+      toJsonl([prompt('u1', 0), customTitle('Far rename', 500), ...padding(40, 400), aiTitle('Generated title', 9_000)]),
+    );
+    // Larger than the backward scan budget (4 MB): the rename at the start is out of its reach.
+    await tree.writeTranscript(
+      slug,
+      'sess-huge-name',
+      toJsonl([prompt('u1', 0), customTitle('Sidecar rename', 500), ...padding(1_200, 4_000), aiTitle('Generated title', 9_000)]),
+    );
+    await mkdir(join(tree.root, 'projects', slug, 'sess-huge-name'), { recursive: true });
+    await writeFile(
+      join(tree.root, 'projects', slug, 'sess-huge-name', 'custom-title.json'),
+      JSON.stringify({ customTitle: 'Sidecar rename' }),
+      'utf8',
+    );
+
+    const adapter = new ClaudeAdapter({
+      paths: resolveClaudePaths(tree.root),
+      tailWindowBytes: 1024,
+      maxTailWindowBytes: 1024,
+      probe: new FakeProbe(new Set([LIVE_PID])),
+      thresholds: DEFAULT_THRESHOLDS,
+    });
+    const refs = await adapter.discoverLiveSessions();
+    const labelOf = async (sessionId: string) =>
+      sessionTitleOf((await adapter.readStatus(refs.find((ref) => ref.sessionId === sessionId)!)).facts);
+
+    expect(await labelOf('sess-far-name')).toBe('Far rename');
+    expect(await labelOf('sess-huge-name')).toBe('Sidecar rename');
+  });
+
   it('parses the optional agent-reported registry fields when present', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(
@@ -169,6 +248,26 @@ describe('discovery and status through the adapter', () => {
 
     const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
     const refs = await adapter.discoverLiveSessions();
+    expect(refs[0]!.reportedAt).toBe(T0);
+  });
+
+  it('prefers `statusUpdatedAt` over `updatedAt` as the registry status stamp', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(
+      LIVE_PID,
+      registryEntry({
+        pid: LIVE_PID,
+        sessionId: 'sess-stamp',
+        status: 'busy',
+        // A later unrelated write (rename, heartbeat) must not make the status look fresher.
+        updatedAt: T0 + 60_000,
+        statusUpdatedAt: new Date(T0).toISOString(),
+      }),
+    );
+
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])));
+    const refs = await adapter.discoverLiveSessions();
+    expect(refs[0]!.reportedStatus).toBe('busy');
     expect(refs[0]!.reportedAt).toBe(T0);
   });
 
@@ -544,11 +643,13 @@ describe('engine', () => {
     expect(hiding.getSnapshot().sessions).toHaveLength(0);
     expect(hiding.getSnapshot().groups).toHaveLength(0);
     expect(hiding.getSnapshot().trayState).toBe('none');
+    expect(hiding.getSnapshot().hidden).toEqual({ count: 1, causes: ['unused'] });
     await hiding.stop();
 
     const showing = makeEngine(false);
     await showing.start();
     expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['starting']);
+    expect(showing.getSnapshot().hidden).toEqual({ count: 0, causes: [] });
     await showing.stop();
   });
 
@@ -628,11 +729,17 @@ describe('engine', () => {
     await showing.start();
     expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['done']);
     expect(showing.getSnapshot().attention).toBe(1);
+    expect(showing.getSnapshot().hidden).toEqual({ count: 0, causes: [] });
+    const historyWhenShowing = { count: showing.getSnapshot().historyCount, entries: showing.listHistory() };
     await showing.stop();
 
     const engine = makeEngine(true);
     await engine.start();
     expect(engine.getSnapshot().sessions).toHaveLength(0);
+    expect(engine.getSnapshot().hidden).toEqual({ count: 1, causes: ['doneOnStart'] });
+    // Hiding is presentation only: history is the same with the filter on.
+    expect(engine.getSnapshot().historyCount).toBe(historyWhenShowing.count);
+    expect(engine.listHistory()).toEqual(historyWhenShowing.entries);
     expect(engine.getSnapshot().groups).toHaveLength(0);
     expect(engine.getSnapshot().trayState).toBe('none');
     expect(engine.getSnapshot().attention).toBe(0);
@@ -653,6 +760,7 @@ describe('engine', () => {
     await engine.refreshNow();
     expect(engine.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['sess-old']);
     expect(engine.getSnapshot().attention).toBe(1);
+    expect(engine.getSnapshot().hidden.count).toBe(0);
 
     await engine.stop();
   });
@@ -734,6 +842,215 @@ describe('engine', () => {
     await engine.start();
 
     expect(engine.getSnapshot().sessions[0]!.run).toEqual({ startedAt: T0, endedAt: T0 + 90_000 });
+    await engine.stop();
+  });
+
+  it('the run start skips hand-backs far outside the tail window', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-handback', name: 'cc-handback' }));
+    // Both the human prompt and a later peer hand-back sit well behind the 64 KB tail window.
+    const noise = (from: number, at: number) =>
+      Array.from({ length: 400 }, (_, i) =>
+        assistant({ uuid: `n${from + i}`, at: at + i, text: `tool traffic line ${i} `.repeat(10) }),
+      );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-handback',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        ...noise(0, 1_000),
+        peerHandBack('p1', 40_000),
+        ...noise(1_000, 41_000),
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
+      settings: mergeSettings(SHOWING_SETTLED),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    expect(engine.getSnapshot().sessions[0]!.run).toEqual({ startedAt: T0, endedAt: T0 + 90_000 });
+    await engine.stop();
+  });
+
+  it('a renamed session is labelled with its custom title even when a newer ai-title exists', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-rename', name: 'cc-rename-7e' }));
+    // The rename is far behind the tail window; the generated title was rewritten since.
+    const noise = Array.from({ length: 400 }, (_, i) =>
+      assistant({ uuid: `n${i}`, at: 1_000 + i, text: `tool traffic line ${i} `.repeat(10) }),
+    );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-rename',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        aiTitle('Old generated title', 100),
+        customTitle('Release train', 200),
+        ...noise,
+        aiTitle('Newer generated title', 80_000),
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
+      settings: mergeSettings(SHOWING_SETTLED),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    expect(engine.getSnapshot().sessions[0]!.title).toBe('Release train');
+    await engine.stop();
+  });
+
+  it('history labels a session with the name the live list gave it', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-same-name', name: 'cc-same-7e' }));
+    const noise = Array.from({ length: 400 }, (_, i) =>
+      assistant({ uuid: `n${i}`, at: 1_000 + i, text: `tool traffic line ${i} `.repeat(10) }),
+    );
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-same-name',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        customTitle('Release train', 200),
+        ...noise,
+        peerHandBack('p1', 40_000),
+        aiTitle('Newer generated title', 80_000),
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now);
+    const engine = new ControlEngine({
+      adapter,
+      settings: mergeSettings(SHOWING_SETTLED),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    const live = engine.getSnapshot().sessions[0]!.title;
+    const history = (await adapter.readHistoryEntry(path))!.title;
+    expect(live).toBe('Release train');
+    expect(history).toBe(live);
+    await engine.stop();
+  });
+
+  it('a session delegating to a background subagent stays live, current and silent until the subagent stops', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-bg', name: 'cc-bg' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    await tree.writeTranscript(
+      slug,
+      'sess-bg',
+      toJsonl([
+        prompt('u1', 0, 'run the long job in the background'),
+        assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 'toolu_bg', name: 'Agent', input: { description: 'Long job' } }] }),
+        agentLaunchedResult('r1', 2_000, { assistantUuid: 'a1', toolUseId: 'toolu_bg' }),
+        assistant({ uuid: 'a2', at: 3_000, stopReason: 'end_turn', text: 'It is running in the background.' }),
+      ]),
+    );
+    const subagent = await tree.writeSubagent({
+      slug,
+      sessionId: 'sess-bg',
+      agentId: 'abg',
+      toolUseId: 'toolu_bg',
+      at: T0 + 4_000,
+    });
+    const touch = (at: number): Promise<void> => utimes(subagent, new Date(at), new Date(at));
+
+    let clock = T0 + 5_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now: () => clock,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    const transitions: StatusTransition[] = [];
+    engine.on('transitions', (batch) => transitions.push(...batch.filter((transition) => !transition.seeded)));
+    await engine.start();
+
+    const session = () => engine.getSnapshot().sessions.find((entry) => entry.sessionId === 'sess-bg');
+    // The timer's entry point: not forced, so an untouched parent transcript is not re-read.
+    const runTick = (): Promise<void> =>
+      (engine as unknown as { refresh(reason: 'tick'): Promise<void> }).refresh('tick');
+    expect(session()?.status).toBe('working');
+    expect(session()?.statusReason).toMatch(/subagent/);
+    expect(session()?.lastActivityAt).toBe(T0 + 4_000);
+    expect(engine.getSnapshot().trayState).toBe('working');
+
+    // The parent transcript is never touched again; only the subagent's file moves.
+    let wrote = T0 + 4_000;
+    for (let tick = 1; tick <= 4; tick += 1) {
+      clock += 5 * 60_000;
+      wrote = clock - 1_000;
+      await touch(wrote);
+      await runTick();
+      expect(session()?.status).toBe('working');
+      expect(session()?.lastActivityAt).toBe(wrote);
+      expect(engine.getSnapshot().trayState).toBe('working');
+    }
+    expect(transitions).toEqual([]);
+
+    clock = wrote + 10 * 60_000 + 1_000;
+    await runTick();
+    expect(session()?.status).toBe('done');
+    await runTick();
+    clock += 60_000;
+    await runTick();
+    expect(transitions.map((transition) => transition.to)).toEqual(['done']);
+    await engine.stop();
+  });
+
+  it('a re-tasked subagent kept working by SendMessage keeps its session working', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-sm', name: 'cc-sm' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    await tree.writeTranscript(
+      slug,
+      'sess-sm',
+      toJsonl([
+        prompt('u1', 0, 'keep the helper busy'),
+        assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 'toolu_old', name: 'Agent', input: { description: 'Helper' } }] }),
+        agentResult('r1', 2_000, { assistantUuid: 'a1', toolUseId: 'toolu_old', status: 'completed' }),
+        assistant({ uuid: 'a2', at: 3_000, tools: [{ id: 'toolu_m1', name: 'SendMessage', input: { to: 'helper' } }] }),
+        toolResult('r2', 4_000, { assistantUuid: 'a2', toolUseId: 'toolu_m1' }),
+        assistant({ uuid: 'a3', at: 5_000, tools: [{ id: 'toolu_m2', name: 'SendMessage', input: { to: 'helper' } }] }),
+        toolResult('r3', 6_000, { assistantUuid: 'a3', toolUseId: 'toolu_m2' }),
+        assistant({ uuid: 'a4', at: 7_000, stopReason: 'end_turn', text: 'Handed over.' }),
+      ]),
+    );
+    const helper = await tree.writeSubagent({
+      slug,
+      sessionId: 'sess-sm',
+      agentId: 'ahelp',
+      toolUseId: 'toolu_old',
+      at: T0 + 8_000,
+    });
+
+    const clock = T0 + 9_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now: () => clock,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+    const row = engine.getSnapshot().sessions[0]!;
+    expect(row.status).toBe('working');
+    expect(row.statusReason).toMatch(/subagent/);
+    expect(row.lastActivityAt).toBe((await stat(helper)).mtimeMs);
     await engine.stop();
   });
 
@@ -830,6 +1147,74 @@ describe('engine', () => {
 
     const latency = (await observed) - appendedAt;
     expect(latency).toBeLessThan(2_000);
+    await engine.stop();
+  });
+
+  it('a delegating session turns done only when the registry goes idle, without waiting for the tick', async () => {
+    const tree = await makeFixtureTree();
+    const registry = (status: string): Record<string, unknown> =>
+      registryEntry({
+        pid: LIVE_PID,
+        sessionId: 'sess-deleg',
+        name: 'cc-deleg',
+        status,
+        statusUpdatedAt: Date.now(),
+      });
+    await tree.writeRegistry(LIVE_PID, registry('busy'));
+    const stamp = (record: Record<string, unknown>): Record<string, unknown> => ({
+      ...record,
+      timestamp: new Date().toISOString(),
+    });
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-deleg',
+      toJsonl([
+        stamp(assistant({ uuid: 'a1', at: 0, tools: [{ id: 't1', name: 'Agent' }] })),
+        stamp(agentLaunchedResult('u1', 1_000, { assistantUuid: 'a1', toolUseId: 't1' })),
+        stamp(assistant({ uuid: 'a2', at: 2_000, stopReason: 'end_turn', text: 'Delegated.' })),
+      ]),
+    );
+
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID]))),
+      settings: mergeSettings({
+        ...DEFAULT_SETTINGS,
+        indexHistoryOnStart: false,
+        // Only the registry file event may trigger the re-read.
+        reading: { ...DEFAULT_SETTINGS.reading, tickIntervalMs: 60_000 },
+      }),
+    });
+
+    const gate = new NotificationGate();
+    const settings = mergeSettings(DEFAULT_SETTINGS).notifications;
+    let notified = 0;
+    const toDone: StatusTransition[] = [];
+    let flippedAt = 0;
+    let doneBeforeFlip = 0;
+    const observed = new Promise<number>((resolve) => {
+      engine.on('transitions', (batch) => {
+        for (const transition of batch) {
+          if (gate.evaluate(transition, settings).notify) notified += 1;
+          if (transition.to !== 'done' || transition.seeded) continue;
+          toDone.push(transition);
+          if (flippedAt === 0) doneBeforeFlip += 1;
+          else resolve(Date.now());
+        }
+      });
+    });
+
+    await engine.start();
+    expect(engine.getSnapshot().sessions[0]!.status).toBe('working');
+
+    flippedAt = Date.now();
+    await tree.writeRegistry(LIVE_PID, registry('idle'));
+
+    expect((await observed) - flippedAt).toBeLessThan(2_000);
+    await sleep(300);
+    expect(doneBeforeFlip).toBe(0);
+    expect(toDone).toHaveLength(1);
+    expect(notified).toBe(1);
+    expect(engine.getSnapshot().sessions[0]!.status).toBe('done');
     await engine.stop();
   });
 

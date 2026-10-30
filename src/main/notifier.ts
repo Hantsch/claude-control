@@ -16,7 +16,7 @@ import type { NotificationSettings } from '../core/model/settings.ts';
 import { STATUS_LABEL } from '../core/model/status.ts';
 import type { SessionId, StatusTransition } from '../core/model/types.ts';
 import { NotificationGate, firstSentence } from '../core/state/notifications.ts';
-import { clampLabel, sessionLabel } from '../shared/presentation.ts';
+import { clampLabel, sessionLabel, waitingOnText } from '../shared/presentation.ts';
 import { toastIcon, toastIconUri } from './icon-assets.ts';
 import { buildToastXml } from './toast-protocol.ts';
 
@@ -49,11 +49,9 @@ export class Notifier {
     const view = transition.view;
     const where = [view.project.name, view.branch].filter(Boolean).join(' · ');
     const detail =
-      transition.to === 'waiting'
-        ? view.pendingTool
-          ? `${view.pendingTool.name} has been pending${view.pendingTool.hint ? `: ${view.pendingTool.hint}` : ''}`
-          : 'A fast tool is overdue — probably a prompt waiting for you'
-        : (firstSentence(view.lastAssistantText) ?? 'Turn finished');
+      (transition.to === 'waiting' ? waitingOnText({ ...view, status: 'waiting' }) : null) ??
+      firstSentence(view.lastAssistantText) ??
+      'Turn finished';
 
     const title = `${clampLabel(sessionLabel(view), 40)} — ${STATUS_LABEL[transition.to]}`;
     const notification = new Notification(this.options(transition, title, where, detail));

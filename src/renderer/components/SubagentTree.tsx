@@ -20,6 +20,8 @@ import {
 } from '../lib/subagentParts.ts';
 import { modelDisplayName } from '../../shared/presentation.ts';
 
+const DEFAULT_EMPTY_TEXT = 'No subagents in the current transcript window.';
+
 const STATUS_MARK: Record<SubagentNode['status'], string> = {
   running: '◐',
   launched: '↗',
@@ -38,9 +40,15 @@ const STATUS_HINT: Record<SubagentNode['status'], string> = {
   unknown: 'The result could not be interpreted.',
 };
 
-export function SubagentTree({ nodes }: { nodes: SubagentNode[] }): React.JSX.Element {
+export function SubagentTree({
+  nodes,
+  emptyText = DEFAULT_EMPTY_TEXT,
+}: {
+  nodes: SubagentNode[];
+  emptyText?: string;
+}): React.JSX.Element {
   if (nodes.length === 0) {
-    return <div className="estimate">No subagents in the current transcript window.</div>;
+    return <div className="estimate">{emptyText}</div>;
   }
   return (
     <ul className="subagents">

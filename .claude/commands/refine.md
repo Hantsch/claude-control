@@ -5,7 +5,7 @@ model: opus
 effort: high
 ---
 
-<!-- ai-scrum:managed 4.0.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
+<!-- ai-scrum:managed 4.9.0 - plugin-owned, written by /ai-scrum:setup. Do not edit:
      setup diffs this file on update and asks before replacing it. Project facts go in .claude/ai-scrum.md. -->
 
 Refine the story with ID **$1**.
@@ -62,14 +62,29 @@ into memory. Everything has to be reviewable in the repository.
      The user should grasp it in one or two minutes. No essay.
    - **`## Deliverables`** — cut into small, individually acceptable pieces (scrum-like,
      not everything specified from A to Z). Each `D1/D2/...` is the smallest useful result
-     with its own acceptance, and **names the files it touches** — plus the file to mirror,
-     where it follows an existing pattern. `/build` hands that list to the
-     implementing agent, which starts there instead of surveying the repo.
+     with its own acceptance, and **names the files it touches** — plus the file to mirror or
+     the helper to reuse. **Count before you name a mirror:** if the shape already exists
+     twice, the D first extracts the shared helper (name its target path) and then uses it; a
+     third copy is a refine error, not an implementation choice. Measured where "mirror X" was
+     the only instruction: one hook copied 36 times, and three copies of a path-containment
+     check that disagreed on the trailing separator. `/build` hands that list to the
+     implementing agent, which starts there instead of surveying the repo — and hands it
+     **only this D's text plus its test lines**, with the instruction not to open the story
+     file. So a D is complete on its own: everything the implementer needs stands in the D,
+     not in the plan above it or in a sibling D. The story file is a spec, not a log:
+     measured, story files of 25–38k characters were read seven to ten times per sprint by
+     agents that had their part in the prompt already.
 
      **Size cap (cost lever #2):** a D that touches more than ~8 files, or spans more than
      one layer (core + IPC + renderer), is cut too coarsely — split it. Agent cost grows with
      turn count and turn count grows with the size of the D: two agents at 30 turns cost less
-     than one at 65, and each returns a separately reviewable result.
+     than one at 65, and each returns a separately reviewable result. A D that says "mirror X"
+     for a shape X itself mirrors is cut wrong too.
+
+     **Systems docs:** a story that changes a system with a doc under `systems-path` has a D
+     that updates that doc — its own, or the D that changes the behaviour. `/build`'s review
+     checks it. Only the story updates the doc: `/roadmap check` merely reports one gone
+     stale, it never edits it.
    - **`## Model Hints`** — here you fix the **agent tier** per deliverable that
      `/build` will use. There are exactly two tiers:
      - **Default (leave unmarked):** the session/Sonnet tier with `/build`'s effort (`medium`).
@@ -79,17 +94,28 @@ into memory. Everything has to be reviewable in the repository.
        (which regression, which new path, which cross-file subtlety). `/build`
        passes that justification to the agent.
 
-     **Tier discipline (cost lever #1):** `deliverable-hard` is ~5x more expensive and also
-     thinks longer — subagents are >90% of the session bill and the tier decides it. So:
-     - Mark **individual** Ds, never wholesale ("all architecture Ds → hard"). If you feel
-       like marking more than half of them hard, the cut of the Ds is probably wrong, not
-       the tier need.
-     - Hard only when you can write the justification in one sentence.
-     - Also fix the **review tier** — its own line, `Review: → default` or
-       `Review: → story-review-hard` with a one-sentence justification.
-       `/build` delegates the code review to a fresh agent that sees only spec +
-       diff; this line decides its tier. Default is the cheap tier;
-       `story-review-hard` (Opus + effort `high`) only for real risk.
+     **Tier discipline (cost lever #1):** `deliverable-hard` is ~5x more expensive —
+     subagents are >90% of the session bill and the tier decides it. Measured over seven
+     sprints in three repositories: 17–43% of all Ds were marked hard and 60% of all stories
+     got the hard review, and Opus was 50–75% of every sprint's bill. "Only for real risk"
+     did not bind, so the rule is now a budget:
+     - **At most ONE `deliverable-hard` per story**, on your own authority, with the
+       justification in one sentence (which regression, which new path, which cross-file
+       subtlety). If a second D seems to need it, the story is cut too big, not the tier too
+       low: propose the split into two stories in `## Open Questions` and leave the status
+       `draft` (inside a sprint this returns `BLOCKED: user question`). The user decides; you
+       do not mark two.
+     - Mark **individual** Ds, never wholesale ("all architecture Ds → hard").
+     - Also fix the **review line** — its own line, `Review: → default` or
+       `Review: → story-review-hard` with a one-sentence justification. `/build` always
+       delegates the code review to a fresh agent on the default tier that sees only spec +
+       diff. `story-review-hard` does **not** replace that review: it adds a **second pass**
+       on Opus after the default review has passed. Mark it only when you can name the
+       plausible-looking *wrong* implementation that would pass the tests and a default
+       review — a rigged number, a structural claim no test can see, a negative behaviour.
+       "Foundation for later stories" or "touches the scheduler" is not that sentence.
+       Measured in one repository, same sprint shape, both all-PASS: four default reviews
+       cost $3, four hard reviews $32.
    - **`## Acceptance Tests`** — the AC → test mapping, and this is what replaces the manual
      test plan. **If `ac-tests-required: true` in the profile (P1):** every entry in
      `## Acceptance Criteria` gets one line naming the test that will prove it — level, file
@@ -115,6 +141,43 @@ into memory. Everything has to be reviewable in the repository.
        carries it, otherwise map the criterion one level down *and* write the gap into this
        section and into `## Open Questions` for the sprint review. Never turn it into a manual
        step — that is exactly what this workflow is getting rid of.
+     - **An e2e line is also a run target.** `/build` runs only the story's own e2e tests,
+       by substituting the file and test name from these lines into the profile's
+       `e2e-story` template. So name them exactly as the harness selects them — the real
+       path relative to the repo root and the literal test (or flow) name — not a paraphrase.
+     - **AC → test, not AC → new test.** One test may prove several criteria, and a criterion
+       an existing test already proves names that test. Two criteria that are one behaviour
+       seen twice share a line's test. A test that exists only so a criterion has a name next
+       to it is padding — measured in one repository: tests asserting a constant, a mock's
+       own return or that a handler "is registered", because the criterion said so, and
+       files growing one `describe` per story.
+     - **Wiring criteria get no test of their own.** "Handler X is registered", "the module
+       contributes a settings section", "the constant is Y" are proven by the behaviour test
+       that goes through that wiring. If no behaviour goes through it, the criterion is not
+       observable — rewrite it in step 5 instead of pinning the wiring.
+     - **Test names carry the behaviour, never an id.** `"a text-less day proposes nothing"`,
+       not `"AC2"` or `"story 042 D3"`: the id lives on the mapping line, the test file
+       outlives the story, and a `describe` per story is how a test file becomes a history
+       nobody can prune.
+     - **e2e lines cost forever.** Every flow adds its launch to every full run from now on
+       (measured: ~20 s per flow, a suite that doubled in five sprints). A story adds at most
+       one new flow per user-facing path it introduces; criteria on the same path are steps
+       of that flow, and a criterion an existing flow already walks names that flow. A third
+       new flow in one story needs a sentence on why its path cannot be a step of an
+       existing one.
+     - **Speed is proven by cost, not by a clock.** A criterion about speed or load ("saving one
+       file stays cheap", "listing stays fast") maps to a test in `test` that counts what the
+       code does - bytes written, files read, calls made - which no machine changes. A
+       wall-clock budget is never the proof and never a line here: it belongs to the perf lane
+       of the project's `test-gates` rules (a perf file or category), which warns and does not
+       decide. If the story wants one, the deliverable's text names it - and only where the
+       project's test config already excludes the perf lane from `test`; otherwise that
+       exclusion is the deliverable's first step. Measured before this rule: a budget of 150 ms,
+       about 4.5x the locally measured 33 ms, blocked a release at 155 ms on the CI runner,
+       while the byte count that proved the criterion was green.
+     - **A new flow is not a release smoke test.** Which flows the release lane runs is the
+       project's lane map (`## Test lanes` in `CLAUDE.md`), decided by the architecture review;
+       a story's flows run in its own gate, the sprint gate and release prep.
      - **A missing trigger is a story gap, not a test problem.** If a user-facing action has no
        path through the real surface yet, plan that trigger as a deliverable.
      - **`manual residue`** (only if `manual-residue-allowed: true`) is for a criterion that

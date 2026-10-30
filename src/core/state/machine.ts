@@ -30,6 +30,24 @@
  * its subagents was demonstrably busy — the state was a statement about the parent file, not
  * about the session. `facts.subagentActivityAt` carries the evidence; absent, nothing changes.
  *
+ * Claude Code's own status in the session registry (2.1.312 publishes `busy` / `idle` /
+ * `waiting`) is the primary input; the transcript verdict above is computed first and then
+ * bent by it, because the transcript cannot see what happens outside it:
+ *
+ *   reported waiting                                            → waiting (any age)
+ *   reported busy  && verdict done/interrupted/starting/unknown/queued → working
+ *   reported busy  && open tool call below its budget           → working
+ *   reported busy  && open tool call over its budget            → stale (fast or slow tool:
+ *                       Claude Code reports a prompt as `waiting`, so this is not one)
+ *   reported idle  && verdict working/waiting/stale             → interrupted
+ *   reported idle  && verdict done/interrupted/starting/unknown → kept; no queued override
+ *   reported idle  but stamped before the last record (lag)     → transcript verdict as is
+ *   anything else, or nothing reported                          → transcript verdict as is
+ *
+ * The `busy` rule is what keeps a turn that ended with `end_turn` while background agents
+ * still run from reading `done`; the `idle` rule is what lets a turn that died mid-tool stop
+ * reading `working`.
+ *
  * Nothing here decays with age. The old "age(R) >= T_idle → idle" rule turned every state,
  * `done` included, into `idle` after 15 minutes — so a session that had finished cleanly
  * an hour ago was indistinguishable from one that had hung mid-turn, and the tray was mostly
@@ -37,7 +55,7 @@
  */
 
 import type { Thresholds } from '../model/settings.ts';
-import { isSlowTool, workThresholdFor } from '../model/settings.ts';
+import { SUBAGENT_LIVENESS_MS, isSlowTool, workThresholdFor } from '../model/settings.ts';
 import type { SessionStatus } from '../model/status.ts';
 import type { TranscriptTailFacts } from '../model/types.ts';
 
@@ -51,8 +69,9 @@ export interface DeriveInput {
   now: number;
   thresholds: Thresholds;
   /**
-   * Registry-reported status, when the agent published one (§1, D3). Absent on every
-   * Claude Code version observed so far, so every rule below still has to stand on its own.
+   * Registry-reported status, when the agent published one (§1). Claude Code 2.1.312 writes
+   * `busy` / `idle` / `waiting`; older versions write nothing, so the transcript rules still
+   * have to stand on their own. `at` is when that status was set.
    */
   reported?: {
     status: string | null;
@@ -73,6 +92,23 @@ export interface DeriveResult {
   statusSource: 'reported' | 'inferred';
 }
 
+/** The transcript's own verdict, before a queued prompt or the registry has a say. */
+interface TranscriptVerdict {
+  status: SessionStatus;
+  reason: string;
+  ageMs: number | null;
+  appliedWorkMs: number | null;
+  /** The tool whose budget ran out, when an open call is over budget; otherwise null. */
+  overdueTool: string | null;
+}
+
+/**
+ * The registry and the transcript are written by the same process at slightly different
+ * moments, so an `idle` stamped a hair before the last record still describes that record.
+ * Stamped further back, the transcript has moved on and the registry has not caught up yet.
+ */
+const REGISTRY_LAG_TOLERANCE_MS = 2_000;
+
 export function deriveStatus(input: DeriveInput): DeriveResult {
   const { alive, facts, now, thresholds } = input;
 
@@ -86,10 +122,9 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
     };
   }
 
-  // The agent's own word outranks everything we could infer from the transcript — but only
-  // for `waiting`, the one state the tail cannot see reliably (a permission prompt leaves no
-  // record). No staleness check: a reported `waiting` stands until the agent says otherwise,
-  // however old `reported.at` is. Anything else reported is carried, never acted on.
+  // A reported `waiting` outranks everything: it is the one state the tail cannot see
+  // reliably (a permission prompt leaves no record). No staleness check: it stands until the
+  // agent says otherwise, however old `reported.at` is.
   if (input.reported?.status === 'waiting') {
     return {
       status: 'waiting',
@@ -100,18 +135,32 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
     };
   }
 
+  const base = inferFromTranscript(facts, now, thresholds);
+  const inferred = applyQueuedPrompt(base, facts);
+
+  const reported = input.reported;
+  if (reported?.status === 'busy') return underBusy(base, inferred, facts, now);
+  if (
+    reported?.status === 'idle' &&
+    (reported.at === null ||
+      facts.last === null ||
+      reported.at >= facts.last.at - REGISTRY_LAG_TOLERANCE_MS)
+  ) {
+    return underIdle(base);
+  }
+  if (!reported?.status) return liftWhileSubagentWrites(base, inferred, facts, now);
+  return inferred;
+}
+
+/** The verdict from the transcript tail alone — the rules in the header, minus `queued`. */
+function inferFromTranscript(
+  facts: TranscriptTailFacts,
+  now: number,
+  thresholds: Thresholds,
+): TranscriptVerdict {
   const last = facts.last;
   if (!last) {
     // No semantic record even at the maximum tail window: say so instead of guessing (§5.2).
-    if (facts.queuedPrompt) {
-      return {
-        status: 'queued',
-        reason: 'no semantic record in the tail window, but a prompt is enqueued',
-        ageMs: null,
-        appliedWorkMs: null,
-        statusSource: 'inferred',
-      };
-    }
     // The read succeeded and covered the whole transcript (`startOffset === 0`, which a
     // missing file also reports): the absence of any user/assistant record is then a fact
     // about the session, not about the window — it simply has not been used yet.
@@ -121,7 +170,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
         reason: 'session is open but has not exchanged a message yet',
         ageMs: null,
         appliedWorkMs: null,
-        statusSource: 'inferred',
+        overdueTool: null,
       };
     }
     return {
@@ -133,7 +182,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
           : 'transcript contains no user/assistant record'),
       ageMs: null,
       appliedWorkMs: null,
-      statusSource: 'inferred',
+      overdueTool: null,
     };
   }
 
@@ -141,6 +190,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
   let status: SessionStatus;
   let reason: string;
   let appliedWorkMs: number | null = null;
+  let overdueTool: string | null = null;
 
   if (last.kind === 'assistant' && last.stopReason === 'end_turn') {
     status = 'done';
@@ -172,6 +222,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
           : `tool ${facts.pendingTool.name} running for ${Math.round(ageMs / 60_000)} min — ` +
             `its subagent wrote ${Math.round(quietMs / 1000)}s ago, so the run is progressing`;
     } else if (isSlowTool(thresholds, slowest.name)) {
+      overdueTool = slowest.name;
       // A tool that is *supposed* to take minutes and is taking more of them says nothing
       // about whether anything is wrong — so this is a hint, not an alarm, and it stays out
       // of the badge and the toasts.
@@ -181,6 +232,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
         `(over its ${Math.round(appliedWorkMs / 60_000)} min budget) with nothing written ` +
         `since — probably still working, but worth a look`;
     } else {
+      overdueTool = slowest.name;
       status = 'waiting';
       reason =
         `tool ${facts.pendingTool.name} issued ${Math.round(ageMs / 1000)}s ago with no result ` +
@@ -205,15 +257,118 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
     reason = last.kind === 'prompt' ? 'prompt submitted, model is starting' : 'tool result returned';
   }
 
+  return { status, reason, ageMs, appliedWorkMs, overdueTool };
+}
+
+/** The transcript-only result: the base verdict, with a queued prompt layered on top. */
+function applyQueuedPrompt(base: TranscriptVerdict, facts: TranscriptTailFacts): DeriveResult {
+  const { status, reason, ageMs, appliedWorkMs } = base;
   // A queued prompt means there *is* pending work, so it outranks the passive states.
   // It must not mask an actively running turn, which is the more specific information —
   // and an overdue turn is still a running one, so `waiting`/`stale` win too.
   if (!ONGOING.has(status) && facts.queuedPrompt) {
-    status = 'queued';
-    reason = 'a prompt is enqueued and has not started yet';
+    return {
+      status: 'queued',
+      reason: facts.last
+        ? 'a prompt is enqueued and has not started yet'
+        : 'no semantic record in the tail window, but a prompt is enqueued',
+      ageMs,
+      appliedWorkMs,
+      statusSource: 'inferred',
+    };
   }
-
   return { status, reason, ageMs, appliedWorkMs, statusSource: 'inferred' };
+}
+
+/**
+ * Claude Code says a turn is in flight, so no passive verdict can stand. Only an open tool
+ * call keeps its own nuance: below budget it is `working`, over budget `stale` — never
+ * `waiting`, since Claude Code reports a prompt as `waiting` itself.
+ */
+function underBusy(
+  base: TranscriptVerdict,
+  inferred: DeriveResult,
+  facts: TranscriptTailFacts,
+  now: number,
+): DeriveResult {
+  let status: SessionStatus = 'working';
+  let detail: string;
+  if (base.overdueTool !== null) {
+    status = 'stale';
+    detail =
+      base.status === 'stale'
+        ? base.reason
+        : `tool ${base.overdueTool} has been running for ${Math.round((base.ageMs ?? 0) / 1000)}s ` +
+          `(over its ${Math.round((base.appliedWorkMs ?? 0) / 1000)}s budget) with nothing written ` +
+          `since — not a prompt, so probably still working, but worth a look`;
+  } else if (inferred.status === 'queued') {
+    detail = 'a prompt is enqueued and the session is busy';
+  } else if (base.status === 'done') {
+    // `end_turn` while background agents still run: the turn is over in the transcript, not
+    // in the session — and that can last any length of time, so there is no age cut-off.
+    detail = 'the turn ended, background agents are still running';
+    if (facts.subagentsWrittenAt !== null) {
+      detail += ` — subagent still running, wrote ${wroteAgo(now, facts.subagentsWrittenAt)} ago`;
+    }
+  } else if (base.status === 'interrupted') {
+    detail = 'a new turn is under way after the interrupted one';
+  } else if (base.status === 'starting') {
+    detail = 'the first turn is under way, nothing written to the transcript yet';
+  } else {
+    detail = base.reason;
+  }
+  return {
+    status,
+    reason: `Claude Code reports busy — ${detail}`,
+    ageMs: base.ageMs,
+    appliedWorkMs: base.appliedWorkMs,
+    statusSource: 'reported',
+  };
+}
+
+/** "12s" below two minutes, "3 min" from there on. */
+function wroteAgo(now: number, at: number): string {
+  const ms = Math.max(0, now - at);
+  return ms >= 120_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)}s`;
+}
+
+/**
+ * Without a registry status, an `end_turn` tail is `done` only once the subagents have gone
+ * quiet: one still writing means the turn's work is not over. Settles at most
+ * `SUBAGENT_LIVENESS_MS` after its newest write — the clock, not a record, ends it.
+ */
+function liftWhileSubagentWrites(
+  base: TranscriptVerdict,
+  inferred: DeriveResult,
+  facts: TranscriptTailFacts,
+  now: number,
+): DeriveResult {
+  const wrote = facts.subagentsWrittenAt;
+  if (base.status !== 'done' || wrote === null || now - wrote >= SUBAGENT_LIVENESS_MS) return inferred;
+  return {
+    ...inferred,
+    status: 'working',
+    reason: `subagent still running — it wrote ${wroteAgo(now, wrote)} ago, so this turn's work is not over`,
+    statusSource: 'inferred',
+  };
+}
+
+/**
+ * Claude Code says nothing is in flight. A transcript that still reads as a running turn
+ * therefore ended without finishing it; the passive verdicts (done / interrupted / starting /
+ * unknown) stay, and a queued prompt does not outrank them — nothing is working on it.
+ */
+function underIdle(base: TranscriptVerdict): DeriveResult {
+  const reshaped = ONGOING.has(base.status);
+  return {
+    status: reshaped ? 'interrupted' : base.status,
+    reason: reshaped
+      ? `Claude Code reports idle — the turn stopped before it finished (the transcript read: ${base.reason})`
+      : `Claude Code reports idle — ${base.reason}`,
+    ageMs: base.ageMs,
+    appliedWorkMs: base.appliedWorkMs,
+    statusSource: 'reported',
+  };
 }
 
 /**
@@ -226,5 +381,5 @@ export function deriveHistoricalStatus(
 ): SessionStatus {
   const at = facts.last?.at;
   if (at === undefined) return 'unknown';
-  return deriveStatus({ alive: true, facts, now: at, thresholds }).status;
+  return deriveStatus({ alive: true, facts: { ...facts, subagentsWrittenAt: null }, now: at, thresholds }).status;
 }

@@ -1,0 +1,96 @@
+- 2026-10-30 11:45:28 · refine · 016 017 018 020 021 022 · started
+- 2026-10-30 11:51:47 · refine · 016 017 018 020 021 022 · done
+- 2026-10-30 11:51:47 · 020 · build · started
+- 2026-10-30 11:52:02 · 020 · D1 registry status in state machine · started
+- 2026-10-30 11:56:19 · 020 · D1 registry status in state machine · done
+- 2026-10-30 11:56:19 · 020 · D2 waitingFor view model and toast · started
+- 2026-10-30 11:57:00 · 020 · D2 waitingFor view model and toast · done
+- 2026-10-30 11:57:01 · 020 · D3 waitingFor row and detail pane · started
+- 2026-10-30 11:57:01 · 020 · D4 registry-only flip engine test · started
+- 2026-10-30 11:57:42 · 020 · D3 waitingFor row and detail pane · done
+- 2026-10-30 11:57:42 · 020 · D4 registry-only flip engine test · done
+- 2026-10-30 11:57:42 · 020 · D5 concept and changelog · started
+- 2026-10-30 11:58:08 · 020 · D5 concept and changelog · done
+- 2026-10-30 11:58:08 · 020 · verify · started
+- 2026-10-30 11:58:37 · 020 · verify · done
+- 2026-10-30 11:58:37 · 020 · review 1 · started
+- 2026-10-30 11:59:27 · 020 · review 1 · done
+- 2026-10-30 11:59:27 · 020 · D3 fix revert formatting · started
+- 2026-10-30 12:00:09 · 020 · D3 fix revert formatting · done
+- 2026-10-30 12:00:09 · 020 · verify · started
+- 2026-10-30 12:00:26 · 020 · verify · done
+- 2026-10-30 12:00:26 · 020 · story · done
+- 2026-10-30 12:00:38 · 016 · build · started
+- 2026-10-30 12:00:54 · 016 · D1 session-wide subagent write time · started
+- 2026-10-30 12:03:10 · 016 · D1 session-wide subagent write time · done
+- 2026-10-30 12:03:11 · 016 · D2 machine counts subagent writes · started
+- 2026-10-30 12:04:17 · 016 · D2 machine counts subagent writes · done
+- 2026-10-30 12:04:17 · 016 · D3 wire adapter and engine · started
+- 2026-10-30 12:06:06 · 016 · D3 wire adapter and engine · done
+- 2026-10-30 12:06:06 · 016 · verify · started
+- 2026-10-30 12:06:47 · 016 · verify · done
+- 2026-10-30 12:06:47 · 016 · review 1 · started
+- 2026-10-30 12:07:53 · 016 · review 1 · done
+- 2026-10-30 12:07:53 · 016 · review fix 1 · started
+- 2026-10-30 12:09:26 · 016 · review fix 1 · done
+- 2026-10-30 12:09:26 · 016 · verify 2 · started
+- 2026-10-30 12:09:38 · 016 · verify 2 · done
+- 2026-10-30 12:09:49 · 016 · story · done
+- 2026-10-30 12:10:00 · 021 · build · started
+- 2026-10-30 12:10:13 · 021 · D1 classify and pick · started
+- 2026-10-30 12:13:27 · 021 · D1 classify and pick · done
+- 2026-10-30 12:13:27 · 021 · D2 live resolution · started
+- 2026-10-30 12:17:29 · 021 · D2 live resolution · done
+- 2026-10-30 12:17:29 · 021 · D3 history and detail · started
+- 2026-10-30 12:18:30 · 021 · D3 history and detail · done
+- 2026-10-30 12:18:30 · 021 · verify · started
+- 2026-10-30 12:19:06 · 021 · verify · done
+- 2026-10-30 12:19:06 · 021 · review 1 · started
+- 2026-10-30 12:20:16 · 021 · review 1 · done
+- 2026-10-30 12:20:16 · 021 · story · done
+- 2026-10-30 12:20:26 · 017 · build · started
+- 2026-10-30 12:20:39 · 017 · D1 popover row names its project · started
+- 2026-10-30 12:21:57 · 017 · D1 popover row names its project · done
+- 2026-10-30 12:21:57 · 017 · verify · started
+- 2026-10-30 12:22:21 · 017 · verify · done
+- 2026-10-30 12:22:21 · 017 · review 1 · started
+- 2026-10-30 12:22:51 · 017 · review 1 · done (FAIL: styles.css duplicated block)
+- 2026-10-30 12:22:59 · 017 · D1 fix css duplication · started
+- 2026-10-30 12:23:32 · 017 · D1 fix css duplication · done
+- 2026-10-30 12:23:32 · 017 · verify · started
+- 2026-10-30 12:23:55 · 017 · verify · done
+- 2026-10-30 12:23:55 · 017 · review 2 · started
+- 2026-10-30 12:24:17 · 017 · review 2 · done
+- 2026-10-30 12:24:25 · 017 · story · done
+- 2026-10-30 12:24:37 · 018 · build · started
+- 2026-10-30 12:25:06 · 018 · D1 engine hidden count + guard · started
+- 2026-10-30 12:26:28 · 018 · D1 engine hidden count + guard · done
+- 2026-10-30 12:26:38 · 018 · D2 hidden indicator UI · started
+- 2026-10-30 12:27:11 · 018 · D2 hidden indicator UI · done
+- 2026-10-30 12:27:11 · 018 · verify · started
+- 2026-10-30 12:27:38 · 018 · verify · done
+- 2026-10-30 12:27:38 · 018 · review 1 · started
+- 2026-10-30 12:28:24 · 018 · review 1 · done
+- 2026-10-30 12:28:41 · 018 · story · done
+- 2026-10-30 12:28:52 · 022 · build · started
+- 2026-10-30 12:29:06 · 022 · D1 geometry · started
+- 2026-10-30 12:30:01 · 022 · D1 geometry · done
+- 2026-10-30 12:30:01 · 022 · D2 window+IPC · started
+- 2026-10-30 12:30:55 · 022 · D2 window+IPC · done
+- 2026-10-30 12:30:55 · 022 · D3 view model · started
+- 2026-10-30 12:32:42 · 022 · D3 view model · done
+- 2026-10-30 12:32:42 · 022 · D4 detail document · started
+- 2026-10-30 12:34:25 · 022 · D4 detail document · done
+- 2026-10-30 12:34:25 · 022 · D5 history handoff · started
+- 2026-10-30 12:34:59 · 022 · D5 history handoff · done
+- 2026-10-30 12:34:59 · 022 · verify · started
+- 2026-10-30 12:35:43 · 022 · verify · done
+- 2026-10-30 12:35:43 · 022 · review 1 · started
+- 2026-10-30 12:36:52 · 022 · review 1 · done (FAIL: 1 bug, fixing)
+- 2026-10-30 12:36:52 · 022 · fix 1 · started
+- 2026-10-30 12:37:45 · 022 · fix 1 · done
+- 2026-10-30 12:37:45 · 022 · verify (after fix 1) · started
+- 2026-10-30 12:38:29 · 022 · verify (after fix 1) · done
+- 2026-10-30 12:38:29 · 022 · story · done
+- 2026-10-30 12:38:43 · gate · short-suites · started
+- 2026-10-30 12:39:17 · gate · short-suites · done

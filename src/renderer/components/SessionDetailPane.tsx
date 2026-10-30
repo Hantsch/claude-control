@@ -10,6 +10,7 @@ import {
   STATUS_LABEL,
   modelDisplayName,
   sessionLabel,
+  waitingOnText,
 } from '../../shared/presentation.ts';
 import { api } from '../api.ts';
 import { formatAge, formatDateTime, formatDuration } from '../lib/format.ts';
@@ -128,9 +129,10 @@ export function SessionDetailPane({ session }: { session: SessionView | null }):
         <dd>{formatDuration(Date.now() - session.statusSince)}</dd>
         <dt>Current tool</dt>
         <dd>
-          {session.pendingTool
-            ? `${session.pendingTool.name}${session.pendingTool.hint ? ` — ${session.pendingTool.hint}` : ''}`
-            : '—'}
+          {waitingOnText(session) ??
+            (session.pendingTool
+              ? `${session.pendingTool.name}${session.pendingTool.hint ? ` — ${session.pendingTool.hint}` : ''}`
+              : '—')}
         </dd>
         <dt>Entrypoint</dt>
         <dd>

@@ -2,8 +2,8 @@
  * End-to-end tests over `core/` with fixture trees (§10):
  *  - discovery, including the nasty cases from research (stale registry entry, mixed slug
  *    casing, bookkeeping tail, torn final line)
- *  - **latency check** (N4): append to a transcript, observe the status change under 2 s
- *  - **cold-start check** (N5): a synthetic tree of ~300 files / ~250 MB, live tier under 2 s
+ *  - **latency check** (N4) and **cold-start check** (N5): the functional side only; their
+ *    time budgets live in test/perf/
  *  - **read-only assertion** (N2): after the full pipeline, no file's content, size or
  *    mtime has changed. This is worth automating because N2 is the promise that makes the
  *    tool safe to leave running.
@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
 import { resolveClaudePaths } from '../../src/core/adapters/claude/paths.ts';
 import { ControlEngine } from '../../src/core/engine.ts';
@@ -20,9 +20,18 @@ import { sessionTitleOf } from '../../src/core/model/sessionTitle.ts';
 import { NotificationGate } from '../../src/core/state/notifications.ts';
 import { FileWatcher } from '../../src/core/watch/watcher.ts';
 import { DEFAULT_SETTINGS, DEFAULT_THRESHOLDS, mergeSettings } from '../../src/core/model/settings.ts';
-import type { ProcessProbe } from '../../src/core/registry/liveness.ts';
 import { epochMsToFileTime } from '../../src/core/registry/liveness.ts';
 import type { StatusTransition } from '../../src/core/model/types.ts';
+import {
+  FakeProbe,
+  LIVE_PID,
+  assertColdStartPremise,
+  historyDone,
+  makeAdapter,
+  sleep,
+  treeSize,
+  writeColdStartTree,
+} from '../fixtures/engine.ts';
 import {
   T0,
   agentResult,
@@ -42,41 +51,6 @@ import {
   toolResult,
   type FixtureTree,
 } from '../fixtures/builders.ts';
-
-/** Probe whose answers are scripted, so tests do not depend on real processes. */
-class FakeProbe implements ProcessProbe {
-  constructor(
-    private readonly livePids: Set<number>,
-    private readonly stamps: Map<number, string> = new Map(),
-  ) {}
-
-  async alive(pids: readonly number[]): Promise<Set<number>> {
-    return new Set(pids.filter((pid) => this.livePids.has(pid)));
-  }
-
-  async creationStamps(pids: readonly number[]): Promise<Map<number, string>> {
-    const out = new Map<number, string>();
-    for (const pid of pids) {
-      const stamp = this.stamps.get(pid);
-      if (stamp) out.set(pid, stamp);
-    }
-    return out;
-  }
-}
-
-function makeAdapter(tree: FixtureTree, probe: ProcessProbe, now?: () => number): ClaudeAdapter {
-  return new ClaudeAdapter({
-    paths: resolveClaudePaths(tree.root),
-    tailWindowBytes: 64 * 1024,
-    maxTailWindowBytes: 1024 * 1024,
-    probe,
-    thresholds: DEFAULT_THRESHOLDS,
-    ...(now ? { now } : {}),
-  });
-}
-
-/** The current process is genuinely alive, which `readStatus` verifies with signal 0. */
-const LIVE_PID = process.pid;
 
 describe('discovery and status through the adapter', () => {
   it('lists live sessions, resolves transcripts and derives status', async () => {
@@ -1093,12 +1067,10 @@ describe('engine', () => {
     await engine.stop();
   });
 
-  /** N4: detection latency for a status change under ~2 s. */
-  it('observes a status change within 2 s of an append (N4)', async () => {
+  it('observes the status change an append causes (N4)', async () => {
     const tree = await makeFixtureTree();
     await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-live-2', name: 'cc-live-2' }));
-    // Real clock here: the point of the test is wall-clock latency with the real watcher,
-    // so the fixture records carry real timestamps rather than the fixed T0.
+    // Real watcher and real clock: records carry current timestamps rather than the fixed T0.
     const path = await tree.writeTranscript(
       'c--development-Hantsch-claude-control',
       'sess-live-2',
@@ -1124,15 +1096,12 @@ describe('engine', () => {
     await engine.start();
     expect(engine.getSnapshot().sessions[0]!.status).toBe('working');
 
-    const observed = new Promise<number>((resolve) => {
+    const observed = new Promise<void>((resolve) => {
       engine.on('transitions', (batch) => {
-        if (batch.some((transition) => transition.to === 'done' && !transition.seeded)) {
-          resolve(Date.now());
-        }
+        if (batch.some((transition) => transition.to === 'done' && !transition.seeded)) resolve();
       });
     });
 
-    const appendedAt = Date.now();
     await appendFile(
       path,
       toJsonl([
@@ -1145,8 +1114,7 @@ describe('engine', () => {
       'utf8',
     );
 
-    const latency = (await observed) - appendedAt;
-    expect(latency).toBeLessThan(2_000);
+    await observed;
     await engine.stop();
   });
 
@@ -1191,14 +1159,14 @@ describe('engine', () => {
     const toDone: StatusTransition[] = [];
     let flippedAt = 0;
     let doneBeforeFlip = 0;
-    const observed = new Promise<number>((resolve) => {
+    const observed = new Promise<void>((resolve) => {
       engine.on('transitions', (batch) => {
         for (const transition of batch) {
           if (gate.evaluate(transition, settings).notify) notified += 1;
           if (transition.to !== 'done' || transition.seeded) continue;
           toDone.push(transition);
           if (flippedAt === 0) doneBeforeFlip += 1;
-          else resolve(Date.now());
+          else resolve();
         }
       });
     });
@@ -1206,10 +1174,10 @@ describe('engine', () => {
     await engine.start();
     expect(engine.getSnapshot().sessions[0]!.status).toBe('working');
 
-    flippedAt = Date.now();
+    flippedAt = 1;
     await tree.writeRegistry(LIVE_PID, registry('idle'));
 
-    expect((await observed) - flippedAt).toBeLessThan(2_000);
+    await observed;
     await sleep(300);
     expect(doneBeforeFlip).toBe(0);
     expect(toDone).toHaveLength(1);
@@ -1218,140 +1186,42 @@ describe('engine', () => {
     await engine.stop();
   });
 
-  /**
-   * N5: cold start to a populated session list under ~2 s despite ~250 MB of transcripts.
-   * The tree is synthetic but the shape is the measured one: ~300 files across ~23 project
-   * directories. Override the size with CC_COLDSTART_MB when iterating locally.
-   */
-  it('resolves the live tier under 2 s against a ~250 MB tree (N5)', async () => {
-    const totalMb = Number(process.env.CC_COLDSTART_MB ?? 250);
-    const fileCount = 300;
-    const projects = 23;
-    const perFile = Math.floor((totalMb * 1024 * 1024) / fileCount);
-
+  it('the cold-start tree lists every session, ends all but the live one, and resolves a clipped final text and summed usage (N5 premise)', async () => {
     const tree = await makeFixtureTree('cc-coldstart-');
-    // One padded record repeated until the file is big enough, then a real tail.
-    const filler = `${JSON.stringify(fileHistorySnapshot(0))}\n`;
-    const repeats = Math.max(1, Math.floor(perFile / filler.length));
-    const bulk = filler.repeat(repeats);
+    const { liveIds, livePids } = await writeColdStartTree(tree, 20);
 
-    for (let i = 0; i < fileCount; i += 1) {
-      const slug = `c--development-project-${i % projects}`;
-      const tail = toJsonl([
-        prompt(`u${i}`, 0),
-        assistant({ uuid: `a${i}`, at: 1_000, stopReason: 'end_turn', text: 'ok' }),
-        lastPrompt(`a${i}`),
-      ]);
-      await tree.writeTranscript(slug, `history-${i}`, bulk + tail);
-    }
+    const bytes = await treeSize(tree.projectsDir);
+    expect(bytes).toBeGreaterThan(0.9 * 20 * 1024 * 1024);
+    expect(bytes).toBeLessThanOrEqual(50 * 1024 * 1024);
 
-    // A multi-kilobyte subagent report, as D1's `finalTextOf` now reads out of every agent
-    // result's `content` — worst case, every live tail carries one, so the extra reading work
-    // is inside this budget too, not just the byte count of the transcript.
-    const longReport = 'report line filling out a multi-kilobyte final message. '.repeat(80);
-
-    // Six live sessions, as measured, each with its own big transcript.
-    const liveIds = ['live-0', 'live-1', 'live-2', 'live-3', 'live-4', 'live-5'];
-    for (const [index, sessionId] of liveIds.entries()) {
-      const cwd = `c:\\development\\project-${index}`;
-      await tree.writeRegistry(
-        LIVE_PID + index,
-        registryEntry({ pid: LIVE_PID + index, sessionId, cwd, name: `sess-${index}` }),
-      );
-      await tree.writeTranscript(
-        `c--development-project-${index}`,
-        sessionId,
-        bulk +
-          toJsonl([
-            assistant({
-              uuid: `x${index}`,
-              at: 0,
-              tools: [{ id: 't1', name: 'Bash' }, { id: `agent-${index}`, name: 'Agent' }],
-              cwd,
-            }),
-            agentResult(`ar${index}`, 1, {
-              assistantUuid: `x${index}`,
-              toolUseId: `agent-${index}`,
-              content: [{ type: 'text', text: longReport }],
-            }),
-            lastPrompt(`x${index}`),
-          ]),
-      );
-    }
-
-    // The real watcher on purpose: `ControlEngine.start()` awaits chokidar's initial scan
-    // of all three roots before the tray appears, so that scan is on the cold-start path
-    // and has to be inside the budget too.
     const engine = new ControlEngine({
-      adapter: makeAdapter(
-        tree,
-        new FakeProbe(new Set(liveIds.map((_, index) => LIVE_PID + index))),
-      ),
-      // D8: history indexing (and its usage summation over each tail's assistant
-      // records — see `readHistoryEntry` in the Claude adapter) now runs inside the
-      // cold-start budget too, not just live-tier resolution.
+      adapter: makeAdapter(tree, new FakeProbe(new Set(livePids))),
       settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: true }),
     });
-
-    // Guard the premise of the test: the tree really is of the measured order of magnitude.
-    const bytes = await treeSize(tree.projectsDir);
-    expect(bytes).toBeGreaterThan(0.9 * totalMb * 1024 * 1024);
-
-    // Subscribed before `start()` (015 D4) so an event emitted while `start()` is still
-    // running cannot be missed; the measured window below is unchanged.
     const done = historyDone(engine);
-    const started = Date.now();
     await engine.start();
-    // `start()` fires history indexing in the background without awaiting it, so the
-    // budget has to wait for the 'history' done event too, or it would only measure
-    // live-tier resolution and never touch the usage-summation path at all.
     await done;
-    const elapsed = Date.now() - started;
-    const snapshot = engine.getSnapshot();
 
-    // Only the live sessions with an alive PID resolve; readStatus verifies with signal 0,
-    // so sessions whose fabricated PID is not running are reported as ended.
-    expect(snapshot.sessions.length).toBe(liveIds.length);
-
-    // Guard the premise of the multi-KB `longReport` above: at least one session's subagent
-    // tree node must actually have extracted a `finalText` from it, clipped to `ROW_TEXT_CHARS`
-    // (120) with the `…` marker — otherwise this timing measurement would silently go vacuous
-    // if the extraction path (`finalTextOf`) broke or stopped being reached.
-    const finalTexts = snapshot.sessions.flatMap((session) =>
-      session.subagents.map((node) => node.finalText),
-    );
-    const extracted = finalTexts.find((text): text is string => text !== null);
-    expect(extracted).toBeDefined();
-    expect(extracted).toMatch(/…$/);
-    expect(extracted?.length).toBeLessThanOrEqual(120);
-    expect(extracted?.length).toBeGreaterThan(100);
-
-    // Guard the premise of the D8 usage-summation timing: at least one indexed history
-    // entry must actually carry non-null usage summed from its tail's assistant records
-    // (default `assistant()` fixture usage, see builders.ts) — otherwise this measurement
-    // would silently go vacuous if `readHistoryEntry`'s summation broke or was skipped.
-    const historyUsages = engine
-      .listHistory()
-      .entries.map((entry) => entry.usage)
-      .filter((usage): usage is NonNullable<typeof usage> => usage !== null);
-    expect(historyUsages.length).toBeGreaterThan(0);
-    expect(historyUsages[0]!.inputTokens).toBeGreaterThan(0);
-
-    // eslint-disable-next-line no-console -- N5 budget is measured, not just asserted; the
-    // number needs to be readable from test output for the story's Done section.
-    console.log(`[N5] cold start with history indexing and usage summation: ${elapsed}ms`);
-    expect(elapsed).toBeLessThan(2_000);
+    assertColdStartPremise(engine.getSnapshot(), engine.listHistory().entries, liveIds.length);
     await engine.stop();
-  }, 180_000);
+  });
 
-  /** §5.3: a burst of appends must produce one re-read, and must still land inside N4. */
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** §5.3: a burst of appends must produce one re-read, and no change may wait longer than the ceiling. */
+
   it('coalesces a burst of events and never waits longer than the ceiling', async () => {
+    vi.useFakeTimers();
+    const debounceMs = 250;
+    const maxWaitMs = 1_000;
     const flushes: number[] = [];
     let clock = 0;
     const watcher = new FileWatcher({
       roots: [],
-      debounceMs: 250,
-      maxWaitMs: 1_000,
+      debounceMs,
+      maxWaitMs,
       now: () => clock,
       onChange: (changes) => flushes.push(changes.length),
     });
@@ -1368,16 +1238,17 @@ describe('engine', () => {
 
     // Fifty appends to the same file inside one debounce window → exactly one flush.
     for (let i = 0; i < 50; i += 1) enqueue('a.jsonl');
-    await sleep(400);
+    vi.advanceTimersByTime(debounceMs + 1);
     expect(flushes).toEqual([1]);
 
     // A stream of events with gaps shorter than the debounce would reset the timer forever;
-    // the ceiling has to break that. 12 × 100 ms = 1.2 s of continuous activity.
+    // the ceiling has to break that.
     flushes.length = 0;
-    for (let i = 0; i < 12; i += 1) {
-      clock += 100;
+    const step = debounceMs / 2.5;
+    for (let i = 0; clock <= maxWaitMs; i += 1) {
       enqueue(`file-${i}.jsonl`);
-      await sleep(100);
+      clock += step;
+      vi.advanceTimersByTime(step);
     }
     expect(flushes.length).toBeGreaterThan(0);
     await watcher.stop();
@@ -1423,49 +1294,6 @@ describe('engine', () => {
     expect(after).toEqual(before);
   });
 });
-
-/**
- * Resolves when the engine reports its history index as done — subscribed *before*
- * `engine.start()` is called, so an event emitted while `start()` is still running cannot be
- * missed (015 D4). Use as `const done = historyDone(engine); await engine.start(); await done;`.
- *
- * The timeout is a fail-fast net well below vitest's own (30 s default, 180 s on N5): an
- * event that never comes fails with this message instead of running into the test timeout.
- */
-function historyDone(engine: ControlEngine, timeoutMs = 10_000): Promise<void> {
-  const waited = new Promise<void>((resolve, reject) => {
-    const listener = (info: { count: number; done: boolean }): void => {
-      if (!info.done) return;
-      clearTimeout(timer);
-      engine.off('history', listener);
-      resolve();
-    };
-    const timer = setTimeout(() => {
-      engine.off('history', listener);
-      reject(new Error(`historyDone: no history 'done' event within ${timeoutMs}ms`));
-    }, timeoutMs);
-    engine.on('history', listener);
-  });
-  // The promise is created before `await engine.start()`, so a timeout could reject while
-  // nothing awaits it yet; a no-op handler keeps that from surfacing as an unhandled
-  // rejection instead of the readable failure at the `await done` site.
-  waited.catch(() => {});
-  return waited;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Total bytes of all files below `root`. */
-async function treeSize(root: string): Promise<number> {
-  let total = 0;
-  for (const entry of await readdir(root, { withFileTypes: true, recursive: true })) {
-    if (!entry.isFile()) continue;
-    total += (await stat(join(entry.parentPath, entry.name))).size;
-  }
-  return total;
-}
 
 /** Content hash + size + mtime of every file in a tree, keyed by relative path. */
 async function fingerprint(root: string): Promise<Record<string, string>> {

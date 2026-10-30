@@ -17,6 +17,7 @@ docs/
   sprints/                  sprint planning + review; done/SNN/ = finished
   concepts/                 concept docs for systems NOT (fully) implemented yet
   systems/                  concept docs for systems ALREADY implemented (reference)
+  reviews/                  dated architecture/test reviews (findings + story map)
 ```
 
 ## Where do I find …?

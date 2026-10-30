@@ -19,6 +19,7 @@
     "icons": "python scripts/build-icons.py",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

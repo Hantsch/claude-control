@@ -52,7 +52,7 @@ sprints/
      refine go into a follow-up round (again via the orchestrator), then one more refine round.
    - **Build:** all stories sequentially through fresh agents, each deliverable including the
      acceptance test named for it. Then a **narrow** verification — build/lint/typecheck, the
-     tests the story's changes affect (`test-story`) and only the story's own e2e tests
+     `test-story` run, which in this project is the full unit suite (`npm test`), and only the story's own e2e tests
      (`e2e-story`) — and a clean-agent review that also judges whether those
      tests would actually fail on a broken implementation. After each story **one commit on the
      sprint branch** (or on `branch-base` with `sprint-branch: false`; never push, never on a

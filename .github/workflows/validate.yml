@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
 
       - run: npm ci
@@ -26,7 +26,15 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm test
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=test-results/vitest.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vitest-timings
+          path: test-results/vitest.json
+          retention-days: 14
+          if-no-files-found: ignore
 
       # Same verdict the release job reaches after the merge - here it fails the PR instead.
       - name: Check release notes

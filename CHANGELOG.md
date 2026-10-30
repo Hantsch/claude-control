@@ -9,7 +9,21 @@ while that section is empty, and promotes it to the new version section on relea
 
 ## Unreleased
 
-<!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
+- **History rows open for real.** Click a past session (or Tab to it and press Enter) and it
+  opens in its own resizable window: the facts, the subagent tree and the run timeline, instead
+  of a little note that mostly told you where the file lives.
+- **A hidden session now says so.** When a Settings filter hides sessions, the main window and
+  the popover show "N hidden" and name the filter, so nothing vanishes without a note.
+- **Popover rows name their project.** Two agents on `main` in different repos used to be
+  twins; each row now reads `project · branch`, and the branch is the first to be ellipsized.
+- **Claude Code's own word on status now counts.** A session Claude Code calls busy is no
+  longer shown as done or hidden at start; one it calls idle is no longer shown as working.
+  Waiting rows now say what Claude Code is waiting for, instead of making you guess.
+- **Handing work to a subagent no longer reads as done.** A session whose last word was "on it"
+  while a subagent kept writing used to flip to done and ping you, then sulk in the corner. It
+  now stays working until the subagent has been quiet for ten minutes.
+- **Renamed sessions keep their name,** and a session is no longer named after a robot's message.
+  `/rename` wins everywhere, history included.
 
 ## 1.1.1 — 2026-09-22
 
@@ -21,13 +35,6 @@ while that section is empty, and promotes it to the new version section on relea
 
 ## 1.1.0 — 2026-09-08
 
-- **History rows open for real.** Click a past session (or Tab to it and press Enter) and it
-  opens in its own resizable window: the facts, the subagent tree and the run timeline, instead
-  of a little note that mostly told you where the file lives.
-- **A hidden session now says so.** When a Settings filter hides sessions, the main window and
-  the popover show "N hidden" and name the filter, so nothing vanishes without a note.
-- **Popover rows name their project.** Two agents on `main` in different repos used to be
-  twins; each row now reads `project · branch`, and the branch is the first to be ellipsized.
 - **An aborted turn is its own status.** Interrupting a session (Esc) leaves a `user` record
   behind, which read as "a prompt was just submitted" → `working`. Because `working` means a
   turn is in flight, the row could never leave the popover and "Mark as seen" refused to touch
@@ -37,9 +44,6 @@ while that section is empty, and promotes it to the new version section on relea
 - **Refresh in the popover** (⟳ in its header) forces a re-read of every live transcript, for
   when you want the list confirmed rather than watched. Its tooltip says how old the current
   snapshot is.
-- **Claude Code's own word on status now counts.** A session Claude Code calls busy is no
-  longer shown as done or hidden at start; one it calls idle is no longer shown as working.
-  Waiting rows now say what Claude Code is waiting for, instead of making you guess.
 - **"Mark all as seen" is hidden instead of greyed out** when there is nothing settled to
   clear.
 - **The app can update itself now — if you let it.** Flip it on in Settings and it checks
@@ -47,13 +51,8 @@ while that section is empty, and promotes it to the new version section on relea
   time you start it. No relaunch, no releases page to babysit, no EXE to overwrite by hand. Off
   by default, and Settings tells you exactly when it last checked, what's staged, and why it
   didn't work if it didn't.
-- **Handing work to a subagent no longer reads as done.** A session whose last word was "on it"
-  while a subagent kept writing used to flip to done and ping you, then sulk in the corner. It
-  now stays working until the subagent has been quiet for ten minutes.
 - **A one-time "Updated to vX.Y.Z" toast** on the first start that's actually running the new
   version, so you know it happened.
-- **Renamed sessions keep their name,** and a session is no longer named after a robot's message.
-  `/rename` wins everywhere, history included.
 
 ## 1.0.0 — 2026-09-07
 

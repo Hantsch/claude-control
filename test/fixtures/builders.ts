@@ -7,9 +7,9 @@
  * exactly what §4 says must not leave the process.
  */
 
-import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { drainTempDirs, makeTempDir } from './tempDir.ts';
 import { epochMsToFileTime } from '../../src/core/registry/liveness.ts';
 
 export const T0 = Date.UTC(2026, 7, 5, 10, 0, 0);
@@ -388,21 +388,35 @@ export interface FixtureTree {
 }
 
 /**
- * Every tree handed out by `makeFixtureTree`, so `test/setup.ts` can delete them after each
- * file. The cold-start tree alone is ~250 MB — leaking one per run fills a disk quickly.
+ * Delete every temp dir (fixture trees included) created by this process. Called from the
+ * vitest setup file. The cold-start tree alone is ~250 MB — leaking one per run fills a disk.
  */
-const createdTrees: string[] = [];
-
-/** Delete every fixture tree created by this process. Called from the vitest setup file. */
 export async function cleanupFixtureTrees(): Promise<void> {
-  const trees = createdTrees.splice(0, createdTrees.length);
-  await Promise.all(trees.map((root) => rm(root, { recursive: true, force: true }).catch(() => {})));
+  await removeTrees(drainTempDirs());
+}
+
+/**
+ * Remove each root, warning (never throwing) on failure: a leaked tree must be visible, but
+ * a cleanup hook that throws would fail unrelated tests.
+ */
+export async function removeTrees(
+  roots: string[],
+  remove: (root: string) => Promise<unknown> = (root) => rm(root, { recursive: true, force: true }),
+): Promise<void> {
+  await Promise.all(
+    roots.map(async (root) => {
+      try {
+        await remove(root);
+      } catch (error) {
+        console.warn(`fixture cleanup failed for ${root}:`, error);
+      }
+    }),
+  );
 }
 
 /** A throwaway `~/.claude`-shaped directory tree. */
 export async function makeFixtureTree(prefix = 'cc-fixture-'): Promise<FixtureTree> {
-  const root = await mkdtemp(join(tmpdir(), prefix));
-  createdTrees.push(root);
+  const root = await makeTempDir(prefix);
   const sessionsDir = join(root, 'sessions');
   const projectsDir = join(root, 'projects');
   const ideDir = join(root, 'ide');

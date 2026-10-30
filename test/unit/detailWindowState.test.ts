@@ -1,5 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -10,13 +9,14 @@ import {
   restoreDetailBounds,
   saveDetailBounds,
 } from '../../src/main/detailWindowState.ts';
+import { makeTempDir } from '../fixtures/tempDir.ts';
 
 const primary = { x: 0, y: 0, width: 1920, height: 1040 };
 
 describe('detail window geometry', () => {
   let dir: string;
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'detail-win-'));
+  beforeEach(async () => {
+    dir = await makeTempDir('detail-win-');
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

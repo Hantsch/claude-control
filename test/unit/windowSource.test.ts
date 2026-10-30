@@ -5,9 +5,9 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { makeTempDir } from '../fixtures/tempDir.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MODEL_WINDOWS_CACHE_VERSION,
@@ -19,6 +19,7 @@ import {
   WindowSource,
   type ModelWindowCache,
 } from '../../src/core/context/windowSource.ts';
+import { jsonResponse, stubFetch } from '../fixtures/http.ts';
 
 const PAYLOAD = {
   'anthropic/claude-opus-5': { max_input_tokens: 200_000, input_cost_per_token: 0.000015 },
@@ -30,18 +31,6 @@ const START = Date.UTC(2026, 7, 22, 12, 0, 0);
 
 let dir: string;
 let clock: number;
-const originalFetch = globalThis.fetch;
-
-/** A stub that answers the litellm URL with `payload`; returns the spy for call assertions. */
-function stubFetch(response: () => Response | Promise<Response>) {
-  const spy = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => response());
-  globalThis.fetch = spy as unknown as typeof globalThis.fetch;
-  return spy;
-}
-
-function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
-}
 
 function source(options: { enabled?: boolean } = {}) {
   return new WindowSource(dir, { enabled: options.enabled ?? true, now: () => clock });
@@ -56,12 +45,12 @@ function readCache(): ModelWindowCache {
 }
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'cc-window-source-'));
+  dir = await makeTempDir('cc-window-source-');
   clock = START;
 });
 
 afterEach(async () => {
-  globalThis.fetch = originalFetch;
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 });

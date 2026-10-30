@@ -41,7 +41,7 @@ e2e: none
   not quietly turned into a manual step.
 -->
 
-test-story: npx vitest run --changed HEAD
+test-story: npm test
 e2e-story: none
 e2e-story-slices: 1
 e2e-all: none
@@ -79,10 +79,10 @@ changelog-path: CHANGELOG.md
 ## Branching
 
 branch-base: dev <!-- the branch a sprint starts from: cut from with sprint-branch: true, committed on with false -->
-sprint-branch: true <!-- true = cut a sprint branch, commit there, you merge it; false = commit every story directly on branch-base -->
+sprint-branch: false <!-- true = cut a sprint branch, commit there, you merge it; false = commit every story directly on branch-base -->
 sprint-branch-pattern: sprint/{id}
 auto-commit-per-story: true <!-- /sprint commits once per story ON THE SPRINT BRANCH only -->
-protected-branches: dev, main <!-- never commit here, never push, never merge -->
+protected-branches: main <!-- never commit here, never push, never merge -->
 
 ## Acceptance
 
@@ -142,7 +142,7 @@ testplan: optional
 Files every implementation and review agent must read before touching code.
 Keep this short — it is pasted into every subagent prompt.
 
-- <no CLAUDE.md yet in this project — add it here once one exists>
+- CLAUDE.md — project rules and the test lanes
 
 ## Notes
 

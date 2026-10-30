@@ -84,3 +84,8 @@ second roadmap.
 - 017 — The popover row says which project it is · S06 · each popover row reads `project · branch` (project emphasised, branch shrinks first), project alone without a branch
 - 018 — A hidden session says it is hidden · S06 · engine counts what the three list filters removed; main tab and popover show "N hidden" with a tooltip naming the filters; registry busy/waiting never hidden
 - 022 — A past session opens in its own, resizable window · S06 · History rows open one reusable resizable detail window with header facts, subagent tree and run timeline; geometry persisted.
+- 023 — Timing budgets leave the blocking suite · S07 · N4/flip/N5 2 s budgets run only in the weekly/on-demand perf lane; blocking suite keeps functional and 20 MB premise checks
+- 024 — The release lane tests only a due release and recovers a tag without a release · S07 · npm test runs only for a due release; a re-run publishes a tag that has no GitHub release
+- 025 — Test lanes are written down, and the story gate runs the whole suite · S07 · CLAUDE.md carries the lane table guarded by a drift test; test-story is npm test; CONTRIBUTING puts N4/N5 in the perf lane
+- 026 — Test hygiene sweep · S07 · fake timers, dead-PID N5, shared fetch/tempdir helpers, .node-version, 15 s timeout, vitest timing artifact
+- 027 — Source-text wiring tests pruned to structural checks · S07 · copy/grid/call-shape pins removed, generic ipcWiring test and navigate behaviour test added (594 -> 587 tests)

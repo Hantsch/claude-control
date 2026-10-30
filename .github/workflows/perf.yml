@@ -1,0 +1,24 @@
+name: perf
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  perf:
+    name: Timing budgets
+    # windows-latest, same as validate.yml: the budgets are measured on the only OS the app ships on.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci
+
+      - name: Perf budgets
+        run: npm run test:perf

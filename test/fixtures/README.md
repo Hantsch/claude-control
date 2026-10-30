@@ -30,3 +30,9 @@ number can be re-checked against a real `~/.claude` later.
 
 Used where a test needs a specific clock offset or a large synthetic tree (the ~250 MB
 cold-start tree). Same shapes, generated on the fly.
+
+## Shared helpers
+
+- `http.ts` — shared `stubFetch` / `jsonResponse` for tests that stub `fetch`.
+- `pids.ts` — `deadPids(count)`: pids that signal 0 reads as dead.
+- `tempDir.ts` — `makeTempDir(prefix)`: the one temp-dir creator; registers the path for the after-all cleanup in `test/setup.ts`.

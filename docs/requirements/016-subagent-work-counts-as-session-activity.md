@@ -52,6 +52,27 @@ Note what stays true: the status the transcript reports is not *wrong* as a stat
 transcript, and §4's read-only/metadata-only promise must not be spent on this — the existing
 reader only stats files and opens no subagent transcript, and that has to survive.
 
+### Update 2026-10-30 — reproduced twice more, and Claude Code now says so itself
+
+Reproduced on two running sprints at once (q2-launcher `/sprint S37`, ugreen_photo_app
+"Build 007"): both parents ended their turn right after `Async agent launched successfully`,
+both subagent files were written within the last minute, the app said `done` for both — and
+Claude Code's registry said `busy` for both, because its `busy` is `isLoading ||
+delegatedActive` ([RESEARCH.md §6](../RESEARCH.md)).
+
+So the *detection* half of this story moves to [020](020-claude-codes-own-status-outranks-the-transcript.md),
+which makes the registry status authoritative. What stays here is everything 020 does not
+answer:
+
+- the **presentation** of a delegating session — the reason line, "last activity", the
+  subagent chip — once 020 has stopped calling it `done`;
+- the **fallback** for a registry that carries no `status` (older Claude Code, another
+  entrypoint), where subagent-file `mtime` stays the only evidence;
+- `working` vs `stale` for a session that is `busy` *only* through `delegatedActive` while
+  nothing under `subagents/` has been written for a long time.
+
+Build after 020.
+
 ## Acceptance Criteria
 
 - [ ] A session whose only current activity is a subagent writing under
@@ -73,6 +94,10 @@ reader only stats files and opens no subagent transcript, and that has to surviv
 
 ## Open Questions
 
+- **(2026-10-30) Which questions below does 020 settle?** With a registry `status`, "what
+  counts as still working" is answered by Claude Code (`delegatedActive`), and the scan-width
+  question only matters for the fallback path. The product question — own status or
+  `working` — is untouched by 020 and is still this story's.
 - **Own status, or `working` with a different reason?** A session whose turn has ended but whose
   delegate is running is not the same thing as a session mid-turn: it is not going to answer the
   user, and a permission prompt cannot be pending in it. A distinct state would say that

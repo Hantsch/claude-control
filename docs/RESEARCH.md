@@ -57,6 +57,9 @@ Verification: all 10 live session files present on the machine on 2026-08-13 (Cl
 non-VS Code) was not checked, so this negative finding is scoped to `claude-vscode`
 sessions.
 
+**Superseded on 2026-10-30 (Claude Code `2.1.312`):** the registry now carries `status`,
+`waitingFor`, `updatedAt` and `statusUpdatedAt` on every live session — see §6.
+
 ---
 
 ## 2. Transcripts — `~/.claude/projects/<slug>/<sessionId>.jsonl`
@@ -237,3 +240,75 @@ title (`sprint.md - q2-launcher - Visual Studio Code`).
    inconsistency.
 6. **The parser must tolerate junk**: `<synthetic>` models, missing `stop_reason`,
    truncated final lines while a session is mid-write.
+
+---
+
+## 6. Re-measurement — 2026-10-30, Claude Code `2.1.312`
+
+Triggered by the user's report that running stories are "sometimes not recognised or carry
+the wrong name", and by the comparison with their own `scrum-cockpit` mod, which gets this
+right — because it runs *inside* Claude Code and receives `agent.spawn` / turn events
+directly. The question was whether the app can get at the same truth from outside. It can.
+
+### The registry now publishes Claude Code's own status
+
+All 12 live files carry `status`, `updatedAt` and `statusUpdatedAt`; `waitingFor` when it
+applies. The value is computed in the binary from the session's in-process UI state:
+
+```js
+// claude.exe 2.1.312, de-minified
+function registryStatus(s) {
+  const waitingFor = waitingReason(s);   // elicitation, top dialog, worker/sandbox request
+  if (waitingFor !== undefined) return { status: 'waiting', waitingFor };
+  return { status: s.isLoading || s.delegatedActive ? 'busy' : 'idle' };
+}
+```
+
+Observed `waitingFor` literals: `input needed`, `dialog open`, `sandbox request`,
+`worker request`, `goal proposal`; permission dialogs supply their own via
+`topDialogWaitingFor`. `statusUpdatedAt` is stamped only when the status changes.
+
+**`busy` includes `delegatedActive`** — background agents still running. That is the exact
+case story 016 describes, answered by the one process that knows. Measured the same morning:
+
+| pid | project | transcript says | registry says | subagent file last written |
+| --- | --- | --- | --- | --- |
+| 43808 | q2-launcher, `/sprint S37` | `done` (`end_turn` 10:45 after an async `Agent` launch) | `busy` since 08:54 | 10:52 (a minute ago) |
+| 44320 | ugreen_photo_app, "Build 007" | `done` (`end_turn` 10:49, same shape) | `busy` since 08:15 | 10:48 |
+| 53512 | claude-control | `done` | `idle`, `statusUpdatedAt` = the `end_turn` second | — |
+
+Both sprints were running; the app said `done` for both, and — because the app had just
+been started — `hideDoneOnStart` removed them from every surface. Of 12 live sessions, the
+app listed 3.
+
+`nameSource` takes `derived`, `auto`, `user`, `collision`, `hook` and `peer` in the binary;
+only `derived` was on disk in this sample. `kind` takes `interactive`, `background`, `sdk`
+and `worker`; only `interactive` was on disk.
+
+### Not every `user` record is a prompt
+
+User records now carry origin fields. Over the newest 150 transcripts, records that are not
+tool results:
+
+| `promptSource` / `turnOrigin` / `isMeta` / `origin.kind` | count | what it is |
+| --- | --- | --- |
+| `system` / `peer` / meta / `peer` | 413 | "Another Claude session sent a message: …" — background-agent hand-backs |
+| `sdk` / `human` / – / `human` | 255 | real prompts (incl. leading `<ide_opened_file>` notices) |
+| – / – / meta / – | 219 | system reminders, skill bodies, command caveats |
+| `system` / – or `task_notification` / – / `task-notification` | 200 | `<task-notification>` wake-ups |
+| – / `human` or `system` / – / `human` or `plugin` | 55 | slash-command wrappers |
+
+`isPromptRecord` treats all of them as human prompts. Consequences: the label fallback
+names a session after an injected message (pid 43808 was listed as "Another Claude session
+sent a message: <", pid 51044 as "The user opened the file c:\development\…"), and every
+hand-back resets the run start.
+
+### Titles
+
+VS Code's session list resolves a title as **`custom-title` (from `/rename`, sticky) over
+`ai-title`** (`extension.js`, transcript loader). The app reads only `ai-title`. 6 of the 12
+live transcripts had no `ai-title` at all — short or slash-command-first sessions do not get
+one — while all 12 carried Claude Code's own `last-prompt` records (`lastPrompt:
+"/sprint S37"`), a cleaner fallback than anything the app reconstructs from user records.
+Not every `last-prompt` record carries a `lastPrompt` value; the newest one that does is
+the candidate.

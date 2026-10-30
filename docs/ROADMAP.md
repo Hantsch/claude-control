@@ -1,7 +1,7 @@
 # Roadmap
 
 **The** one source of status and planning: where we stand, what comes next, what is not planned
-at all yet. As of: 2026-08-23.
+at all yet. As of: 2026-10-30.
 
 Rules (so this document does not drift):
 
@@ -21,7 +21,7 @@ Rules (so this document does not drift):
 | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | ✔ done |
 | 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | ✔ done |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M5 and M6 accepted, M8 cut as S06, M7 last |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | ▶ **in progress** — M5 and M6 accepted, M8 cut as S06 (re-cut 2026-10-30), M7 last |
 
 ---
 
@@ -264,11 +264,21 @@ wrong or silent about what is running — a session that has handed its work to 
 two projects on `sprint/NN` are indistinguishable, and two filters remove live sessions with no
 count anywhere to say they did.
 
-Stories: [016](requirements/016-subagent-work-counts-as-session-activity.md) — `draft` ·
+Stories: [020](requirements/020-claude-codes-own-status-outranks-the-transcript.md) — `draft` ·
+[016](requirements/016-subagent-work-counts-as-session-activity.md) — `draft` ·
+[021](requirements/021-a-session-is-called-what-vs-code-calls-it.md) — `draft` ·
 [017](requirements/017-popover-row-names-its-project.md) — `draft` ·
-[018](requirements/018-a-hidden-session-says-it-is-hidden.md) — `draft`
-Sprints: [S06](sprints/S06/sprint.md) — `planned`
+[018](requirements/018-a-hidden-session-says-it-is-hidden.md) — `draft` ·
+[022](requirements/022-a-past-session-opens-in-its-own-window.md) — `draft` (History, rides along)
+Sprints: [S06](sprints/S06/sprint.md) — `planned`, re-cut 2026-10-30
 Gaps/notes:
+- **Re-cut 2026-10-30** after a measurement ([RESEARCH.md §6](RESEARCH.md)): Claude Code
+  `2.1.312` publishes its own `busy`/`idle`/`waiting` in the registry (`busy` includes running
+  background agents), which the app ignores except for `waiting`; `hideDoneOnStart` hid 9 of 12
+  live sessions on a cold start, two of them running sprints; labels came from injected
+  `user` records and never from `/rename`. 020 (status) and 021 (naming) were added, 016 now
+  builds on 020, 018 counts the third filter. 022 is a user request from the same day and
+  the one story that can move to S07 without touching the milestone.
 - 016 carries the milestone: the only story here that touches `core/`, and the only one producing
   a false statement rather than a missing one. Its open product question — own status for a
   delegating session, or `working` with a different reason — reaches into tray colour, badge,

@@ -34,10 +34,29 @@ What the user should get: whenever the app is showing fewer live sessions than e
 and says which filter is responsible — enough to either trust the number or go turn the filter
 off in Settings.
 
+### Update 2026-10-30 — there is a third filter, and it hid the most
+
+`list.hideDoneOnStart` ([engine.ts:233](../../src/core/engine.ts)) removes every session that
+was `done` when the app started, until something happens in it. Measured on a cold start:
+12 live sessions, **9 hidden by this filter alone**, 3 on screen. It is invisible in exactly
+the same way as the other two, and it was missed when this story was written.
+
+It is also the filter that turns [020](020-claude-codes-own-status-outranks-the-transcript.md)'s
+bug into a disappearance. Two of the nine were running sprints that the transcript misread as
+`done`; a misread `done` on a running session is a wrong colour, a misread `done` at app start
+is no row at all. And the app restarts itself now — [019](done/019-the-app-updates-itself.md)
+applies an update on next launch — so every update hides every finished session, running
+delegators included until 020 lands.
+
+A side observation from the same measurement: two sessions `interrupted` three hours earlier
+*were* shown, while sessions `done` at the same time were not. Whether `hideDoneOnStart`
+should cover `interrupted` too is a question for this story, since it decides what the
+"N hidden" count is a count of.
+
 ## Acceptance Criteria
 
-- [ ] With a live session hidden by `hideUnusedSessions` or `hideOrphanSessions`, the main window
-      shows that something is hidden and how many
+- [ ] With a live session hidden by `hideUnusedSessions`, `hideOrphanSessions` or
+      `hideDoneOnStart`, the main window shows that something is hidden and how many
 - [ ] The same is true of the popover, and it is distinguishable from the "· N settled" count
       that is already there — a session held back by tray recency and a session removed by a
       filter are not the same thing
@@ -55,9 +74,16 @@ off in Settings.
   one lets the user reveal the hidden rows for a moment (or jumps to the Settings toggle) without
   permanently turning the filter off. The second is more work and adds a UI state; decide before
   refine.
-- **One number or two?** `hideUnusedSessions` and `hideOrphanSessions` remove different things
-  for different reasons — an unused window is a non-event, an orphan is a process that may want
-  killing. Whether that distinction is worth two counts or reads as noise is a product call.
+- **One number or three?** `hideUnusedSessions`, `hideOrphanSessions` and `hideDoneOnStart`
+  remove different things for different reasons — an unused window is a non-event, an orphan is
+  a process that may want killing, and a done-on-start session is finished work the user may
+  well still want to read. Whether that distinction is worth separate counts or reads as noise
+  is a product call.
+- **(2026-10-30) Should a registry-`busy` session ever be hidden?** After 020 a running
+  delegator is no longer `done`, so `hideDoneOnStart` cannot catch it — but say explicitly that
+  no filter may hide a session Claude Code reports as `busy` or `waiting`.
+- **(2026-10-30) `interrupted` on start.** See the update above: shown today, while `done` of
+  the same age is hidden.
 - **Where in the popover?** The header already carries session count, waiting count and the
   settled count. A fourth number in that line may be one too many — and the popover is the
   surface [010](done/010-popover-drilldown.md) already found over-subscribed.

@@ -14,7 +14,7 @@
   update those files (`/ai-scrum:setup`). Hashes of the managed copies: .claude/ai-scrum.lock
 -->
 
-ai-scrum-version: 4.0.0
+ai-scrum-version: 4.9.0
 project: claude-control
 
 ## Verify
@@ -41,6 +41,15 @@ e2e: none
   not quietly turned into a manual step.
 -->
 
+test-story: npx vitest run --changed HEAD
+e2e-story: none
+e2e-story-slices: 1
+e2e-all: none
+e2e-cleanup: none
+release-verify: none
+test-support: test/fixtures/
+e2e-quarantine: none
+
 ## Conventions
 
 doc-language: en <!-- language for generated artifacts: stories, sprint reviews, concepts -->
@@ -52,7 +61,7 @@ systems-path: docs/systems
 story-id-format: NNN <!-- three digits + slug, e.g. 042-npc-haggling.md -->
 sprint-id-format: SNN <!-- e.g. S07 -->
 
-changelog-path: none
+changelog-path: CHANGELOG.md
 
 <!--
   Optional. Path to a USER-FACING changelog (e.g. version.md, CHANGELOG.md) — not the
@@ -69,7 +78,8 @@ changelog-path: none
 
 ## Branching
 
-branch-base: dev <!-- branch a sprint is cut from -->
+branch-base: dev <!-- the branch a sprint starts from: cut from with sprint-branch: true, committed on with false -->
+sprint-branch: true <!-- true = cut a sprint branch, commit there, you merge it; false = commit every story directly on branch-base -->
 sprint-branch-pattern: sprint/{id}
 auto-commit-per-story: true <!-- /sprint commits once per story ON THE SPRINT BRANCH only -->
 protected-branches: dev, main <!-- never commit here, never push, never merge -->

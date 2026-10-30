@@ -24,6 +24,12 @@ criterion = one observable fact, not a bundle of three.>
 unclear. Must be resolved before status goes to `ready`. Inside a sprint these are put to the
 user in the clarification round.>
 
+## Decisions (Sprint)
+
+<Leave empty. Filled by `/sprint`'s clarification round and by `/refine <id>` when it runs
+inside a sprint: one line per decision the user made, with the answer and why. Empty outside
+a sprint.>
+
 ## Plan
 
 <Leave empty. Filled by `/refine <id>`: a short, precise overview — max. ~50 lines.
@@ -55,6 +61,9 @@ automated test that proves it — level, file, and the test name it will carry. 
 written by the deliverables, not afterwards; `/build` re-checks this mapping and that the
 tests pass before `status: done`. This section replaces the manual test plan: acceptance is
 the suite, not a click list.
+
+Example paths below; your real test layout and the commands that run it are in
+`.claude/ai-scrum.md` (`e2e-story`, `test-story`).
 
 - AC1 → e2e `tests/e2e/<flow>.spec.ts` › "<test name>" (real surface, per
   `ui-acceptance-required`)

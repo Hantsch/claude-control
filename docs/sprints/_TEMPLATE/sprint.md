@@ -21,3 +21,7 @@ milestone: # roadmap milestone, set by /roadmap plan
 ## Notes
 
 <!-- Optional: context for this sprint, e.g. corrections from the last sprint review. -->
+
+## Regression gate
+
+<!-- Filled by `/sprint` phase 2b: the commands run, minutes taken, result, commit, and a verdict per failure. -->

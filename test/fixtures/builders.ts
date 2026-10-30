@@ -395,8 +395,26 @@ const createdTrees: string[] = [];
 
 /** Delete every fixture tree created by this process. Called from the vitest setup file. */
 export async function cleanupFixtureTrees(): Promise<void> {
-  const trees = createdTrees.splice(0, createdTrees.length);
-  await Promise.all(trees.map((root) => rm(root, { recursive: true, force: true }).catch(() => {})));
+  await removeTrees(createdTrees.splice(0, createdTrees.length));
+}
+
+/**
+ * Remove each root, warning (never throwing) on failure: a leaked tree must be visible, but
+ * a cleanup hook that throws would fail unrelated tests.
+ */
+export async function removeTrees(
+  roots: string[],
+  remove: (root: string) => Promise<unknown> = (root) => rm(root, { recursive: true, force: true }),
+): Promise<void> {
+  await Promise.all(
+    roots.map(async (root) => {
+      try {
+        await remove(root);
+      } catch (error) {
+        console.warn(`fixture cleanup failed for ${root}:`, error);
+      }
+    }),
+  );
 }
 
 /** A throwaway `~/.claude`-shaped directory tree. */

@@ -70,6 +70,8 @@ should cover `interrupted` too is a question for this story, since it decides wh
 
 ## Open Questions
 
+<!-- S06: the product questions below were answered by the user — see Decisions (Sprint) -->
+
 - **Count, or a way in?** The cheapest honest version is a number with a tooltip. The more useful
   one lets the user reveal the hidden rows for a moment (or jumps to the Settings toggle) without
   permanently turning the filter off. The second is more work and adds a UI state; decide before
@@ -90,6 +92,10 @@ should cover `interrupted` too is a question for this story, since it decides wh
 - **Does the tray badge care?** The badge follows `traySessions`. A hidden session cannot be
   waiting on anything (an unused one has no turn, an orphan has no window to answer in), so
   presumably not — but state it rather than leaving it implied.
+
+## Decisions (Sprint)
+
+- **(User)** Hidden-sessions indicator: one number with a tooltip naming the causes; no reveal action, no per-filter counts. Still: no filter may hide a registry-`busy`/`waiting` session.
 
 ## Plan
 

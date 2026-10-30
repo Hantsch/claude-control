@@ -57,6 +57,8 @@ surface, the moment the registry file changes, not on the next poll.
 
 ## Open Questions
 
+<!-- S06: the product questions below were answered by the user — see Decisions (Sprint) -->
+
 - **How much does `busy` override?** The cheapest version only lifts `done` / `interrupted`
   to `working`. The full one makes the registry the primary input and uses the transcript only
   for the sub-state (tool, overdue, done-vs-interrupted). The second is what CONCEPT §6.2's
@@ -72,6 +74,9 @@ surface, the moment the registry file changes, not on the next poll.
   describe the field as absent; they need rewording as part of this story, not after it.
 
 ## Decisions (Sprint)
+
+- **(User)** How much `busy`/`idle` override: the registry status is the primary input; the transcript only supplies the sub-state (tool, overdue, done-vs-interrupted).
+- **(User)** `busy` via `delegatedActive` with quiet subagent files: stays `working` — trust Claude Code; no age cut-off, the PID check guards dead processes.
 
 ## Plan
 

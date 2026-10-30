@@ -63,6 +63,8 @@ injected.
 
 ## Open Questions
 
+<!-- S06: the product questions below were answered by the user — see Decisions (Sprint) -->
+
 - **Registry `name` with `nameSource: user`.** The binary knows `user`, `hook`, `peer`,
   `auto` and `collision` besides `derived`; only `derived` was on disk. If `/rename` also
   writes the registry with `nameSource: user`, is that a cheaper source than the
@@ -77,6 +79,8 @@ injected.
   long user-chosen names, check the line-1 budget once, in whichever story is built second.
 
 ## Decisions (Sprint)
+
+- **(User)** Registry `name` vs transcript `custom-title`: match what VS Code shows; refine verifies with a real `/rename`, the registry is a fallback source.
 
 ## Plan
 

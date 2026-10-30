@@ -47,6 +47,8 @@ and that window can be resized — the current view is too small and cannot be m
 
 ## Open Questions
 
+<!-- S06: the product questions below were answered by the user — see Decisions (Sprint) -->
+
 - **One window or one per session?** One reusable window is simpler and keeps the taskbar
   clean; one per session allows comparing two. Recommendation: one window, retargeted on each
   click, unless the user wants comparison.
@@ -62,6 +64,9 @@ and that window can be resized — the current view is too small and cannot be m
   needs virtualisation or a collapsed-by-default view. Decide in refine.
 
 ## Decisions (Sprint)
+
+- **(User)** One reusable detail window, retargeted on each History click.
+- **(User)** Live sessions (Sessions tab pane) are out of scope: History only.
 
 ## Plan
 

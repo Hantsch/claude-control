@@ -94,6 +94,8 @@ Build after 020.
 
 ## Open Questions
 
+<!-- S06: the product questions below were answered by the user — see Decisions (Sprint) -->
+
 - **(2026-10-30) Which questions below does 020 settle?** With a registry `status`, "what
   counts as still working" is answered by Claude Code (`delegatedActive`), and the scan-width
   question only matters for the fallback path. The product question — own status or
@@ -118,6 +120,10 @@ Build after 020.
   subagents is the next contradiction.
 - **History.** `deriveHistoricalStatus` asks "how did this session end", evaluated at its last
   record. Presumably untouched — but say so, rather than leaving it to be discovered.
+
+## Decisions (Sprint)
+
+- **(User)** Own status or `working`: `working` with a distinct reason ('subagent still running'); no new tray colour, badge, notification or CLI label.
 
 ## Plan
 

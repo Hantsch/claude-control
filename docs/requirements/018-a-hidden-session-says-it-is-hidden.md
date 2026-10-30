@@ -1,7 +1,7 @@
 ---
 id: 018
 title: A hidden session says it is hidden
-status: draft # draft -> ready -> in-progress -> done
+status: ready # draft -> ready -> in-progress -> done
 created: 2026-08-23
 ---
 
@@ -96,13 +96,113 @@ should cover `interrupted` too is a question for this story, since it decides wh
 ## Decisions (Sprint)
 
 - **(User)** Hidden-sessions indicator: one number with a tooltip naming the causes; no reveal action, no per-filter counts. Still: no filter may hide a registry-`busy`/`waiting` session.
+- The count is computed in the engine (`getSnapshot`) as `all live − shown`, plus the list of filters that removed at least one session — only the engine knows which filter fired, and the renderer stays derivation-free.
+- A session matched by two filters counts once; `causes` lists every filter that removed something, in pipeline order (unused → doneOnStart → orphan) — the user asked for one number, and it must agree with "live − shown".
+- The busy/waiting guard is keyed on the registry's word as 020 delivers it: `statusSource === 'reported'` with status `working`/`stale`/`queued`/`waiting` is exempt from all three filters — an *inferred* in-flight orphan stays hidden as 004 wanted (an abandoned process that died mid-tool looks exactly like that); only Claude Code's own `busy`/`waiting` is protected.
+- `interrupted` stays outside `hideDoneOnStart` — an interrupted turn is unfinished work the user may want to resume, and widening a filter is out of scope for a story that makes filters visible; for that filter the count therefore counts `done` only.
+- Popover: the number joins the existing header count as ` · N hidden`, after ` · N settled`, with its own tooltip — no new row on the surface 010 found over-subscribed, and a different word plus tooltip keeps it distinguishable from tray recency (AC2).
+- Main window: a `· N hidden` hint right after the `Sessions (N)` tab, with the tooltip — the tab count is where the shortfall is read, so the explanation sits there.
+- The tooltip names the filters by their Settings labels ("Hide unused sessions", "Hide sessions already done at start", "Hide abandoned sessions") and points to Settings › Session list — that is "leads to it" without the jump/reveal action the user ruled out.
+- Tray badge, tray icon and tray menu are unaffected — with the guard a hidden session can never be registry-`waiting`, so the badge owes the user nothing for it.
+- CLI is unchanged — the ACs name the main window and the popover only.
+- With every filter off, or nothing removed, `hidden` is `{ count: 0, causes: [] }` and both surfaces render nothing (no "0 hidden", no empty span).
+- No systems doc is updated — `docs/systems/` is empty in this repo.
 
 ## Plan
 
+Built last of the live-list stories (after 020, 016, 021, 017). Core first, renderer second.
+
+1. **Engine** (`src/core/engine.ts` `getSnapshot`): run the three filters as today but record
+   which filters removed something. Exempt registry-reported in-flight sessions
+   (`statusSource === 'reported'`, status `working|stale|queued|waiting`) from all three.
+   Add `hidden: { count, causes }` to `EngineSnapshot` and `AppState`; `count = all − shown`.
+2. **Renderer**: one pure helper `hiddenIndicator(hidden)` → `{ text, title } | null` in
+   `src/renderer/lib/hiddenSessions.ts`; the main window's tab bar and the popover header both
+   render through it. Popover: ` · N hidden` after ` · N settled`, separate tooltip.
+3. CHANGELOG entry under `## Unreleased`.
+
+No render harness (`e2e: none`, vitest without jsdom): user-facing ACs are proven one level
+down — engine behaviour in `pipeline.test.ts` / `derivations.test.ts`, the helper plus a
+source-level wiring check (pattern of `statusRollupWiring.test.ts`) in a new
+`hiddenSessions.test.ts`. Gap named under Acceptance tests.
+
 ## Deliverables
+
+- **D1 — The engine counts what its filters removed, and never hides Claude Code's own `busy`/`waiting`.**
+  Files: `src/core/engine.ts` (`EngineSnapshot`, `getSnapshot`), `src/shared/ipc.ts` (`AppState`),
+  `src/main/index.ts` (`emptyState`), `src/renderer/api.ts` (`EMPTY_STATE`), tests in
+  `test/unit/pipeline.test.ts` and `test/unit/derivations.test.ts`.
+  - Add `hidden: HiddenSessions` to `EngineSnapshot` and `AppState`:
+    `export interface HiddenSessions { count: number; causes: HiddenCause[] }`,
+    `export type HiddenCause = 'unused' | 'doneOnStart' | 'orphan'` — defined in
+    `src/core/engine.ts` next to `EngineSnapshot`, re-exported through `src/shared/ipc.ts` the
+    way the other core types are. Both empty-state defaults get `hidden: { count: 0, causes: [] }`.
+  - In `getSnapshot`, keep the filter order and semantics (`hideUnusedSessions` drops
+    `starting`; `hideDoneOnStart` drops `wasDoneOnStart`; `hideOrphanSessions` drops `isOrphan`
+    judged against `unstarting`). Add one private predicate `isReportedInFlight(s)` =
+    `s.statusSource === 'reported' && status ∈ {working, stale, queued, waiting}`; no filter
+    removes a session for which it is true (the orphan rule still sees it as a folder mate).
+    `causes` = each filter that removed ≥1 session, order unused → doneOnStart → orphan;
+    `count = all.length − sessions.length` (each session once). Do not change `traySessions`,
+    `trayState`, `attention`, `groups`, `windowUnknown` or history. `interrupted` is **not**
+    added to `hideDoneOnStart`.
+  - Tests — `test/unit/pipeline.test.ts`, extend the existing fixtures instead of new trees:
+    in "hides a session that has never exchanged a message, unless asked not to" assert
+    `hidden` = `{ count: 1, causes: ['unused'] }` while `sessions` is empty, and
+    `{ count: 0, causes: [] }` with the filter off; in "hides a session that was already done
+    at start until it does something new" the same with `['doneOnStart']`, `hidden.count` back
+    to 0 once the new turn brings the row back, and `historyCount` / `listHistory()` equal with
+    the filter on and off. `test/unit/derivations.test.ts`, inside the orphan-filter describe
+    (reuse its `engineWith` / `view` helpers): new test "counts an orphan it hid as hidden"
+    (`causes: ['orphan']`, count 1) and new test "never hides a session Claude Code reports
+    busy or waiting" (windowless folder mate with `statusSource: 'reported'` and status
+    `working`, and one with `waiting`, are shown and not counted; an inferred `working`
+    orphan is still hidden). Existing tests stay green unchanged.
+
+- **D2 — Main window and popover say "N hidden" and name the filter.**
+  Files: new `src/renderer/lib/hiddenSessions.ts`, `src/renderer/App.tsx` (tab bar, ~line 62),
+  `src/renderer/popover.tsx` (header `.count` span, ~line 830), new
+  `test/unit/hiddenSessions.test.ts`, `CHANGELOG.md`.
+  - `hiddenIndicator(hidden: HiddenSessions): { text: string; title: string } | null` (types
+    from `src/shared/ipc.ts`, which carries `AppState.hidden: { count; causes: ('unused' |
+    'doneOnStart' | 'orphan')[] }`) — `null` when `count === 0`; else `text` = `"N hidden"`;
+    `title` = one sentence naming every cause by its Settings label, as named constants:
+    `unused` → "Hide unused sessions", `doneOnStart` → "Hide sessions already done at start",
+    `orphan` → "Hide abandoned sessions", ending "— change it in Settings › Session list."
+  - `App.tsx`: right after the `Sessions (N)` tab button, render
+    `<span className="meta" title={title}>· {text}</span>` when the helper is non-null.
+  - `popover.tsx`: inside the header count, after the existing `· N settled`, render
+    `<span title={title}> · {text}</span>` when non-null; the settled count and its tooltip
+    stay exactly as they are. No new row, no click action.
+  - Tests in `test/unit/hiddenSessions.test.ts`: "nothing hidden renders nothing" (count 0 →
+    `null`); "the tooltip names every responsible filter by its Settings label" (single and
+    multiple causes, "1 hidden" / "3 hidden" text); "the hidden tooltip names filters, never
+    tray recency" (title does not contain "settled"). Source-level wiring block, mirroring
+    `test/unit/statusRollupWiring.test.ts`'s path helpers: "the main window and the popover
+    render the hidden count through hiddenIndicator" (both files import `hiddenIndicator` and
+    pass `state.hidden`); "the popover keeps the settled count and adds the hidden count
+    beside it" (popover source still has the `settled` expression and the `hiddenIndicator`
+    call as a separate one).
+  - CHANGELOG: one short user-facing line under `## Unreleased` (Features).
 
 ## Model Hints
 
+- D1 → default. D2 → default.
+- Review: → default
+
 ## Test Plan (manual acceptance)
+
+### Acceptance tests
+
+No render harness exists (`e2e: none`, vitest without jsdom): the user-facing criteria are
+proven one level down — engine behaviour, a pure view helper and a source-level wiring check.
+**Gap for the sprint review:** no test sees the rendered tab bar or popover header.
+
+- AC1 → unit `test/unit/pipeline.test.ts` › "hides a session that has never exchanged a message, unless asked not to" + › "hides a session that was already done at start until it does something new" (both extended with `hidden`); unit `test/unit/derivations.test.ts` › "counts an orphan it hid as hidden"; display via unit `test/unit/hiddenSessions.test.ts` › "the main window and the popover render the hidden count through hiddenIndicator"
+- AC2 → unit `test/unit/hiddenSessions.test.ts` › "the popover keeps the settled count and adds the hidden count beside it" + › "the hidden tooltip names filters, never tray recency"
+- AC3 → unit `test/unit/hiddenSessions.test.ts` › "the tooltip names every responsible filter by its Settings label"
+- AC4 → unit `test/unit/hiddenSessions.test.ts` › "nothing hidden renders nothing"; filter-off branch of the two extended `pipeline.test.ts` tests (`{ count: 0, causes: [] }`)
+- AC5 → unit `test/unit/pipeline.test.ts` › the two extended tests (`sessions` stays empty while counted); unit `test/unit/derivations.test.ts` › "never hides a session Claude Code reports busy or waiting" (the user's binding guard)
+- AC6 → unit `test/unit/pipeline.test.ts` › "hides a session that was already done at start until it does something new" (extended: `historyCount` / `listHistory()` equal with filter on and off)
 
 ## Done

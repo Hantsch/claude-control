@@ -1,7 +1,7 @@
 ---
 id: 017
 title: The popover row says which project it is
-status: draft # draft -> ready -> in-progress -> done
+status: ready # draft -> ready -> in-progress -> done
 created: 2026-08-23
 ---
 
@@ -56,12 +56,130 @@ whether one project is live or five.
   `data-nav-key` stop and another collapsible group; check that ← / → and the row-index numbering
   still behave when the only group can be collapsed to nothing.
 
+<!-- S06: all three decided in refine, see Decisions (Sprint) -->
+
+## Decisions (Sprint)
+
+- The project goes **into the row**, in the trailing identity span that shows the branch today
+  (`project · branch`), not into an unconditional group head. Reason: AC2 asks the row to
+  identify itself wherever the head has scrolled to, and only the row can do that.
+- The group head keeps its `groups.length > 1` condition. Reason: once every row names its
+  project, a single-group head adds a line and a collapsible nav stop with no new information,
+  so the keyboard-nav / row-index question does not come up.
+- The session label (021's name) stays the bold, primary part of line 1. In the trailing span
+  the **project comes first and gets the emphasis** (`--text-dim`), and the branch follows in a
+  quieter colour (`--text-faint`). Reason: the project is what this story exists to show, and
+  sprint branch names repeat across repos by design.
+- No new grid column: the place stays inside the existing `.ident` cell (`minmax(0, 1fr)`), and
+  its cap goes up from 45% to 55% of that cell. Reason: 021's long user-chosen labels ellipsize
+  first, and at the popover's 620 px a typical `claude-control · sprint/S06` fits the larger cap.
+- Inside the place, the branch gives up width before the project (`flex-shrink` 2 vs 1), and the
+  full `project · branch` is always in the span's `title`. Reason: truncation must not cut the
+  half that tells two repos apart.
+- With no branch recorded, the span shows the project alone, with no separator. Reason: AC5.
+- A pure helper in `src/renderer/lib/popoverModel.ts` computes the row text. Reason: vitest runs
+  without jsdom, and that file is where the popover's row rules are already tested.
+- A structural test on `styles.css` proves AC4: the `.l1` grid keeps its eight fixed-width
+  tracks. Reason: the profile's e2e is `none`, so this is the check one level down (gap named
+  under Acceptance tests).
+- AC6 is a scope constraint, not a behaviour. The D1 review proves it with a diff-scope check:
+  nothing under `src/main/` and no main-window component changes. Reason: a test that
+  re-asserts tray.ts's format string would be padding.
+- Subagent rows (`SubagentRow`) stay unchanged. Reason: they show no branch today, and their
+  parent row now names the project.
+
 ## Plan
+
+Renderer-only, one deliverable. The trailing identity span of a popover row changes from
+`branch ?? project` to `project · branch`, or the project alone when there is no branch.
+
+1. `src/renderer/lib/popoverModel.ts`: new pure `rowPlace(session)` returns
+   `{ project, branch, title }`. Tests go in `test/unit/popoverModel.test.ts`.
+2. `src/renderer/popover.tsx` (session row, `.ident`, ~line 1006): the `.branch` span becomes a
+   `.place` span (project, then ` · branch` when there is one), with `title` from the helper.
+3. `src/renderer/styles.css` (~lines 1192–1265): `.place` / `.proj` / `.sep` / `.branch` rules
+   replace `.popover-row .branch`. The cap goes up to 55%, and the branch shrinks first. The
+   `.l1` grid is not touched.
+4. `test/unit/popoverRowLayout.test.ts` (new): the `.l1` grid keeps its eight tracks.
+5. `CHANGELOG.md`: one line under `## Unreleased`.
+
+Not touched: the group-head condition, keyboard nav, `SubagentRow`, `src/main/tray.ts`, the main
+window.
 
 ## Deliverables
 
+- [ ] **D1: a popover row names its project.** Renderer only. Files:
+  `src/renderer/lib/popoverModel.ts`, `src/renderer/popover.tsx`, `src/renderer/styles.css`,
+  `test/unit/popoverModel.test.ts`, `test/unit/popoverRowLayout.test.ts` (new),
+  `CHANGELOG.md`.
+  - In `popoverModel.ts`, export a pure
+    `rowPlace(session: { project: { name: string }; branch: string | null }): { project: string; branch: string | null; title: string }`.
+    An empty or whitespace-only branch counts as no branch. `title` is `project · branch`, or
+    just the project.
+  - In `popover.tsx`, the session row's line 1 has this span inside `.ident` today:
+    `<span className="branch" title={session.branch ?? session.project.name}>{session.branch ? session.branch : session.project.name}</span>`.
+    Replace it with a `<span className="place" title={place.title}>` that holds
+    `<span className="proj">` with the project. When there is a branch, add a
+    `<span className="sep">·</span>` and a `<span className="branch">` after it. The project
+    always renders; the separator and the branch render only when there is a branch. Leave the
+    `.name` label span before it alone. Update the line-1 comment so it says
+    "project · branch" instead of "branch". The group head keeps `groups.length > 1`. Do not
+    change keyboard navigation or `SubagentRow`.
+  - In `styles.css`, replace the `.popover-row .branch` rule with these rules:
+    - `.popover-row .place`: `display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto;
+      max-width: 55%; min-width: 0; font-size: 11px`
+    - `.place .proj`: `color: var(--text-dim); flex: 0 1 auto; min-width: 0`
+    - `.place .sep`: `color: var(--text-faint); flex: none`
+    - `.place .branch`: `color: var(--text-faint); flex: 0 2 auto; min-width: 0`
+
+    `.proj` and `.branch` keep the ellipsis trio (`overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap`), so update the shared `.popover-row .name, .popover-row .branch, …`
+    selector to match. Do **not** change `grid-template-columns` on `.popover-row .l1`. Update
+    the `.ident` comment: the name leads, then project · branch, and the branch gives up width
+    first.
+  - Tests in `test/unit/popoverModel.test.ts`, in a new `describe('rowPlace')`:
+    - "a row names its project when only one project is live"
+    - "two sessions on the same branch in different projects get different places"
+    - "a session without a branch shows its project once"
+
+    New `test/unit/popoverRowLayout.test.ts`, which reads `styles.css` the way `theme.test.ts`
+    does (lines 28–30): "the popover row's first line keeps its eight-track grid". It asserts
+    `9px 13px 11px minmax(0, 1fr) 108px 92px 22px 18px`.
+  - `CHANGELOG.md`: one short line under `## Unreleased` saying the popover row now names its
+    project.
+  - Acceptance: `npm test` and `npm run typecheck` pass, and the diff touches nothing under
+    `src/main/` and no main-window component.
+
 ## Model Hints
 
+- D1 → default. One pure helper, one span and one CSS rule, with no cross-module behaviour.
+
+Review: → default. Every plausible wrong implementation (an unconditional group head, a new grid
+column, the project shown twice without a branch) fails a named test.
+
 ## Test Plan (manual acceptance)
+
+### Acceptance tests
+
+- AC1 (one project live, the row names it) → unit `test/unit/popoverModel.test.ts` › "a row
+  names its project when only one project is live"
+- AC2 (the row identifies its project without the group head) → unit
+  `test/unit/popoverModel.test.ts` › "a row names its project when only one project is live".
+  The place is computed from the session alone and has no group input.
+- AC3 (same branch in different projects, rows still distinguishable) → unit
+  `test/unit/popoverModel.test.ts` › "two sessions on the same branch in different projects get
+  different places"
+- AC4 (line 1 keeps its columns and the two-line layout) → unit
+  `test/unit/popoverRowLayout.test.ts` › "the popover row's first line keeps its eight-track
+  grid"
+- AC5 (no branch, project shown once) → unit `test/unit/popoverModel.test.ts` › "a session
+  without a branch shows its project once"
+- AC6 (main window and tray unchanged) → diff-scope check in the D1 review: nothing under
+  `src/main/` and no main-window component changes, and the existing suite still passes.
+
+Gap (`ui-acceptance-required: true` while `e2e: none`): AC1–AC5 are visible to the user but
+proven one level down, through the pure view-model helper and the stylesheet structure, because
+the project has no render or e2e harness. Nothing machine-checks how the row truncates at
+620 px. Listed for the sprint review.
 
 ## Done

@@ -64,7 +64,8 @@ Merging a PR into `main` releases — there is no separate publish step.
 commit messages (Conventional Commits — `feat:` minor, `<type>!:`/`BREAKING CHANGE` major,
 `chore:`/`docs:`/`ci:`/`test:`/`style:`/`build:` no release, anything else patch), bumps
 `package.json`, builds the portable EXE and publishes a GitHub release with the EXE and its
-checksum attached. A merge whose commits are all no-release types releases nothing.
+checksum attached. A merge whose commits are all no-release types releases nothing. The release
+job runs `npm test` only when a release is due, so a `docs:`/`chore:`-only merge runs no tests.
 
 The very first release is the one case with no tag to derive from, so it ships whatever version
 `package.json` already carries, verbatim and unbumped. Every release after that is derived.
@@ -73,6 +74,11 @@ The notes come from the `## Unreleased` section of [CHANGELOG.md](CHANGELOG.md),
 with an empty section fails rather than shipping without notes. `npm run typecheck`, `npm test`
 and a full `npm run package` run on every PR, so the artifact is known to build before `main`
 promises it.
+
+If a release stops after the tag push (the tag is on GitHub but has no GitHub release), re-run
+the release job: it recognises the tag at `HEAD` and publishes the missing release from that
+version's `CHANGELOG.md` section, without bumping, committing or tagging again. Creating the
+release by hand with `gh release create` is the last resort.
 
 ```powershell
 pwsh -File scripts/plan-release.ps1   # what would the next merge release, and why

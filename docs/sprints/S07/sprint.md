@@ -19,7 +19,7 @@ suite is cleaner and less flaky behind them.
 <!-- Order = the order the build phase works through. Dependent stories go last. -->
 
 - [x] 023 — Timing budgets leave the blocking suite
-- [ ] 024 — The release lane tests only a due release and recovers a tag without a release
+- [x] 024 — The release lane tests only a due release and recovers a tag without a release
 - [ ] 025 — Test lanes are written down, and the story gate runs the whole suite
 - [ ] 026 — Test hygiene: fake timers, dead PIDs, shared helpers, one Node pin, tighter timeouts, timing artifact
 - [ ] 027 — Source-text wiring tests pruned to structural checks

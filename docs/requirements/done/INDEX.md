@@ -85,3 +85,4 @@ second roadmap.
 - 018 — A hidden session says it is hidden · S06 · engine counts what the three list filters removed; main tab and popover show "N hidden" with a tooltip naming the filters; registry busy/waiting never hidden
 - 022 — A past session opens in its own, resizable window · S06 · History rows open one reusable resizable detail window with header facts, subagent tree and run timeline; geometry persisted.
 - 023 — Timing budgets leave the blocking suite · S07 · N4/flip/N5 2 s budgets run only in the weekly/on-demand perf lane; blocking suite keeps functional and 20 MB premise checks
+- 024 — The release lane tests only a due release and recovers a tag without a release · S07 · npm test runs only for a due release; a re-run publishes a tag that has no GitHub release

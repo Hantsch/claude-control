@@ -1,7 +1,7 @@
 ---
 id: 024
 title: The release lane tests only a due release and recovers a tag without a release
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -29,26 +29,26 @@ Today ([review 2026-10-30](../reviews/2026-10-30-tests-review.md), F02, F03):
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — In `release.yml` (and the matching step order in `ci-release.ps1`), the plan runs
+- [x] **AC1** — In `release.yml` (and the matching step order in `ci-release.ps1`), the plan runs
       before `npm test`: the `Test` step's line number is greater than the plan step's, checked by
       a script or `rg -n` in the story's acceptance test
-- [ ] **AC2** — A dry run of the release script with a push that yields `bump=none` (only `docs:`
+- [x] **AC2** — A dry run of the release script with a push that yields `bump=none` (only `docs:`
       or `chore:` commits since the last tag) exits 0 without starting `npm test` (the script's
       output contains "nothing to release" and no vitest output)
-- [ ] **AC3** — A dry run with a due release (a `feat:` or `fix:` commit since the last tag) runs
+- [x] **AC3** — A dry run with a due release (a `feat:` or `fix:` commit since the last tag) runs
       `npm test` exactly once before the commit/tag step
-- [ ] **AC4** — `release.yml` or `ci-release.ps1` carries a comment next to the remaining test run
+- [x] **AC4** — `release.yml` or `ci-release.ps1` carries a comment next to the remaining test run
       stating why it exists (the merge result is not otherwise tested); `rg -n -i "merge"` over
       the two files finds that comment
-- [ ] **AC5** — When HEAD carries a `v*` tag and `gh release view <tag>` fails, the script skips
+- [x] **AC5** — When HEAD carries a `v*` tag and `gh release view <tag>` fails, the script skips
       plan, version bump, commit, tag and push, and runs only build, SHA256SUMS, notes and
       `gh release create` for that tag; proven by a dry-run scenario (tag at HEAD, release absent)
       whose output names the recovery path and exits 0
-- [ ] **AC6** — When HEAD carries a `v*` tag and the release exists, the script still exits 0 with
+- [x] **AC6** — When HEAD carries a `v*` tag and the release exists, the script still exits 0 with
       "nothing to release" and creates nothing
-- [ ] **AC7** — The recovery path takes its release notes from the CHANGELOG section of that
+- [x] **AC7** — The recovery path takes its release notes from the CHANGELOG section of that
       version; a dry run prints that section's heading
-- [ ] **AC8** — The `Invoke-Git push` step in `ci-release.ps1` is safe to repeat: a second push of
+- [x] **AC8** — The `Invoke-Git push` step in `ci-release.ps1` is safe to repeat: a second push of
       an already pushed commit and tag exits 0
 
 ## Open Questions
@@ -96,7 +96,7 @@ Cost note: each scenario spawns PowerShell (~1-2 s); keep to the scenarios liste
 
 ## Deliverables
 
-- [ ] **D1 — The release job tests only a due release** (AC1, AC2, AC3, AC4).
+- [x] **D1 — The release job tests only a due release** (AC1, AC2, AC3, AC4).
   Files: `scripts/ci-release.ps1`, `.github/workflows/release.yml`, `CONTRIBUTING.md`,
   `test/unit/ciRelease.test.ts` (new).
   - `ci-release.ps1`: a new block `=== test ===` after the version decision (`if ($Version) …
@@ -135,7 +135,7 @@ Cost note: each scenario spawns PowerShell (~1-2 s); keep to the scenarios liste
       no `npm test`; in `ci-release.ps1` the `npm test` line number is greater than the
       `nothing to release` line and smaller than the first `Invoke-Git @(` call line, and one of
       the 3 lines above it matches `/merge/i`.
-- [ ] **D2 — A tag without a release is finished by a re-run** (AC5, AC6, AC7, AC8).
+- [x] **D2 — A tag without a release is finished by a re-run** (AC5, AC6, AC7, AC8).
   Files: `scripts/ci-release.ps1`, `CONTRIBUTING.md`, `test/unit/ciRelease.test.ts`.
   - `ci-release.ps1`, before `=== plan ===`: `$headTag` = first of
     `git -C $repoRoot tag --points-at HEAD --list 'v*' --sort=-v:refname` (never
@@ -202,7 +202,18 @@ No e2e: nothing here is a user action in the app (sprint note), so the missing h
 
 ## Done
 
-<Leave empty. Filled by `/build 024` after implementation:
-- Short summary (2–5 lines): what was done.
-- Commit message (1–2 lines, keywords are enough).
-- Verification: build/test/lint result + review outcome; open points/blockers, if any.>
+The release job now tests only a due release: `npm test` moved from `release.yml` into `ci-release.ps1` after the `bump=none` exit. A tag at HEAD without a GitHub release is recovered by a re-run (notes from that version's CHANGELOG section, shared build/sums/hint/publish functions); with a release it exits "nothing to release". A vitest harness drives the real script in a temp repo with stubbed npm/gh.
+
+Commit message: `024: release lane tests only a due release, re-run recovers tag without release`
+
+Verification (narrow gate: `npm run build`, `npm run typecheck`, `npx vitest run --changed HEAD`; all green, 6 tests in ciRelease.test.ts; full gate pending in sprint). Review 1 (default) found weak tests (AC6, AC7, AC1 line lookup, AC8 repeated push); strengthened, re-run green.
+AC -> test (all in `test/unit/ciRelease.test.ts`, passed): AC1/AC4 "the release workflow leaves testing to the script and says why"; AC2 "a docs-only push releases nothing and runs no tests"; AC3 "a due release runs the suite once before anything is committed"; AC5 "a tag whose release creation failed is published by re-running the job" + "recovery in a dry run names the path and prints the version's notes heading"; AC6 "a tag that already has its release is left alone"; AC7 dry-run recovery test; AC8 real-path test (repeats the script's own push args). No manual residue.
+
+Decisions:
+- The recovery path does no git writes, so AC8's repeat is proven by re-running the push args parsed from the script, not by re-running the script's push step.
+- `makeFixture()` pushes with `-u` so the script's bare `git push --follow-tags` has a target (as in CI checkouts).
+- `gh release view` check uses a local `ErrorActionPreference='Continue'` (PS 5.1 turns native stderr into a terminating error); missing `gh` throws rather than reading as "absent".
+- Not covered by tests (decisions, not ACs): package.json-vs-tag mismatch throw, missing/empty CHANGELOG section throws.
+- No CHANGELOG entry (CI-internal).
+
+tiers: D 2 / hard 1 · review default · cycles 1 · agents 6

@@ -474,8 +474,8 @@ drops that position and the next open snaps back to the tray icon.
 
 ### Session label
 
-A session is labelled with its generated title (`aiTitle`, falling back to the last prompt)
-on every surface — list, popover, tray menu, toasts, CLI. That is the same string VS Code
+A session is labelled `custom-title › ai-title › last prompt › registry name` on every
+surface — list, popover, tray menu, toasts, CLI, history. That is the same string VS Code
 puts on its Claude Code panel and history, so a row here can be matched to a window by eye.
 The registry slug (`hantsch-mmo-dc`) never appears in the IDE, so it is only a secondary,
 dimmed identifier; it becomes the label just for sessions that have no title yet.
@@ -488,8 +488,8 @@ dimmed identifier; it becomes the label just for sessions that have no title yet
   gauge, model, elapsed time, the current run, the current tool, and the subagent tree. Jump
   to session sits directly under the name, above the facts.
 - **History** — past sessions with a project filter, a date range, and free-text search
-  over titles. Uses `aiTitle` from the transcript as the session label when present, which
-  saves inventing our own summarizer.
+  over titles. Uses the same label as the live list (custom title, else generated title, else
+  last prompt), which saves inventing our own summarizer.
 - **Settings** — thresholds (`T_work` and the per-tool overrides that double as the speed
   classes), how long settled sessions stay in the tray, notification toggles, and the Claude
   data directory path.

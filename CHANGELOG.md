@@ -35,6 +35,8 @@ while that section is empty, and promotes it to the new version section on relea
   now stays working until the subagent has been quiet for ten minutes.
 - **A one-time "Updated to vX.Y.Z" toast** on the first start that's actually running the new
   version, so you know it happened.
+- **Renamed sessions keep their name,** and a session is no longer named after a robot's message.
+  `/rename` wins everywhere, history included.
 
 ## 1.0.0 — 2026-09-07
 

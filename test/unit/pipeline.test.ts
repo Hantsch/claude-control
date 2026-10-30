@@ -10,12 +10,13 @@
  */
 
 import { createHash } from 'node:crypto';
-import { appendFile, readFile, readdir, stat, utimes } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
 import { resolveClaudePaths } from '../../src/core/adapters/claude/paths.ts';
 import { ControlEngine } from '../../src/core/engine.ts';
+import { sessionTitleOf } from '../../src/core/model/sessionTitle.ts';
 import { NotificationGate } from '../../src/core/state/notifications.ts';
 import { FileWatcher } from '../../src/core/watch/watcher.ts';
 import { DEFAULT_SETTINGS, DEFAULT_THRESHOLDS, mergeSettings } from '../../src/core/model/settings.ts';
@@ -28,10 +29,12 @@ import {
   agentLaunchedResult,
   assistant,
   aiTitle,
+  customTitle,
   fileHistorySnapshot,
   ideLock,
   lastPrompt,
   makeFixtureTree,
+  peerHandBack,
   prompt,
   registryEntry,
   toJsonl,
@@ -138,6 +141,80 @@ describe('discovery and status through the adapter', () => {
 
     expect(snapshot.facts.read.startOffset).toBeGreaterThan(0);
     expect(snapshot.facts.aiTitle).toBe('Sprint 14');
+  });
+
+  it('a rename written while the app is watching reaches the next read', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-renamed', name: 'cc-renamed-7e' }));
+    const padding = (from: number) =>
+      Array.from({ length: 40 }, (_, index) =>
+        assistant({ uuid: `pad${from + index}`, at: 2_000 + from + index, text: 'x'.repeat(400) }),
+      );
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-renamed',
+      toJsonl([prompt('u1', 0), aiTitle('Generated title', 1_100), ...padding(0)]),
+    );
+    const adapter = new ClaudeAdapter({
+      paths: resolveClaudePaths(tree.root),
+      tailWindowBytes: 1024,
+      maxTailWindowBytes: 1024,
+      probe: new FakeProbe(new Set([LIVE_PID])),
+      thresholds: DEFAULT_THRESHOLDS,
+    });
+    const ref = (await adapter.discoverLiveSessions())[0]!;
+    expect(sessionTitleOf((await adapter.readStatus(ref)).facts)).toBe('Generated title');
+
+    await appendFile(path, toJsonl([customTitle('Release train', 9_000)]), 'utf8');
+    expect(sessionTitleOf((await adapter.readStatus(ref)).facts)).toBe('Release train');
+
+    // Once the rename has scrolled out of the tail window, the label must not fall back.
+    await appendFile(path, toJsonl(padding(100)), 'utf8');
+    const later = await adapter.readStatus(ref);
+    expect(later.facts.read.startOffset).toBeGreaterThan(0);
+    expect(sessionTitleOf(later.facts)).toBe('Release train');
+  });
+
+  it('finds the custom title far outside the tail window, and from the sidecar beyond the scan budget', async () => {
+    const tree = await makeFixtureTree();
+    const slug = 'c--development-Hantsch-claude-control';
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-far-name', name: 'cc-far-7e' }));
+    await tree.writeRegistry(LIVE_PID + 1, registryEntry({ pid: LIVE_PID, sessionId: 'sess-huge-name', name: 'cc-huge-7e' }));
+    const padding = (count: number, chars: number) =>
+      Array.from({ length: count }, (_, index) =>
+        assistant({ uuid: `pad${index}`, at: 2_000 + index, text: 'x'.repeat(chars) }),
+      );
+    await tree.writeTranscript(
+      slug,
+      'sess-far-name',
+      toJsonl([prompt('u1', 0), customTitle('Far rename', 500), ...padding(40, 400), aiTitle('Generated title', 9_000)]),
+    );
+    // Larger than the backward scan budget (4 MB): the rename at the start is out of its reach.
+    await tree.writeTranscript(
+      slug,
+      'sess-huge-name',
+      toJsonl([prompt('u1', 0), customTitle('Sidecar rename', 500), ...padding(1_200, 4_000), aiTitle('Generated title', 9_000)]),
+    );
+    await mkdir(join(tree.root, 'projects', slug, 'sess-huge-name'), { recursive: true });
+    await writeFile(
+      join(tree.root, 'projects', slug, 'sess-huge-name', 'custom-title.json'),
+      JSON.stringify({ customTitle: 'Sidecar rename' }),
+      'utf8',
+    );
+
+    const adapter = new ClaudeAdapter({
+      paths: resolveClaudePaths(tree.root),
+      tailWindowBytes: 1024,
+      maxTailWindowBytes: 1024,
+      probe: new FakeProbe(new Set([LIVE_PID])),
+      thresholds: DEFAULT_THRESHOLDS,
+    });
+    const refs = await adapter.discoverLiveSessions();
+    const labelOf = async (sessionId: string) =>
+      sessionTitleOf((await adapter.readStatus(refs.find((ref) => ref.sessionId === sessionId)!)).facts);
+
+    expect(await labelOf('sess-far-name')).toBe('Far rename');
+    expect(await labelOf('sess-huge-name')).toBe('Sidecar rename');
   });
 
   it('parses the optional agent-reported registry fields when present', async () => {
@@ -756,6 +833,108 @@ describe('engine', () => {
     await engine.start();
 
     expect(engine.getSnapshot().sessions[0]!.run).toEqual({ startedAt: T0, endedAt: T0 + 90_000 });
+    await engine.stop();
+  });
+
+  it('the run start skips hand-backs far outside the tail window', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-handback', name: 'cc-handback' }));
+    // Both the human prompt and a later peer hand-back sit well behind the 64 KB tail window.
+    const noise = (from: number, at: number) =>
+      Array.from({ length: 400 }, (_, i) =>
+        assistant({ uuid: `n${from + i}`, at: at + i, text: `tool traffic line ${i} `.repeat(10) }),
+      );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-handback',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        ...noise(0, 1_000),
+        peerHandBack('p1', 40_000),
+        ...noise(1_000, 41_000),
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
+      settings: mergeSettings(SHOWING_SETTLED),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    expect(engine.getSnapshot().sessions[0]!.run).toEqual({ startedAt: T0, endedAt: T0 + 90_000 });
+    await engine.stop();
+  });
+
+  it('a renamed session is labelled with its custom title even when a newer ai-title exists', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-rename', name: 'cc-rename-7e' }));
+    // The rename is far behind the tail window; the generated title was rewritten since.
+    const noise = Array.from({ length: 400 }, (_, i) =>
+      assistant({ uuid: `n${i}`, at: 1_000 + i, text: `tool traffic line ${i} `.repeat(10) }),
+    );
+    await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-rename',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        aiTitle('Old generated title', 100),
+        customTitle('Release train', 200),
+        ...noise,
+        aiTitle('Newer generated title', 80_000),
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now),
+      settings: mergeSettings(SHOWING_SETTLED),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    expect(engine.getSnapshot().sessions[0]!.title).toBe('Release train');
+    await engine.stop();
+  });
+
+  it('history labels a session with the name the live list gave it', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-same-name', name: 'cc-same-7e' }));
+    const noise = Array.from({ length: 400 }, (_, i) =>
+      assistant({ uuid: `n${i}`, at: 1_000 + i, text: `tool traffic line ${i} `.repeat(10) }),
+    );
+    const path = await tree.writeTranscript(
+      'c--development-Hantsch-claude-control',
+      'sess-same-name',
+      toJsonl([
+        prompt('u1', 0, 'the prompt that started it'),
+        customTitle('Release train', 200),
+        ...noise,
+        peerHandBack('p1', 40_000),
+        aiTitle('Newer generated title', 80_000),
+        assistant({ uuid: 'done', at: 90_000, stopReason: 'end_turn', text: 'Finished.' }),
+      ]),
+    );
+
+    const now = () => T0 + 120_000;
+    const adapter = makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), now);
+    const engine = new ControlEngine({
+      adapter,
+      settings: mergeSettings(SHOWING_SETTLED),
+      now,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+
+    const live = engine.getSnapshot().sessions[0]!.title;
+    const history = (await adapter.readHistoryEntry(path))!.title;
+    expect(live).toBe('Release train');
+    expect(history).toBe(live);
     await engine.stop();
   });
 

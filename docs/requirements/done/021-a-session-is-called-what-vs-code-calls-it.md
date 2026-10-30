@@ -1,7 +1,7 @@
 ---
 id: 021
 title: A session is called what VS Code calls it
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -42,23 +42,23 @@ injected.
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — A session with a `custom-title` record is labelled with it, on every surface
+- [x] **AC1** — A session with a `custom-title` record is labelled with it, on every surface
       (popover, main window, tray menu, toasts, CLI, history), even when a newer `ai-title`
       exists — matching VS Code's precedence
-- [ ] **AC2** — Without a `custom-title`, the newest `ai-title` is used, as today
-- [ ] **AC3** — Without either, the label is the user's last human prompt, cleaned — never
+- [x] **AC2** — Without a `custom-title`, the newest `ai-title` is used, as today
+- [x] **AC3** — Without either, the label is the user's last human prompt, cleaned — never
       the text of a peer message, task notification, meta record, skill body, IDE notice or
       command wrapper
-- [ ] **AC4** — The run start ("running for …") is the start of the last *human* or
+- [x] **AC4** — The run start ("running for …") is the start of the last *human* or
       machine-started turn the session is actually in — a background hand-back that wakes the
       session does not reset it to zero mid-sprint (refine decides which of the two it is;
       either way it is stated, not accidental)
-- [ ] **AC5** — A title or rename written while the app is running reaches the row without a
+- [x] **AC5** — A title or rename written while the app is running reaches the row without a
       restart, and a long session whose title record sits far outside the tail window still
       shows it (the existing `resolveAiTitle` scan budget applies to `custom-title` too)
-- [ ] **AC6** — History uses the same precedence, so a session keeps its name when it moves
+- [x] **AC6** — History uses the same precedence, so a session keeps its name when it moves
       from the live list into history
-- [ ] **AC7** — Transcripts without origin fields (older Claude Code) keep today's labels —
+- [x] **AC7** — Transcripts without origin fields (older Claude Code) keep today's labels —
       the classifier only excludes records it can positively identify as non-human
 
 ## Open Questions
@@ -259,3 +259,14 @@ entry. Gap named for the sprint review: no test drives a real surface.
 Coverage: AC1 D1+D2 · AC2 D1 · AC3 D1 · AC4 D1+D2 · AC5 D2 · AC6 D3 · AC7 D1.
 
 ## Done
+
+**Summary.** A row is now labelled `custom-title › ai-title › Claude Code's own last-prompt › newest human prompt › registry name`, matching VS Code. User records that positively say they are machine-made (peer hand-backs, task notifications, meta, `promptSource: system`) no longer name a session or reset "running for …". Live resolution goes through one shared cached-scan helper (`newestRecord.ts`) for run start, `ai-title`, `custom-title` (+ sidecar) and `last-prompt`; history and detail use the same precedence.
+
+**Commit message:** `021: session label = custom-title > ai-title > last-prompt, human-only prompts; run start ignores hand-backs`
+
+**Verification (narrow gate).** `npm run build`, `npm run typecheck` green; `npx vitest run --changed HEAD` green (6 files, 256 tests); full unit suite 536/536 at review. e2e none (no harness; gap named in Acceptance Tests: no test drives a real surface). Review: default stage, PASS. AC → test as verified, all passed: AC1 pipeline "a renamed session is labelled…"; AC2 derivations "a custom title beats an ai title…" + existing ai-title test; AC3 reading ×2 + derivations "drops an IDE notice…"; AC4 reading "a background hand-back does not restart the run…" + pipeline "the run start skips hand-backs…"; AC5 pipeline ×2; AC6 pipeline "history labels a session…"; AC7 reading "user records without origin fields…". No manual residue. The full regression gate is pending (sprint runs it).
+
+**Decisions.** Plan said engine line ~583; the title is built at ~754 (`toView`), changed there. CHANGELOG has no `# Fixes` heading, only a flat `## Unreleased` list, so the line was appended there. A sidecar value read before the scan skips the scan only when tail and cache have nothing. `last-prompt` records without text never match (one scan, then cached null).
+**Unfixed review notes (accepted).** `peerHandBack`/`taskNotification` builders set all markers at once, so the `origin.kind`/`turnOrigin` branches are not isolated (only `isMeta` is); history sidecar branch and `readDetail` custom-title preference have no dedicated test (not required by AC); a deleted sidecar stays cached until the tail carries a new custom-title; a cached `last-prompt` can lag a fresh human prompt until Claude Code writes the next `last-prompt` (same as VS Code).
+
+tiers: D 3 / hard 1 · review default · cycles 1 · agents 6

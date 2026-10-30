@@ -36,3 +36,15 @@
 - 2026-10-30 12:09:26 · 016 · verify 2 · started
 - 2026-10-30 12:09:38 · 016 · verify 2 · done
 - 2026-10-30 12:09:49 · 016 · story · done
+- 2026-10-30 12:10:00 · 021 · build · started
+- 2026-10-30 12:10:13 · 021 · D1 classify and pick · started
+- 2026-10-30 12:13:27 · 021 · D1 classify and pick · done
+- 2026-10-30 12:13:27 · 021 · D2 live resolution · started
+- 2026-10-30 12:17:29 · 021 · D2 live resolution · done
+- 2026-10-30 12:17:29 · 021 · D3 history and detail · started
+- 2026-10-30 12:18:30 · 021 · D3 history and detail · done
+- 2026-10-30 12:18:30 · 021 · verify · started
+- 2026-10-30 12:19:06 · 021 · verify · done
+- 2026-10-30 12:19:06 · 021 · review 1 · started
+- 2026-10-30 12:20:16 · 021 · review 1 · done
+- 2026-10-30 12:20:16 · 021 · story · done

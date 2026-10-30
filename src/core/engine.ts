@@ -39,6 +39,7 @@ import {
 import type { WindowSource } from './context/windowSource.ts';
 import { ContextWindowEstimator } from './state/contextPressure.ts';
 import { deriveStatus } from './state/machine.ts';
+import { sessionTitleOf } from './model/sessionTitle.ts';
 import {
   InMemorySessionStore,
   sessionNewsStamp,
@@ -585,7 +586,7 @@ export class ControlEngine {
     return {
       sessionId: snapshot.sessionId,
       name: ref.name,
-      title: facts.aiTitle ?? facts.lastPromptText ?? null,
+      title: sessionTitleOf(facts),
       status: derived.status,
       statusReason: derived.reason,
       statusSource: derived.statusSource,

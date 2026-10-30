@@ -80,3 +80,4 @@ second roadmap.
   hardening gaps in the download/swap paths, both fixed and confirmed.
 - 020 — Claude Code's own status outranks the transcript · S06 · registry busy/idle/waiting is the primary status input, transcript only supplies sub-state; waitingFor shown on toast, row and detail pane
 - 016 — A session working through a subagent is not `done` · S06 · subagent writes after end_turn keep the session working (registry-less fallback, 10 min window), last activity and reason carry the evidence
+- 021 — A session is called what VS Code calls it · S06 · label follows VS Code (custom-title › ai-title › last prompt), machine-injected records never name a session or restart the run

@@ -4,11 +4,11 @@
  * interface and nothing above this file changes.
  */
 
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { readdir } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Thresholds } from '../../model/settings.ts';
 import type {
   HistoryEntry,
@@ -43,7 +43,10 @@ import {
 } from './paths.ts';
 import {
   aiTitleOf,
+  customTitleOf,
   isAiTitleRecord,
+  isCustomTitleRecord,
+  isLastPromptRecord,
   isAssistantRecord,
   isPromptRecord,
   isSemanticRecord,
@@ -53,31 +56,25 @@ import {
   toolUseBlocks,
   type TranscriptRecord,
 } from './records.ts';
-import { cleanPromptText, collectToolCalls, semanticKind, summarizeRecords, usageOf } from './summarize.ts';
-import { readHead, readTail, scanRecordsFromEnd } from './tail.ts';
+import {
+  cleanPromptText,
+  collectToolCalls,
+  lastPromptTextOf,
+  semanticKind,
+  summarizeRecords,
+  usageOf,
+} from './summarize.ts';
+import { findLast, readHead, readTail } from './tail.ts';
+import { NewestRecordCache } from './newestRecord.ts';
+import { sessionTitleOf } from '../../model/sessionTitle.ts';
 
 const HISTORY_HEAD_BYTES = 32 * 1024;
 const HISTORY_TAIL_BYTES = 64 * 1024;
 /**
- * Budget for the one-off backward scan that finds the prompt a run started with. Measured on
- * the real directory: with the 64 KB tail window, 9 of 10 live sessions had their prompt
- * outside it — a single subagent-heavy turn is easily megabytes — so without this the run
- * duration would read "—" almost always.
+ * Head read for a generated title the backward scan could not reach. Claude Code writes the
+ * `ai-title` record early, so on a transcript larger than the scan budget it lives at the
+ * *start* of the file.
  */
-const RUN_START_SCAN_BYTES = 4 * 1024 * 1024;
-const RUN_START_CHUNK_BYTES = 256 * 1024;
-/**
- * Budget for the one-off scan that finds a session's generated title (the `ai-title`
- * record). Claude Code writes it once, early, and only again when the title changes — so on
- * any session that has been running for a while it sits far outside the tail window, and
- * without this the popover falls back to the registry's derived slug (`q2-launcher-7e`)
- * instead of the title VS Code puts on the Claude Code panel.
- *
- * Backwards first, because the *newest* record is the current title; the head read is the
- * complement for a transcript too large for that scan to reach the record's end of the file.
- */
-const AI_TITLE_SCAN_BYTES = 4 * 1024 * 1024;
-const AI_TITLE_CHUNK_BYTES = 256 * 1024;
 const AI_TITLE_HEAD_BYTES = 512 * 1024;
 /** Upper bound on timeline events returned by `readDetail`, to keep the IPC payload sane. */
 const DETAIL_EVENT_LIMIT = 10_000;
@@ -99,20 +96,31 @@ export class ClaudeAdapter implements AgentAdapter {
   private readonly options: ClaudeAdapterOptions;
   private readonly now: () => number;
   private projectDirs: { names: string[]; at: number } | null = null;
+  /** Time of the human prompt the current run started with. */
+  private readonly runStarts = new NewestRecordCache<number>({
+    matches: isPromptRecord,
+    valueOf: recordTime,
+  });
   /**
-   * Run start per session, for runs whose prompt is no longer in the tail window. Written
-   * once and then left alone: a *new* prompt always shows up in the tail window while the
-   * app is watching, so the scan never has to run twice for the same session. `null` means
-   * "scanned, nothing found within budget" — cached too, so a hopeless case stays cheap.
+   * Generated title. Without the scan the popover falls back to the registry's derived slug
+   * (`q2-launcher-7e`) instead of the title VS Code puts on the Claude Code panel.
    */
-  private readonly runStarts = new Map<SessionId, number | null>();
-  /**
-   * Generated title per session, for the (normal) case where the `ai-title` record is no
-   * longer in the tail window. Same contract as `runStarts`: scanned once, `null` cached
-   * too, and refreshed for free whenever the tail *does* carry one — which is what a title
-   * written or changed while the app is watching looks like.
-   */
-  private readonly aiTitles = new Map<SessionId, string | null>();
+  private readonly aiTitles = new NewestRecordCache<string>({
+    matches: isAiTitleRecord,
+    valueOf: aiTitleOf,
+    beyondBudget: async (path) => firstAiTitle((await readHead(path, AI_TITLE_HEAD_BYTES)).records),
+  });
+  /** `/rename` title. Claude Code also keeps it in a one-field sidecar, which costs one tiny read. */
+  private readonly customTitles = new NewestRecordCache<string>({
+    matches: isCustomTitleRecord,
+    valueOf: customTitleOf,
+    before: readCustomTitleSidecar,
+  });
+  /** Claude Code's own record of the newest prompt, already free of wrappers and reminders. */
+  private readonly lastPrompts = new NewestRecordCache<string>({
+    matches: isLastPromptRecord,
+    valueOf: lastPromptTextOf,
+  });
   /** Reads "is this subagent still writing?" off disk — see `subagentFiles.ts`. */
   private readonly subagentActivity = new SubagentActivityReader();
 
@@ -211,8 +219,19 @@ export class ClaudeAdapter implements AgentAdapter {
           error: null,
         },
       });
-      facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
-      facts.aiTitle = await this.resolveAiTitle(ref.sessionId, path, facts.aiTitle);
+      const id = ref.sessionId;
+      facts.runStartedAt = await this.runStarts.resolve(id, path, facts.runStartedAt);
+      facts.aiTitle = await this.aiTitles.resolve(id, path, facts.aiTitle);
+      facts.customTitle = await this.customTitles.resolve(id, path, facts.customTitle);
+      // `facts.lastPromptText` may be the record-text fallback; only a `last-prompt` record
+      // from the tail may refresh the cache, and the resolved one outranks that fallback.
+      const tailLastPrompt = findLast(tail.records, isLastPromptRecord);
+      const lastPrompt = await this.lastPrompts.resolve(
+        id,
+        path,
+        tailLastPrompt ? lastPromptTextOf(tailLastPrompt) : null,
+      );
+      facts.lastPromptText = lastPrompt ?? facts.lastPromptText;
       await this.applySubagentActivity(ref.sessionId, path, facts, readAt);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
@@ -226,73 +245,6 @@ export class ClaudeAdapter implements AgentAdapter {
         readAt,
       };
     }
-  }
-
-  /**
-   * When the tail window contained the prompt, that is the answer (and it refreshes the
-   * cache). Otherwise fall back to the cache, scanning backwards once per session to fill it.
-   */
-  private async resolveRunStart(
-    sessionId: SessionId,
-    path: string,
-    fromTail: number | null,
-  ): Promise<number | null> {
-    if (fromTail !== null) {
-      this.runStarts.set(sessionId, fromTail);
-      return fromTail;
-    }
-    const cached = this.runStarts.get(sessionId);
-    if (cached !== undefined) return cached;
-
-    let found: number | null = null;
-    try {
-      const hit = await scanRecordsFromEnd(path, isPromptRecord, {
-        chunkBytes: RUN_START_CHUNK_BYTES,
-        maxBytes: RUN_START_SCAN_BYTES,
-      });
-      found = hit.record ? recordTime(hit.record) : null;
-    } catch {
-      // Same rule as the tail read: a failed read is a missing fact, not an error.
-    }
-    this.runStarts.set(sessionId, found);
-    return found;
-  }
-
-  /**
-   * Same shape as `resolveRunStart`: the tail window wins and refreshes the cache, otherwise
-   * the cached answer, otherwise one scan. A failed read leaves the title missing rather than
-   * failing the status read — the slug fallback is still a usable label.
-   */
-  private async resolveAiTitle(
-    sessionId: SessionId,
-    path: string,
-    fromTail: string | null,
-  ): Promise<string | null> {
-    if (fromTail !== null) {
-      this.aiTitles.set(sessionId, fromTail);
-      return fromTail;
-    }
-    const cached = this.aiTitles.get(sessionId);
-    if (cached !== undefined) return cached;
-
-    let found: string | null = null;
-    try {
-      const hit = await scanRecordsFromEnd(path, isAiTitleRecord, {
-        chunkBytes: AI_TITLE_CHUNK_BYTES,
-        maxBytes: AI_TITLE_SCAN_BYTES,
-      });
-      found = hit.record ? aiTitleOf(hit.record) : null;
-      // Only worth a second read when the scan gave up short of the start of the file: the
-      // record it is after lives at *that* end, so a bounded head read is the complement.
-      if (found === null && !hit.reachedStart) {
-        const head = await readHead(path, AI_TITLE_HEAD_BYTES);
-        found = firstAiTitle(head.records);
-      }
-    } catch {
-      // Same rule as the tail read: a failed read is a missing fact, not an error.
-    }
-    this.aiTitles.set(sessionId, found);
-    return found;
   }
 
   /**
@@ -361,8 +313,10 @@ export class ClaudeAdapter implements AgentAdapter {
 
   /** Drop the cached run start of a session that is gone, so the map cannot grow forever. */
   forgetSession(sessionId: SessionId): void {
-    this.runStarts.delete(sessionId);
-    this.aiTitles.delete(sessionId);
+    this.runStarts.forget(sessionId);
+    this.aiTitles.forget(sessionId);
+    this.customTitles.forget(sessionId);
+    this.lastPrompts.forget(sessionId);
     this.subagentActivity.forget(sessionId);
   }
 
@@ -430,11 +384,18 @@ export class ClaudeAdapter implements AgentAdapter {
     const startedAt = firstSemantic ? recordTime(firstSemantic) : null;
     const endedAt = facts.last?.at ?? info.mtimeMs;
 
-    // `aiTitle` is preferred as the label — it saves inventing our own summarizer (§8).
-    const title = facts.aiTitle
-      ?? headTitle(head.records)
-      ?? facts.lastPromptText
-      ?? null;
+    const headCustom = findLast(head.records, isCustomTitleRecord);
+    const sidecarReachable = tail.fileSize > HISTORY_HEAD_BYTES + HISTORY_TAIL_BYTES;
+    const customTitle = facts.customTitle
+      ?? (headCustom || !sidecarReachable
+        ? null
+        : await readCustomTitleSidecar(path, sessionIdFromTranscriptPath(path)))
+      ?? (headCustom ? customTitleOf(headCustom) : null);
+    const title = sessionTitleOf({
+      customTitle,
+      aiTitle: facts.aiTitle ?? firstAiTitle(head.records),
+      lastPromptText: facts.lastPromptText,
+    }) ?? firstHumanPrompt(head.records);
 
     return {
       sessionId: sessionIdFromTranscriptPath(path),
@@ -475,7 +436,8 @@ export class ClaudeAdapter implements AgentAdapter {
       outputTokens: 0,
     };
     let usageFound = false;
-    let title: string | null = null;
+    let aiTitle: string | null = null;
+    let customTitle: string | null = null;
     let startedAt: number | null = null;
     let endedAt: number | null = null;
     let truncated = false;
@@ -490,7 +452,8 @@ export class ClaudeAdapter implements AgentAdapter {
         if (!record) continue;
 
         if (typeof record.gitBranch === 'string' && record.gitBranch) branches.add(record.gitBranch);
-        if (isAiTitleRecord(record)) title = aiTitleOf(record);
+        if (isAiTitleRecord(record)) aiTitle = aiTitleOf(record) ?? aiTitle;
+        if (isCustomTitleRecord(record)) customTitle = customTitleOf(record) ?? customTitle;
         if (!isSemanticRecord(record)) continue;
 
         records.push(record);
@@ -536,7 +499,7 @@ export class ClaudeAdapter implements AgentAdapter {
       sessionId: id,
       transcriptPath: path,
       project,
-      title,
+      title: customTitle ?? aiTitle,
       branches: [...branches],
       models: [...models],
       startedAt,
@@ -617,6 +580,7 @@ function emptyFacts(note: string, error: string | null): TranscriptTailFacts {
     branch: null,
     model: null,
     usage: null,
+    customTitle: null,
     aiTitle: null,
     lastPromptText: null,
     runStartedAt: null,
@@ -656,15 +620,28 @@ function projectForHistory(
   return projectRefForSlug(projectSlugFromTranscriptPath(path));
 }
 
-function headTitle(records: readonly TranscriptRecord[]): string | null {
-  const title = firstAiTitle(records);
-  if (title) return title;
+function firstHumanPrompt(records: readonly TranscriptRecord[]): string | null {
   for (const record of records) {
-    if (record.type !== 'user') continue;
+    if (!isPromptRecord(record)) continue;
     const text = cleanPromptText(recordText(record));
     if (text) return text.slice(0, 120);
   }
   return null;
+}
+
+/**
+ * `<transcript dir>/<sessionId>/custom-title.json` (`{ "customTitle": "..." }`). A missing or
+ * unreadable sidecar is simply no answer — the transcript scan still runs.
+ */
+async function readCustomTitleSidecar(path: string, sessionId: SessionId): Promise<string | null> {
+  try {
+    const raw = await readFile(join(dirname(path), sessionId, 'custom-title.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return customTitleOf(parsed as TranscriptRecord);
+  } catch {
+    return null;
+  }
 }
 
 /** First usable `ai-title` in reading order. The field name varies — see `aiTitleOf`. */

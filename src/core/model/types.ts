@@ -271,6 +271,8 @@ export interface TranscriptTailFacts {
   branch: string | null;
   model: string | null;
   usage: UsageTotals | null;
+  /** Title set by `/rename` (`custom-title` record). Sticky; wins over `aiTitle`. */
+  customTitle: string | null;
   /** Generated session title (`ai-title` record), when present (§8). */
   aiTitle: string | null;
   /** Newest human prompt text, trimmed. Used as a fallback label. */

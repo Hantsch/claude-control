@@ -241,8 +241,83 @@ export function agentErrorResult(
 }
 
 /** Bookkeeping tail — the last line of 237 of 290 real files (RESEARCH.md §2). */
-export function lastPrompt(leafUuid: string): Record<string, unknown> {
-  return { type: 'last-prompt', leafUuid, timestamp: iso(0) };
+export function lastPrompt(leafUuid: string, text?: string): Record<string, unknown> {
+  return {
+    type: 'last-prompt',
+    leafUuid,
+    ...(text === undefined ? {} : { lastPrompt: text }),
+    timestamp: iso(0),
+  };
+}
+
+/** `/rename` — the payload key is `customTitle`. */
+export function customTitle(title: string, at = 0): Record<string, unknown> {
+  return { type: 'custom-title', customTitle: title, timestamp: iso(at) };
+}
+
+function withOrigin(
+  record: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...record, ...fields };
+}
+
+/** Another Claude session's message arriving as a `user` record (background-agent hand-back). */
+export function peerHandBack(
+  uuid: string,
+  at: number,
+  text = 'Another Claude session sent a message: all done',
+): Record<string, unknown> {
+  return withOrigin(prompt(uuid, at, text), {
+    promptSource: 'system',
+    turnOrigin: 'peer',
+    isMeta: true,
+    origin: { kind: 'peer' },
+  });
+}
+
+/** A `<task-notification>` wake-up. */
+export function taskNotification(uuid: string, at: number): Record<string, unknown> {
+  return withOrigin(prompt(uuid, at, '<task-notification>task finished</task-notification>'), {
+    promptSource: 'system',
+    turnOrigin: 'task_notification',
+    origin: { kind: 'task-notification' },
+  });
+}
+
+/** System reminders, skill bodies, command caveats. */
+export function metaRecord(uuid: string, at: number, text: string): Record<string, unknown> {
+  return withOrigin(prompt(uuid, at, text), { isMeta: true });
+}
+
+/** A slash command wrapper written on the user's behalf by a plugin. */
+export function pluginCommand(
+  uuid: string,
+  at: number,
+  command: string,
+  args: string,
+): Record<string, unknown> {
+  const text = `<command-name>${command}</command-name><command-args>${args}</command-args>`;
+  return withOrigin(prompt(uuid, at, text), {
+    turnOrigin: 'system',
+    origin: { kind: 'plugin' },
+  });
+}
+
+/** A real human prompt preceded by an IDE `<ide_opened_file>` notice in the same record. */
+export function ideNoticePrompt(
+  uuid: string,
+  at: number,
+  file: string,
+  text: string,
+): Record<string, unknown> {
+  const record = prompt(uuid, at, text);
+  const message = record.message as { content: Record<string, unknown>[] };
+  message.content.unshift({
+    type: 'text',
+    text: `<ide_opened_file>The user opened the file ${file} in the IDE.</ide_opened_file>`,
+  });
+  return withOrigin(record, { promptSource: 'sdk', turnOrigin: 'human', origin: { kind: 'human' } });
 }
 
 /**

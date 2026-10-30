@@ -30,6 +30,10 @@ import {
   assistant,
   aiTitle,
   fileHistorySnapshot,
+  metaRecord,
+  peerHandBack,
+  pluginCommand,
+  taskNotification,
   ideLock,
   interrupt,
   lastPrompt,
@@ -640,5 +644,54 @@ describe('ide locks', () => {
     const refs = await readIdeWindows(tree.ideDir);
     expect(refs).toHaveLength(1);
     expect(refs[0]!.pid).toBe(999);
+  });
+});
+
+describe('who typed a record', () => {
+  const summarize = (records: unknown[]) =>
+    summarizeRecords(records as never, { now: T0 + 60_000, read: READ_DIAG });
+
+  it('peer hand-backs, task notifications and meta records never name a session', () => {
+    const facts = summarize([
+      prompt('u0', 0, 'fix the login bug'),
+      assistant({ uuid: 'a1', at: 1_000, stopReason: 'end_turn', text: 'done' }),
+      peerHandBack('u1', 2_000),
+      taskNotification('u2', 3_000),
+      metaRecord('u3', 4_000, 'Base directory for this skill: x'),
+    ]);
+
+    expect(facts.lastPromptText).toBe('fix the login bug');
+    expect(facts.runStartedAt).toBe(T0);
+  });
+
+  it("Claude Code's own last-prompt record names a session before any user record", () => {
+    const facts = summarize([
+      prompt('u0', 0, 'some typed text'),
+      lastPrompt('u0', '/sprint S37'),
+    ]);
+
+    expect(facts.lastPromptText).toBe('/sprint S37');
+  });
+
+  it('a background hand-back does not restart the run, a plugin-started command does', () => {
+    const base = [
+      prompt('u0', 0, 'start the work'),
+      assistant({ uuid: 'a1', at: 1_000, stopReason: 'end_turn', text: 'ok' }),
+    ];
+
+    expect(summarize([...base, peerHandBack('u1', 5_000)]).runStartedAt).toBe(T0);
+    expect(summarize([...base, taskNotification('u1', 5_000)]).runStartedAt).toBe(T0);
+    expect(summarize([...base, pluginCommand('u1', 5_000, '/goal', 'ship it')]).runStartedAt).toBe(
+      T0 + 5_000,
+    );
+  });
+
+  it('user records without origin fields still count as prompts', () => {
+    const records = [prompt('u0', 0, 'older transcript prompt')];
+    const facts = summarize(records);
+
+    expect(isPromptRecord(records[0] as never)).toBe(true);
+    expect(facts.lastPromptText).toBe('older transcript prompt');
+    expect(facts.runStartedAt).toBe(T0);
   });
 });

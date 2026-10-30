@@ -23,6 +23,10 @@ import {
   declaredModelOf,
   clipOneLine,
   aiTitleOf,
+  customTitleOf,
+  isCustomTitleRecord,
+  isLastPromptRecord,
+  lastPromptOf,
   isAssistantRecord,
   isInterruptRecord,
   isPromptRecord,
@@ -55,6 +59,8 @@ export function summarizeRecords(
   const lastSemantic = findLast(records, isSemanticRecord);
   const lastAssistant = findLast(records, isAssistantRecord);
   const lastPrompt = findLast(records, isPromptRecord);
+  const customTitleRecord = findLast(records, isCustomTitleRecord);
+  const lastPromptRecord = findLast(records, isLastPromptRecord);
   const lastTitleRecord = findLast(records, (r) => r.type === 'ai-title');
 
   const pendingTools = lastSemantic && isAssistantRecord(lastSemantic)
@@ -74,7 +80,12 @@ export function summarizeRecords(
     model: lastAssistant ? modelOf(lastAssistant) : null,
     usage: lastAssistant ? usageOf(lastAssistant) : null,
     aiTitle: lastTitleRecord ? aiTitleOf(lastTitleRecord) : null,
-    lastPromptText: lastPrompt ? clip(cleanPromptText(recordText(lastPrompt))) : null,
+    customTitle: customTitleRecord ? customTitleOf(customTitleRecord) : null,
+    lastPromptText: lastPromptRecord
+      ? lastPromptTextOf(lastPromptRecord)
+      : lastPrompt
+        ? clip(cleanPromptText(recordText(lastPrompt)))
+        : null,
     runStartedAt: lastPrompt ? recordTime(lastPrompt) : null,
     lastAssistantText: clip(newestAssistantText(records)),
     subagents: buildSubagentTree(toolCalls, options.now),
@@ -405,7 +416,7 @@ export function cleanPromptText(text: string | null): string | null {
     // Claude Code prefixes local-command output with a fixed caveat paragraph.
     .replace(/^Caveat:[\s\S]*?asks you to\.\s*/i, '')
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, ' ')
-    .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, ' ')
+    .replace(/<(ide_[a-z_]+)>[\s\S]*?<\/\1>/g, ' ')
     .replace(/<command-name>([\s\S]*?)<\/command-name>/g, '$1 ')
     .replace(/<command-message>[\s\S]*?<\/command-message>/g, ' ')
     .replace(/<command-args>([\s\S]*?)<\/command-args>/g, '$1 ')
@@ -413,6 +424,11 @@ export function cleanPromptText(text: string | null): string | null {
     .replace(/\s+/g, ' ')
     .trim();
   return stripped || null;
+}
+
+/** A `last-prompt` record's text, shaped like every other row text. */
+export function lastPromptTextOf(record: TranscriptRecord): string | null {
+  return clip(lastPromptOf(record));
 }
 
 function clip(text: string | null): string | null {

@@ -32,7 +32,8 @@ import {
 } from '../../src/core/state/aggregate.ts';
 import type { ProjectGroup } from '../../src/core/state/aggregate.ts';
 import { NotificationGate, decideNotification, firstSentence } from '../../src/core/state/notifications.ts';
-import { cleanPromptText } from '../../src/core/adapters/claude/summarize.ts';
+import { cleanPromptText, summarizeRecords } from '../../src/core/adapters/claude/summarize.ts';
+import { sessionTitleOf } from '../../src/core/model/sessionTitle.ts';
 import { InMemorySessionStore } from '../../src/core/store/sessionStore.ts';
 import { ControlEngine } from '../../src/core/engine.ts';
 import type { AgentAdapter } from '../../src/core/adapters/types.ts';
@@ -46,7 +47,7 @@ import {
 } from '../../src/core/model/settings.ts';
 import type { SessionStatus } from '../../src/core/model/status.ts';
 import type { HistoryEntry, SessionView, StatusTransition, UsageTotals } from '../../src/core/model/types.ts';
-import { T0, makeFixtureTree, registryEntry } from '../fixtures/builders.ts';
+import { T0, aiTitle, customTitle, ideNoticePrompt, lastPrompt, makeFixtureTree, prompt, registryEntry } from '../fixtures/builders.ts';
 
 function view(overrides: Partial<SessionView> & { sessionId: string; status: SessionStatus }): SessionView {
   return {
@@ -1039,6 +1040,7 @@ describe('mute registry (§6.6, story 004 D4)', () => {
       branch: null,
       model: null,
       usage: null,
+      customTitle: null,
       aiTitle: null,
       lastPromptText: null,
       runStartedAt: null,
@@ -1253,5 +1255,24 @@ describe('updates setting (019)', () => {
   it('falls back to false when the persisted value is garbage', () => {
     const merged = mergeSettings({ updates: { enabled: 'yes' } });
     expect(merged.updates.enabled).toBe(false);
+  });
+});
+
+describe('session title', () => {
+  const read = { fileSize: 0, mtimeMs: 0, windowBytes: 0, startOffset: 0, linesParsed: 0, linesSkipped: 0, exhausted: false, error: null };
+  const titleOf = (records: unknown[]) =>
+    sessionTitleOf(summarizeRecords(records as never, { now: T0, read }));
+
+  it('a custom title beats an ai title, which beats the last prompt', () => {
+    const base = [prompt('u0', 0, 'typed prompt'), lastPrompt('u0', 'last prompt record')];
+    expect(titleOf(base)).toBe('last prompt record');
+    expect(titleOf([...base, aiTitle('Generated', 10)])).toBe('Generated');
+    expect(titleOf([...base, aiTitle('Generated', 10), customTitle('Renamed', 20)])).toBe('Renamed');
+    expect(titleOf([...base, customTitle('Old', 20), customTitle('Newest', 30), aiTitle('Generated', 40)])).toBe('Newest');
+  });
+
+  it('drops an IDE notice that rides in front of a prompt', () => {
+    const title = titleOf([ideNoticePrompt('u0', 0, 'src/a.ts', 'refactor the parser')]);
+    expect(title).toBe('refactor the parser');
   });
 });

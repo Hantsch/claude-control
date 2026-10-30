@@ -11,6 +11,9 @@ while that section is empty, and promotes it to the new version section on relea
 
 <!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
 
+- **History rows open for real.** Click a past session (or Tab to it and press Enter) and it
+  opens in its own resizable window: the facts, the subagent tree and the run timeline, instead
+  of a little note that mostly told you where the file lives.
 - **A hidden session now says so.** When a Settings filter hides sessions, the main window and
   the popover show "N hidden" and name the filter, so nothing vanishes without a note.
 - **Popover rows name their project.** Two agents on `main` in different repos used to be

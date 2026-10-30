@@ -83,3 +83,4 @@ second roadmap.
 - 021 — A session is called what VS Code calls it · S06 · label follows VS Code (custom-title › ai-title › last prompt), machine-injected records never name a session or restart the run
 - 017 — The popover row says which project it is · S06 · each popover row reads `project · branch` (project emphasised, branch shrinks first), project alone without a branch
 - 018 — A hidden session says it is hidden · S06 · engine counts what the three list filters removed; main tab and popover show "N hidden" with a tooltip naming the filters; registry busy/waiting never hidden
+- 022 — A past session opens in its own, resizable window · S06 · History rows open one reusable resizable detail window with header facts, subagent tree and run timeline; geometry persisted.

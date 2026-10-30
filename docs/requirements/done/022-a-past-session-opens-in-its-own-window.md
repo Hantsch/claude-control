@@ -1,7 +1,7 @@
 ---
 id: 022
 title: A past session opens in its own, resizable window
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -24,25 +24,25 @@ and that window can be resized — the current view is too small and cannot be m
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — Clicking (or Enter on) a History row opens that session in its own window,
+- [x] **AC1** — Clicking (or Enter on) a History row opens that session in its own window,
       separate from the main window
-- [ ] **AC2** — The window is freely resizable, with a minimum size at which nothing is cut
+- [x] **AC2** — The window is freely resizable, with a minimum size at which nothing is cut
       off, and it opens at a size large enough to read the timeline without resizing first
-- [ ] **AC3** — The window shows what `SessionDetail` already carries: title, project,
+- [x] **AC3** — The window shows what `SessionDetail` already carries: title, project,
       branches, models, start/end/duration, token totals, the subagent tree and the timeline
       of events — not only what the notice shows today
-- [ ] **AC4** — Long content scrolls inside the window; resizing reflows it instead of
+- [x] **AC4** — Long content scrolls inside the window; resizing reflows it instead of
       clipping it
-- [ ] **AC5** — Opening a second session either reuses the window or opens a second one —
+- [x] **AC5** — Opening a second session either reuses the window or opens a second one —
       decided in refine, and the same way every time; opening the same session twice never
       produces two windows for it
-- [ ] **AC6** — The window remembers its size (and position, if on a still-connected display)
+- [x] **AC6** — The window remembers its size (and position, if on a still-connected display)
       across opens and app restarts
-- [ ] **AC7** — Copy path / Show file stay available, and the window closes with Esc
-- [ ] **AC8** — A large transcript opens without freezing the main window: the parse stays
+- [x] **AC7** — Copy path / Show file stay available, and the window closes with Esc
+- [x] **AC8** — A large transcript opens without freezing the main window: the parse stays
       in the main process, the window shows a loading state, and a `truncated` detail says so
-- [ ] **AC9** — The notice under the History table is gone; nothing else in History changes
-- [ ] **AC10** — Light and dark theme both apply (the window uses the same theme tokens
+- [x] **AC9** — The notice under the History table is gone; nothing else in History changes
+- [x] **AC10** — Light and dark theme both apply (the window uses the same theme tokens
       as the main window, 007)
 
 ## Open Questions
@@ -131,7 +131,7 @@ window) and restores with one `setBounds`/constructor size, never a read-back-an
 
 ## Deliverables
 
-- **D1 — Detail window geometry (electron-free) plus its test.**
+- [x] **D1 — Detail window geometry (electron-free) plus its test.**
   New `src/main/detailWindowState.ts`, importing nothing from `electron` at runtime (types
   only), exporting:
   - `DETAIL_WINDOW_DEFAULT = { width: 1000, height: 760 }`, `DETAIL_WINDOW_MIN = { width: 640, height: 420 }`.
@@ -151,7 +151,7 @@ window) and restores with one `setBounds`/constructor size, never a read-back-an
   `src/main/settings.ts` into new `src/main/atomicJson.ts` (`writeJsonAtomic(file, value)`),
   use it in both places — do not write a second copy. Test: `test/unit/detailWindowState.test.ts`
   (plain Node, temp dir for load/save).
-- **D2 — The detail window in the main process, IPC and preload, plus its test.**
+- [x] **D2 — The detail window in the main process, IPC and preload, plus its test.**
   `src/main/windows.ts`: a `detail: BrowserWindow | null` field and
   `openDetail(sessionId: string)`: if a live detail window exists → `show()`, `focus()`,
   `webContents.send('cc:detail-target', { sessionId })`; else build it with
@@ -175,7 +175,7 @@ window) and restores with one `setBounds`/constructor size, never a read-back-an
   (pattern: `test/unit/tray-icons.test.ts`) faking `BrowserWindow` (counts constructions,
   records `send` calls and options), `screen`, `nativeTheme`, `shell`; `detailWindowState`
   load/save mocked or pointed at a temp dir.
-- **D3 — Detail view model (pure renderer logic), plus its test.**
+- [x] **D3 — Detail view model (pure renderer logic), plus its test.**
   Move `clipOneLine` from `src/core/adapters/claude/records.ts` to new
   `src/core/model/text.ts` and re-export it from `records.ts` (no other change there).
   New `src/renderer/lib/detailModel.ts` (imports types from `src/core/model/types.ts`,
@@ -200,7 +200,7 @@ window) and restores with one `setBounds`/constructor size, never a read-back-an
     timeline stops after the first 10 000 events and the totals above still cover the whole
     transcript (true: `readDetail` keeps summing usage past the limit).
   Test: `test/unit/detailModel.test.ts`.
-- **D4 — The detail document (renderer), plus its tests.**
+- [x] **D4 — The detail document (renderer), plus its tests.**
   New `src/renderer/detail.html` (mirror `popover.html`), new `src/renderer/detail.tsx`
   (imports `./styles.css`; reads the initial id from `?session=`, subscribes to
   `onDetailTarget`, drives the D3 reducer: `target(id)` → `api.getDetail(id)` →
@@ -222,7 +222,7 @@ window) and restores with one `setBounds`/constructor size, never a read-back-an
   the `.detail-window` rules use only `var(--…)` colours and the scroll container has
   `overflow: auto`, no fixed `width: <n>px`) and `test/unit/detailWindowWiring.test.ts`
   (source-level, house style of `test/unit/showInMainWindow.test.ts`).
-- **D5 — History opens the window; the notice goes; docs.**
+- [x] **D5 — History opens the window; the notice goes; docs.**
   `src/renderer/components/HistoryView.tsx`: `HistoryRow` gets `tabIndex={0}` and an
   `onKeyDown` that calls `onSelect` on Enter; both `onSelect` call sites become
   `void api.openSessionDetail(entry.sessionId)` (no `api.getDetail` call left in History);
@@ -280,3 +280,19 @@ window) and restores with one `setBounds`/constructor size, never a read-back-an
   AC6 D1+D2 · AC7 D2+D4 · AC8 D3+D4 · AC9 D5 · AC10 D2+D4.
 
 ## Done
+
+**Summary:** History rows (click/Enter) now open one reusable, resizable detail window (`detail.html`, own `BrowserWindow`) that fetches `getDetail` itself in main, shows header facts with per-field token totals, subagent tree and a run-grouped, collapsed, paged timeline; geometry persists in `<userData>/detail-window.json`; the History notice is gone.
+
+**Commit message:** `022: past session opens in its own resizable detail window (run timeline, subagent tree, saved geometry)`
+
+**Verification (narrow gate):** `npm run build` green, `npm run typecheck` green, `npx vitest run --changed HEAD` green (11 files, 288 tests), full `npm test` green (38 files, 577 tests; boundaries.test.ts included). e2e: none in profile (named gap above). Review: clean default-tier agent, 1 cycle (FAIL → fixed → re-verified).
+AC → test (all ran and passed): AC1 detailWindow "opening a session creates…" + wiring "a history row opens…"; AC2 detailWindowState resizable/min + clamp; AC3 detailModel header + grouping, wiring renders header/tree/timeline; AC4 styles "scrolls inside one container…" + detailModel paging; AC5 detailWindow retarget + "only focuses it" (now asserts no re-send); AC6 detailWindowState save/load + disconnected display, detailWindow bounds save; AC7 wiring Copy path/Show file + Escape, detailWindow close via IPC; AC8 detailModel stale/loading/truncated + wiring getDetail; AC9 wiring "history no longer renders the notice…"; AC10 styles tokens + detailWindow OS scheme + boundaries. Manual residue: none.
+
+**Decisions:**
+- `cc:detail-target` stays a literal channel string in preload/windows (like `cc:navigate`); no IPC constant.
+- `detailLoad` `target(id)` for the id already current is a no-op (any state), and `openDetail` on the shown session only focuses without re-sending; the ready-to-show send uses the latest tracked session id, so a retarget before load wins.
+- `FullApi` in `src/renderer/api.ts` also gains `onDetailTarget` (typing of `window.claudeControl`).
+- `.notice` CSS kept: still used by SessionDetailPane and SessionDetailWindow.
+- Unfixed review notes: `EventRow.hasMore` computed but not rendered (kept, covered by model test); double whitespace collapse in `eventRow` harmless; `records.ts` re-export plus local import of `text.ts` kept for CRLF-file minimal diff; styles test scans border/color/background only.
+
+tiers: D 5 / hard 0 · review default · cycles 1 · agents 8

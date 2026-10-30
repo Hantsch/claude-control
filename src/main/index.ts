@@ -112,6 +112,7 @@ async function bootstrap(): Promise<void> {
     rendererDir: join(app.getAppPath(), 'out', 'renderer'),
     devServerUrl: process.env.ELECTRON_RENDERER_URL ?? null,
     preload: join(app.getAppPath(), 'out', 'preload', 'index.cjs'),
+    userDataDir: app.getPath('userData'),
   });
 
   windows.setPopoverPinned(settings.get().ui.popoverPinned);

@@ -9,6 +9,12 @@
 import { BrowserWindow, nativeTheme, screen, shell } from 'electron';
 import { join } from 'node:path';
 import type { NavigateTarget } from '../shared/ipc.ts';
+import {
+  detailWindowOptions,
+  loadDetailBounds,
+  restoreDetailBounds,
+  saveDetailBounds,
+} from './detailWindowState.ts';
 import { appIcon } from './icon-assets.ts';
 
 /**
@@ -36,12 +42,16 @@ export interface WindowManagerOptions {
   rendererDir: string;
   devServerUrl: string | null;
   preload: string;
+  /** Where the detail window's remembered bounds live. */
+  userDataDir: string;
 }
 
 export class WindowManager {
   private readonly options: WindowManagerOptions;
   private main: BrowserWindow | null = null;
   private popover: BrowserWindow | null = null;
+  private detail: BrowserWindow | null = null;
+  private detailSessionId = '';
   /**
    * The popover's intended size — tracked here rather than read back from the window.
    *
@@ -76,6 +86,9 @@ export class WindowManager {
     if (this.main && !this.main.isDestroyed()) {
       this.main.setBackgroundColor(dark ? MAIN_WINDOW_BG.dark : MAIN_WINDOW_BG.light);
     }
+    if (this.detail && !this.detail.isDestroyed()) {
+      this.detail.setBackgroundColor(dark ? MAIN_WINDOW_BG.dark : MAIN_WINDOW_BG.light);
+    }
     if (this.popover && !this.popover.isDestroyed()) {
       this.popover.setBackgroundColor(dark ? POPOVER_BG.dark : POPOVER_BG.light);
     }
@@ -90,7 +103,7 @@ export class WindowManager {
   }
 
   allWindows(): BrowserWindow[] {
-    return [this.main, this.popover].filter((w): w is BrowserWindow => w !== null && !w.isDestroyed());
+    return [this.main, this.popover, this.detail].filter((w): w is BrowserWindow => w !== null && !w.isDestroyed());
   }
 
   /**
@@ -133,6 +146,72 @@ export class WindowManager {
     void this.load(window, 'index.html', `?tab=${tab}`);
     this.main = window;
     return window;
+  }
+
+  /** One detail window for the whole app: a second session retargets it instead of opening another. */
+  openDetail(sessionId: string): BrowserWindow {
+    if (this.detail && !this.detail.isDestroyed()) {
+      this.detail.show();
+      this.detail.focus();
+      if (this.detailSessionId !== sessionId) {
+        this.detailSessionId = sessionId;
+        this.detail.webContents.send('cc:detail-target', { sessionId });
+      }
+      return this.detail;
+    }
+    this.detailSessionId = sessionId;
+
+    const { userDataDir } = this.options;
+    const window = new BrowserWindow({
+      ...detailWindowOptions(
+        restoreDetailBounds(
+          loadDetailBounds(userDataDir),
+          screen.getAllDisplays().map((d) => d.workArea),
+          screen.getPrimaryDisplay().workArea,
+        ),
+      ),
+      backgroundColor: nativeTheme.shouldUseDarkColors ? MAIN_WINDOW_BG.dark : MAIN_WINDOW_BG.light,
+      icon: appIcon(),
+      webPreferences: this.webPreferences(),
+    });
+
+    this.harden(window);
+    window.once('ready-to-show', () => {
+      window.show();
+      // The latest target, not the first: a retarget before this point sent nothing the page could receive.
+      window.webContents.send('cc:detail-target', { sessionId: this.detailSessionId });
+    });
+
+    // getNormalBounds, not getBounds: a maximised window must not remember its maximised size.
+    const save = (): void => {
+      if (!window.isDestroyed()) saveDetailBounds(userDataDir, window.getNormalBounds());
+    };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const saveSoon = (): void => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        save();
+      }, 500);
+    };
+    window.on('resize', saveSoon);
+    window.on('move', saveSoon);
+    window.on('close', () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      save();
+    });
+    window.on('closed', () => {
+      this.detail = null;
+    });
+
+    void this.load(window, 'detail.html', `?session=${encodeURIComponent(sessionId)}`);
+    this.detail = window;
+    return window;
+  }
+
+  closeDetail(): void {
+    if (this.detail && !this.detail.isDestroyed()) this.detail.close();
   }
 
   /**

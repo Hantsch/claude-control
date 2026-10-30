@@ -6,8 +6,9 @@
  * defaults are used rather than failing to start.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeJsonAtomic } from './atomicJson.ts';
 import { DEFAULT_SETTINGS, mergeSettings, type AppSettings } from '../core/model/settings.ts';
 
 export type SettingsListener = (settings: AppSettings) => void;
@@ -61,10 +62,7 @@ export class SettingsStore {
 
   private write(settings: AppSettings): void {
     try {
-      mkdirSync(dirname(this.file), { recursive: true });
-      const temp = `${this.file}.tmp`;
-      writeFileSync(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-      renameSync(temp, this.file);
+      writeJsonAtomic(this.file, settings);
     } catch {
       // Settings are a convenience; failing to persist must not take the app down.
     }

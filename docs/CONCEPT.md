@@ -489,7 +489,8 @@ dimmed identifier; it becomes the label just for sessions that have no title yet
   to session sits directly under the name, above the facts.
 - **History** — past sessions with a project filter, a date range, and free-text search
   over titles. Uses the same label as the live list (custom title, else generated title, else
-  last prompt), which saves inventing our own summarizer.
+  last prompt), which saves inventing our own summarizer. A row opens the session in a
+  resizable detail window (header facts, subagent tree, run timeline).
 - **Settings** — thresholds (`T_work` and the per-tool overrides that double as the speed
   classes), how long settled sessions stay in the tray, notification toggles, and the Claude
   data directory path.

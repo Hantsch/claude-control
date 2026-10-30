@@ -9,6 +9,7 @@ export type MainTab = 'sessions' | 'history' | 'settings';
 
 export interface FullApi extends RendererApi {
   onNavigate(listener: (target: NavigateTarget) => void): () => void;
+  onDetailTarget(listener: (target: { sessionId: string }) => void): () => void;
   setPopoverHeight(height: number): Promise<void>;
   getPopoverPinned(): Promise<boolean>;
   /** Returns the pin state that was actually applied. */

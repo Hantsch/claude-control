@@ -33,9 +33,10 @@ export default defineConfig({
       outDir: 'out/renderer',
       rollupOptions: {
         input: {
-          // Main window and the tray popover are two separate documents (§8).
+          // Main window, tray popover and session detail window are three separate documents (§8).
           index: resolve(import.meta.dirname, 'src/renderer/index.html'),
           popover: resolve(import.meta.dirname, 'src/renderer/popover.html'),
+          detail: resolve(import.meta.dirname, 'src/renderer/detail.html'),
         },
       },
     },

@@ -72,3 +72,23 @@
 - 2026-10-30 12:27:38 · 018 · review 1 · started
 - 2026-10-30 12:28:24 · 018 · review 1 · done
 - 2026-10-30 12:28:41 · 018 · story · done
+- 2026-10-30 12:28:52 · 022 · build · started
+- 2026-10-30 12:29:06 · 022 · D1 geometry · started
+- 2026-10-30 12:30:01 · 022 · D1 geometry · done
+- 2026-10-30 12:30:01 · 022 · D2 window+IPC · started
+- 2026-10-30 12:30:55 · 022 · D2 window+IPC · done
+- 2026-10-30 12:30:55 · 022 · D3 view model · started
+- 2026-10-30 12:32:42 · 022 · D3 view model · done
+- 2026-10-30 12:32:42 · 022 · D4 detail document · started
+- 2026-10-30 12:34:25 · 022 · D4 detail document · done
+- 2026-10-30 12:34:25 · 022 · D5 history handoff · started
+- 2026-10-30 12:34:59 · 022 · D5 history handoff · done
+- 2026-10-30 12:34:59 · 022 · verify · started
+- 2026-10-30 12:35:43 · 022 · verify · done
+- 2026-10-30 12:35:43 · 022 · review 1 · started
+- 2026-10-30 12:36:52 · 022 · review 1 · done (FAIL: 1 bug, fixing)
+- 2026-10-30 12:36:52 · 022 · fix 1 · started
+- 2026-10-30 12:37:45 · 022 · fix 1 · done
+- 2026-10-30 12:37:45 · 022 · verify (after fix 1) · started
+- 2026-10-30 12:38:29 · 022 · verify (after fix 1) · done
+- 2026-10-30 12:38:29 · 022 · story · done

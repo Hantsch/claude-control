@@ -102,6 +102,31 @@ beforeEach(() => {
   vi.useRealTimers();
 });
 
+describe('main window navigation', () => {
+  it('showing a session from the popover opens the main window on Sessions with that session', () => {
+    const m = manager();
+    registerIpc({ windows: m } as never);
+    const open = h.handlers.get('cc:open-main-window')!;
+
+    open({}, 'sessions', 's1');
+    expect(h.windows).toHaveLength(1);
+    const main = h.windows[0];
+    // One message even for a window still loading: it is delivered on ready, never lost.
+    expect(main.sent).toEqual([]);
+    main.emit('ready-to-show');
+    expect(main.sent).toEqual([['cc:navigate', { tab: 'sessions', sessionId: 's1' }]]);
+
+    main.sent.length = 0;
+    open({}, 'sessions', 's2');
+    expect(h.windows).toHaveLength(1);
+    expect(main.sent).toEqual([['cc:navigate', { tab: 'sessions', sessionId: 's2' }]]);
+
+    main.sent.length = 0;
+    open({}, 'sessions', 42);
+    expect(main.sent).toEqual([['cc:navigate', { tab: 'sessions', sessionId: null }]]);
+  });
+});
+
 describe('detail window', () => {
   it('opening a session creates the detail window and sends it the session id', () => {
     const m = manager();

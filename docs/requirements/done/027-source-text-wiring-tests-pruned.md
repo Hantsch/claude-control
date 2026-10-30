@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Source-text wiring tests pruned to structural checks
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -31,23 +31,23 @@ Today ([review 2026-10-30](../reviews/2026-10-30-tests-review.md), F09, correcte
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `test/unit/popoverRowLayout.test.ts` no longer exists
-- [ ] **AC2** — `test/unit/boundaries.test.ts` is unchanged (`git diff` empty), and
+- [x] **AC1** — `test/unit/popoverRowLayout.test.ts` no longer exists
+- [x] **AC2** — `test/unit/boundaries.test.ts` is unchanged (`git diff` empty), and
       `test/unit/networkPromiseWording.test.ts` still pins the N1 wording (a seeded edit of the N1
       sentence in the README fails it)
-- [ ] **AC3** — `detailWindowWiring.test.ts`, `statusRollupWiring.test.ts`, `hiddenSessions.test.ts`
+- [x] **AC3** — `detailWindowWiring.test.ts`, `statusRollupWiring.test.ts`, `hiddenSessions.test.ts`
       and `detailWindowStyles.test.ts` contain no assertion on UI copy, a grid or style string, or a
       call-shape regex such as `api\.getDetail\(`: `rg "api\\\.getDetail" test/unit` returns nothing
       (the full list of removed assertions is fixed in refine)
-- [ ] **AC4** — A structural link check remains: a test fails when an IPC channel used by the
+- [x] **AC4** — A structural link check remains: a test fails when an IPC channel used by the
       renderer is not declared in the preload or has no handler in main (seeded: rename one handler
       in `src/main`)
-- [ ] **AC5** — The popover-to-main-window link of `showInMainWindow` stays checked structurally
+- [x] **AC5** — The popover-to-main-window link of `showInMainWindow` stays checked structurally
       (seeded: removing the navigate call fails a test), without a regex on the `NavigateTarget`
       literal: `rg "NavigateTarget = " test/unit/showInMainWindow.test.ts` returns nothing
-- [ ] **AC6** — `npm test` exits 0, and the Done section lists the removed assertions by name with
+- [x] **AC6** — `npm test` exits 0, and the Done section lists the removed assertions by name with
       the test count before and after
-- [ ] **AC7** — No render harness is added: `rg "jsdom|testing-library" package.json` returns nothing
+- [x] **AC7** — No render harness is added: `rg "jsdom|testing-library" package.json` returns nothing
 
 ## Open Questions
 
@@ -103,7 +103,7 @@ in `src/main/windows.ts` (AC5).
 
 ## Deliverables
 
-- [ ] **D1 — Prune copy, grid and style pins from four wiring tests; delete the grid test.**
+- [x] **D1 — Prune copy, grid and style pins from four wiring tests; delete the grid test.**
   Files: delete `test/unit/popoverRowLayout.test.ts`; edit `test/unit/detailWindowWiring.test.ts`,
   `test/unit/statusRollupWiring.test.ts`, `test/unit/hiddenSessions.test.ts`,
   `test/unit/detailWindowStyles.test.ts`. Do NOT touch `test/unit/boundaries.test.ts` or
@@ -151,7 +151,7 @@ in `src/main/windows.ts` (AC5).
   is clean; `npx vitest run test/unit` passes; seeded: change "no outbound requests" wording of
   the N1 sentence in `README.md` → `networkPromiseWording.test.ts` fails; revert.
 
-- [ ] **D2 — One generic test proves every bridge method the renderer calls reaches main.**
+- [x] **D2 — One generic test proves every bridge method the renderer calls reaches main.**
   File: new `test/unit/ipcWiring.test.ts` (no other file). Mirror the `vi.hoisted` +
   `vi.mock('electron', …)` pattern of `test/unit/detailWindow.test.ts:3-74`, but with a minimal
   mock — no FakeWindow: `ipcMain.handle(channel, fn)` records into a `handled` set;
@@ -178,7 +178,7 @@ in `src/main/windows.ts` (AC5).
   fails naming `cc:popover-pin`; revert. Seeded: rename `'cc:detail-target'` in both
   `webContents.send` calls of `src/main/windows.ts` → the second test fails; revert.
 
-- [ ] **D3 — "Show in Claude Control" proven as behaviour; source regexes gone; final count.**
+- [x] **D3 — "Show in Claude Control" proven as behaviour; source regexes gone; final count.**
   Files: `test/unit/detailWindow.test.ts` (add one test, reuse its existing `h`, electron mock,
   `manager()` and `registerIpc` import — do not copy the fake window elsewhere) and
   `test/unit/showInMainWindow.test.ts` (rewrite).
@@ -241,7 +241,20 @@ Review: → default
 
 ## Done
 
-<Leave empty. Filled by `/build 027` after implementation:
-- Short summary (2–5 lines): what was done.
-- Commit message (1–2 lines, keywords are enough).
-- Verification: build/test/lint result + review outcome; open points/blockers, if any.>
+Pruned the copy/grid/style/call-shape pins from four renderer wiring tests, deleted the grid test, added one generic IPC link test (real preload + real `registerIpc` behind an electron mock) and proved "Show in Claude Control" as main-side behaviour in `detailWindow.test.ts`. Tests only; no `src/`, `package.json` or CHANGELOG change.
+
+Commit: `027: prune source-text wiring tests to structural links, generic ipcWiring test, navigate behaviour test`
+
+Verification (narrow gate: `npm test` as `test-story`, plus `npm run build`, `npm run typecheck`; all green; no e2e, `e2e: none`):
+- Test count: 42 files / 594 tests before (re-measured after 023-026) -> 42 files / 587 tests after (popoverRowLayout deleted, ipcWiring added).
+- Removed assertions: `popoverRowLayout` (whole file, grid string pin); `detailWindowWiring` 6 -> 2 tests (header/tree/timeline copy and call shapes, Copy path/Show file, Escape close, getDetail/reducer/loading asserts, history click/Enter regexes, the three negatives); `statusRollupWiring` (`OWN_COUNTING` + 2 `not.toMatch`); `hiddenSessions` 5 -> 3 (hidden-count and label literals, 'Settings › Session list', settled/recency test, `hiddenIndicator(state.hidden)`/`title=` regexes, popover settled-count test); `detailWindowStyles` (fixed-width, `flex-wrap`, `pre-wrap` asserts, `['.detail-scroll']` pin -> `toHaveLength(1)`); `showInMainWindow` (copy, `openMainWindow(...)`, `NavigateTarget = `, `openMain(tab ?? ...`, `setTab`, `setSelectedId`, `{session.sessionId}`, `copy('session ID'` asserts).
+- AC -> test (all ran and passed): AC1 file deleted; AC2 `boundaries.test.ts` diff empty + `networkPromiseWording` README test; AC3 detailWindowWiring (2), statusRollupWiring (2), hiddenSessions tooltip test, detailWindowStyles scroll test, `rg "api\.getDetail" test/unit` empty; AC4 `ipcWiring.test.ts` (2 tests); AC5 `detailWindow.test.ts` "showing a session from the popover..." + `showInMainWindow` bridge test; AC6 this section; AC7 `rg "jsdom|testing-library" package.json` empty.
+- Seeds run by deliverable agents and reverted (`git diff src` empty): `cc:popover-pin` rename -> ipcWiring test 1 fails; `cc:detail-target` rename -> test 2 fails; both `cc:navigate` sends removed one by one -> navigate test fails; README seed -> networkPromiseWording fails.
+- Review (default tier, 1 cycle): PASS on code, only open item was this Done section. Named e2e gap (renderer half: main window selecting the navigated session, Escape closing the detail window, Copy/Show buttons and copy text) has no automated proof now; for the sprint review.
+
+Decisions:
+- AC2 seed: replacing "no outbound requests" in the README did not fail `networkPromiseWording` (it pins "are the two exceptions" / the exception names, not that phrase); editing "are the two exceptions" -> "are exceptions" in the N1 sentence fails it. AC2 holds with that seed; test untouched.
+- `ipcWiring` test 2 reads the `subscribed` set filled by test 1; run alone it fails loudly via a "no subscriptions recorded" guard (never a false green). Accepted as is.
+- Bridge-presence checks stay identifier-substring checks, as the plan specifies.
+
+tiers: D 3 / hard 0 · review default · cycles 1 · agents 5

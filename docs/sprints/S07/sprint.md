@@ -1,7 +1,7 @@
 ---
 sprint: S07
-status: planned # planned | in-progress | done
-branch: # set by /sprint
+status: in-progress
+branch: dev
 milestone: M9 — Trustworthy test lanes
 ---
 

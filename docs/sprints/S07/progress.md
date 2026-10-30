@@ -26,3 +26,18 @@
 - 13:58:59 · 024 · review fix · started
 - 14:00:17 · 024 · review fix · done
 - 14:00:17 · 024 · story · done
+- 14:00:28 · 025 · build · started
+- 14:00:42 · 025 · D1 · started
+- 14:01:26 · 025 · D1 · done
+- 14:01:34 · 025 · D2 · started
+- 14:05:20 · 025 · D2 · done
+- 14:05:20 · 025 · verify · started
+- 14:06:07 · 025 · verify · blocked: typecheck errors in testLanes.test.ts (fixing)
+- 14:06:07 · 025 · D3 typecheck fix · started
+- 14:06:45 · 025 · D3 typecheck fix · done
+- 14:06:45 · 025 · verify · done
+- 14:06:45 · 025 · review 1 · started
+- 14:07:22 · 025 · review 1 · done
+- 14:07:22 · 025 · D4 review fixes · started
+- 14:07:46 · 025 · D4 review fixes · done
+- 14:07:55 · 025 · story · done

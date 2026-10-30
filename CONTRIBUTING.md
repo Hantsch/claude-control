@@ -25,7 +25,8 @@ npm run cli -- --watch # keep printing status changes
 npm run dev            # run the tray app with hot reload
 npm run package        # build release\ClaudeControl-<version>-portable.exe
 
-npm test               # vitest over core/ with fixtures, including the N2/N4/N5 checks
+npm test               # vitest over core/ with fixtures, including the N2 check
+npm run test:perf      # non-blocking perf lane: the N4/N5 budgets
 npm run typecheck      # tsc for the Node side and the renderer
 npm run icons          # rebuild assets/icons from the art in output/imagegen (Python + Pillow)
 ```
@@ -52,10 +53,11 @@ src/
 └─ cli/         the command-line printout
 ```
 
-`npm test` includes the three non-functional checks from CONCEPT.md §10: a status change is
-observed within 2 s of an append (N4), the live tier resolves in under 2 s against a
-synthetic ~250 MB / 300-file tree (N5), and no file's content, size or mtime changes after a
-full pipeline run (N2).
+`npm test` includes the N2 check from CONCEPT.md §10: no file's content, size or mtime
+changes after a full pipeline run.
+
+N4 (status change observed within 2 s of an append) runs in `npm run test:perf`, the non-blocking perf lane (see `CLAUDE.md`).
+N5 (live tier under 2 s on a ~250 MB / 300-file tree) also runs in `npm run test:perf`.
 
 ### Releasing
 

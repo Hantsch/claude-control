@@ -41,7 +41,7 @@ e2e: none
   not quietly turned into a manual step.
 -->
 
-test-story: npx vitest run --changed HEAD
+test-story: npm test
 e2e-story: none
 e2e-story-slices: 1
 e2e-all: none
@@ -142,7 +142,7 @@ testplan: optional
 Files every implementation and review agent must read before touching code.
 Keep this short — it is pasted into every subagent prompt.
 
-- <no CLAUDE.md yet in this project — add it here once one exists>
+- CLAUDE.md — project rules and the test lanes
 
 ## Notes
 

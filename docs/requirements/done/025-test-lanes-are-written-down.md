@@ -1,7 +1,7 @@
 ---
 id: 025
 title: Test lanes are written down, and the story gate runs the whole suite
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -35,23 +35,23 @@ choices.
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `CLAUDE.md` exists at the repo root with a `## Test lanes` heading:
+- [x] **AC1** — `CLAUDE.md` exists at the repo root with a `## Test lanes` heading:
       `rg -n "^## Test lanes" CLAUDE.md` returns one line
-- [ ] **AC2** — The table has one row each for Story, PR, Release and Perf, with columns lane,
+- [x] **AC2** — The table has one row each for Story, PR, Release and Perf, with columns lane,
       trigger, runs, blocks and budget, matching review §3b / 4-lanes.md (Story `npm test` at most
       30 s, PR `npm test` at most 30 s, Release 0 s when nothing releases, Perf non-blocking)
-- [ ] **AC3** — Every command named in the table exists: `npm test` and `npm run test:perf` are
+- [x] **AC3** — Every command named in the table exists: `npm test` and `npm run test:perf` are
       keys in package.json `scripts`, and `.github/workflows/release.yml` and `validate.yml` exist
-- [ ] **AC4** — `CLAUDE.md` links to the flake policy in `.claude/commands/sprint.md` (the section
+- [x] **AC4** — `CLAUDE.md` links to the flake policy in `.claude/commands/sprint.md` (the section
       carrying lines 335-357) and does not restate its steps: `rg -c "quarantine" CLAUDE.md`
       returns at most 1
-- [ ] **AC5** — `CONTRIBUTING.md` no longer says N4/N5 run in `npm test`: `rg "N4|N5" CONTRIBUTING.md`
+- [x] **AC5** — `CONTRIBUTING.md` no longer says N4/N5 run in `npm test`: `rg "N4|N5" CONTRIBUTING.md`
       returns only lines that also name `test:perf`
-- [ ] **AC6** — `.claude/ai-scrum.md` has `test-story: npm test`; `rg "changed HEAD" .claude/ai-scrum.md`
+- [x] **AC6** — `.claude/ai-scrum.md` has `test-story: npm test`; `rg "changed HEAD" .claude/ai-scrum.md`
       returns nothing
-- [ ] **AC7** — The "Context to read before coding" list in `.claude/ai-scrum.md` names `CLAUDE.md`,
+- [x] **AC7** — The "Context to read before coding" list in `.claude/ai-scrum.md` names `CLAUDE.md`,
       and `rg "no CLAUDE.md yet" .claude/ai-scrum.md` returns nothing
-- [ ] **AC8** — `docs/sprints/README.md` (around :55-61) says the per-story gate runs the full unit
+- [x] **AC8** — `docs/sprints/README.md` (around :55-61) says the per-story gate runs the full unit
       suite and the sprint gate adds e2e: `rg "full unit suite" docs/sprints/README.md` finds it
 
 ## Open Questions
@@ -106,7 +106,7 @@ entry (nothing user-facing).
 
 ## Deliverables
 
-- [ ] **D1 — `CLAUDE.md` with the lane table, guarded by a drift test.**
+- [x] **D1 — `CLAUDE.md` with the lane table, guarded by a drift test.**
   Files: `CLAUDE.md` (new, repo root), `test/unit/testLanes.test.ts` (new; mirror the
   `ROOT`/`read()` shape of `test/unit/networkPromiseWording.test.ts`).
   `CLAUDE.md`, about 25-40 lines (it is pasted into every agent prompt, keep it short):
@@ -146,7 +146,7 @@ entry (nothing user-facing).
   Acceptance: `npm test` green; seeding `npm run test:nope` into the table, or a wrong anchor,
   turns the respective test red.
 
-- [ ] **D2 — The per-story gate runs the whole suite, and the docs say so.**
+- [x] **D2 — The per-story gate runs the whole suite, and the docs say so.**
   Files: `.claude/ai-scrum.md`, `CONTRIBUTING.md`, `docs/sprints/README.md`,
   `test/unit/testLanes.test.ts` (extend D1's file).
   - `.claude/ai-scrum.md`: `test-story: npx vitest run --changed HEAD` → `test-story: npm test`;
@@ -188,7 +188,18 @@ Coverage: AC1-AC4 → D1; AC5-AC8 → D2. No e2e: no criterion is a user action 
 
 ## Done
 
-<Leave empty. Filled by `/build 025` after implementation:
-- Short summary (2–5 lines): what was done.
-- Commit message (1–2 lines, keywords are enough).
-- Verification: build/test/lint result + review outcome; open points/blockers, if any.>
+Added `CLAUDE.md` with the Story/PR/Release/Perf lane table, budget-as-target note, clock rule and a link to the flake policy; `test/unit/testLanes.test.ts` guards table shape, named commands/workflows, the link and the profile/CONTRIBUTING wording. The profile now has `test-story: npm test` and lists `CLAUDE.md`; CONTRIBUTING moves N4/N5 to `npm run test:perf`; sprints README says the per-story gate is the full unit suite.
+
+Commit message: `025: CLAUDE.md test-lane table + drift test, story gate runs npm test, CONTRIBUTING N4/N5 to perf lane`
+
+Verification (narrow gate; `test-story` = `npm test` as in effect): `npm run build`, `npm run typecheck`, `npm test` green (42 files, 592 tests) after one typecheck fix; the review fixes were re-checked with typecheck + `npm test`. No e2e (`none`).
+- AC1-AC3 -> lane-table and command-existence tests, passed. AC4 -> flake-policy test, passed. AC5 -> CONTRIBUTING test, passed. AC6/AC7 -> story-gate test, passed.
+- AC8 -> `rg "full unit suite" docs/sprints/README.md` finds README.md:55 (gate check, no permanent test by decision).
+- Review (default tier, 1 cycle): PASS; fixed a vacuous Release `0 s` assertion (also matched `30 s`) and an unconditional `npm test` check.
+
+Decisions
+- README sentence names the full unit suite only; the sprint gate's e2e is already stated in the existing Regression gate bullet (README.md:61), and "change only that sentence" held.
+- Typecheck errors in the new test were fixed with explicit expects, not non-null assertions.
+- No manual residue. No CHANGELOG entry (nothing user-facing).
+
+tiers: D 2 / hard 0 · review default · cycles 1 · agents 6

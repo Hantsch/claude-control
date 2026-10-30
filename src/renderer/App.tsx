@@ -5,13 +5,14 @@
  * derived value arrives over IPC already finished.
  */
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { AppState, SessionView } from '../shared/ipc.ts';
 import { EMPTY_STATE, api, type MainTab } from './api.ts';
 import { HistoryView } from './components/HistoryView.tsx';
 import { SessionDetailPane } from './components/SessionDetailPane.tsx';
 import { SessionsView } from './components/SessionsView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
+import { hiddenIndicator } from './lib/hiddenSessions.ts';
 
 export function App(): React.JSX.Element {
   const [state, setState] = useState<AppState>(EMPTY_STATE);
@@ -58,18 +59,26 @@ export function App(): React.JSX.Element {
     if (!session.seen) void api.acknowledge(session.sessionId);
   };
 
+  const hiddenBadge = hiddenIndicator(state.hidden);
+
   return (
     <div className="app">
       <div className="tabs">
         {(['sessions', 'history', 'settings'] as const).map((name) => (
+          <Fragment key={name}>
           <button
-            key={name}
             type="button"
             className={tab === name ? 'active' : ''}
             onClick={() => setTab(name)}
           >
             {name === 'sessions' ? `Sessions (${state.sessions.length})` : name[0]!.toUpperCase() + name.slice(1)}
           </button>
+          {name === 'sessions' && hiddenBadge && (
+            <span className="meta" title={hiddenBadge.title}>
+              · {hiddenBadge.text}
+            </span>
+          )}
+          </Fragment>
         ))}
         <span className="spacer" />
         {tab === 'sessions' && state.projects.length > 1 && (

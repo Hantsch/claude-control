@@ -26,7 +26,7 @@ opens in its own resizable window.
 - [x] 016 — A session working through a subagent is not `done`
 - [x] 021 — A session is called what VS Code calls it
 - [x] 017 — The popover row says which project it is
-- [ ] 018 — A hidden session says it is hidden
+- [x] 018 — A hidden session says it is hidden
 - [ ] 022 — A past session opens in its own, resizable window
 
 ## Notes

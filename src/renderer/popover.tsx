@@ -49,6 +49,7 @@ import { ContextBar } from './components/ContextBar.tsx';
 import { StatusDot } from './components/StatusDot.tsx';
 import { StatusRollup } from './components/StatusRollup.tsx';
 import { formatAge, formatDuration } from './lib/format.ts';
+import { hiddenIndicator } from './lib/hiddenSessions.ts';
 import { shouldFocusTopRow } from './lib/popoverFocus.ts';
 import {
   SUBAGENT_FLAT_LIST_NOTE,
@@ -826,6 +827,8 @@ function Popover(): React.JSX.Element {
     return a.project.name.localeCompare(b.project.name);
   });
 
+  const hiddenBadge = hiddenIndicator(state.hidden);
+
   return (
     <div className="popover">
       <div className="popover-head" ref={head}>
@@ -843,6 +846,7 @@ function Popover(): React.JSX.Element {
             <span style={{ color: 'var(--status-waiting)' }}> ({waitingCount} waiting)</span>
           ) : null}
           {hidden > 0 ? ` · ${hidden} settled` : ''}
+          {hiddenBadge ? <span title={hiddenBadge.title}> · {hiddenBadge.text}</span> : null}
         </span>
         <span className="spacer" />
         <NotifySwitch />

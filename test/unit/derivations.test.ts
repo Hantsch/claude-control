@@ -864,6 +864,27 @@ describe('orphan filter (§4: windowless sessions sharing a live one\'s folder)'
     expect(engine.getSnapshot().sessions.map((s) => s.sessionId)).toEqual(['w2']);
   });
 
+  it('counts an orphan it hid as hidden', () => {
+    const windowless = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
+    const windowed = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });
+    const engine = engineWith([windowless, windowed], (pid) => pid === 2);
+    expect(engine.getSnapshot().hidden).toEqual({ count: 1, causes: ['orphan'] });
+  });
+
+  it('never hides a session Claude Code reports busy or waiting', () => {
+    const windowed = view({ sessionId: 'w0', status: 'working', pid: 2, cwd: folderA });
+    const busy = view({ sessionId: 'w1', status: 'working', statusSource: 'reported', pid: 1, cwd: folderA });
+    const waiting = view({ sessionId: 'w3', status: 'waiting', statusSource: 'reported', pid: 3, cwd: folderA });
+    const engine = engineWith([windowed, busy, waiting], (pid) => pid === 2);
+    expect(engine.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w0', 'w1', 'w3']);
+    expect(engine.getSnapshot().hidden).toEqual({ count: 0, causes: [] });
+
+    const inferred = view({ sessionId: 'w4', status: 'working', pid: 4, cwd: folderA });
+    const withInferred = engineWith([windowed, busy, inferred], (pid) => pid === 2);
+    expect(withInferred.getSnapshot().sessions.map((s) => s.sessionId).sort()).toEqual(['w0', 'w1']);
+    expect(withInferred.getSnapshot().hidden).toEqual({ count: 1, causes: ['orphan'] });
+  });
+
   it('keeps both sessions when each has its own window, even in the same folder', () => {
     const a = view({ sessionId: 'w1', status: 'working', pid: 1, cwd: folderA });
     const b = view({ sessionId: 'w2', status: 'working', pid: 2, cwd: folderA });

@@ -404,6 +404,7 @@ function emptyState(): AppState {
     at: Date.now(),
     indexingHistory: false,
     historyCount: 0,
+    hidden: { count: 0, causes: [] },
   };
 }
 

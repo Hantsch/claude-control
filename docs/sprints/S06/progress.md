@@ -62,3 +62,13 @@
 - 2026-10-30 12:23:55 · 017 · review 2 · started
 - 2026-10-30 12:24:17 · 017 · review 2 · done
 - 2026-10-30 12:24:25 · 017 · story · done
+- 2026-10-30 12:24:37 · 018 · build · started
+- 2026-10-30 12:25:06 · 018 · D1 engine hidden count + guard · started
+- 2026-10-30 12:26:28 · 018 · D1 engine hidden count + guard · done
+- 2026-10-30 12:26:38 · 018 · D2 hidden indicator UI · started
+- 2026-10-30 12:27:11 · 018 · D2 hidden indicator UI · done
+- 2026-10-30 12:27:11 · 018 · verify · started
+- 2026-10-30 12:27:38 · 018 · verify · done
+- 2026-10-30 12:27:38 · 018 · review 1 · started
+- 2026-10-30 12:28:24 · 018 · review 1 · done
+- 2026-10-30 12:28:41 · 018 · story · done

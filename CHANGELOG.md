@@ -11,6 +11,8 @@ while that section is empty, and promotes it to the new version section on relea
 
 <!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
 
+- **A hidden session now says so.** When a Settings filter hides sessions, the main window and
+  the popover show "N hidden" and name the filter, so nothing vanishes without a note.
 - **Popover rows name their project.** Two agents on `main` in different repos used to be
   twins; each row now reads `project · branch`, and the branch is the first to be ellipsized.
 - **An aborted turn is its own status.** Interrupting a session (Esc) leaves a `user` record

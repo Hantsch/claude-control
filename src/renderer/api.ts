@@ -33,4 +33,5 @@ export const EMPTY_STATE: AppState = {
   at: 0,
   indexingHistory: false,
   historyCount: 0,
+  hidden: { count: 0, causes: [] },
 };

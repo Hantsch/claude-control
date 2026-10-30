@@ -1,7 +1,7 @@
 ---
 id: 018
 title: A hidden session says it is hidden
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-23
 ---
 
@@ -55,18 +55,18 @@ should cover `interrupted` too is a question for this story, since it decides wh
 
 ## Acceptance Criteria
 
-- [ ] With a live session hidden by `hideUnusedSessions`, `hideOrphanSessions` or
+- [x] With a live session hidden by `hideUnusedSessions`, `hideOrphanSessions` or
       `hideDoneOnStart`, the main window shows that something is hidden and how many
-- [ ] The same is true of the popover, and it is distinguishable from the "· N settled" count
+- [x] The same is true of the popover, and it is distinguishable from the "· N settled" count
       that is already there — a session held back by tray recency and a session removed by a
       filter are not the same thing
-- [ ] The indication names the filter (or leads to it), so the user can act on it instead of
+- [x] The indication names the filter (or leads to it), so the user can act on it instead of
       only knowing that a number is short
-- [ ] With both filters off, or with nothing hidden, no indication appears at all — this must not
+- [x] With both filters off, or with nothing hidden, no indication appears at all — this must not
       become permanent furniture
-- [ ] The hidden sessions themselves stay hidden: this story surfaces a *count*, it does not
+- [x] The hidden sessions themselves stay hidden: this story surfaces a *count*, it does not
       re-list what 004 deliberately removed
-- [ ] History is unaffected, as it already is — both filters are live-surface presentation only
+- [x] History is unaffected, as it already is — both filters are live-surface presentation only
 
 ## Open Questions
 
@@ -206,3 +206,20 @@ proven one level down — engine behaviour, a pure view helper and a source-leve
 - AC6 → unit `test/unit/pipeline.test.ts` › "hides a session that was already done at start until it does something new" (extended: `historyCount` / `listHistory()` equal with filter on and off)
 
 ## Done
+
+Both live-list filters and `hideDoneOnStart` now leave a trace: the engine returns `hidden: { count, causes }` (all live − shown, each filter that removed something), the main window shows `· N hidden` after the Sessions tab and the popover header ` · N hidden` after ` · N settled`, each with a tooltip naming the Settings filters. Registry-reported in-flight sessions (`statusSource: 'reported'`, working/stale/queued/waiting — exactly what 020's busy/waiting branches produce) are exempt from all filters.
+
+Commit message: `018: hidden sessions say so (engine hidden count + causes, main tab and popover "N hidden" with filter tooltip, busy/waiting never hidden)`
+
+Verification (narrow gate): `npm run build`, `npm run typecheck`, `npx vitest run --changed HEAD` green (135 tests); re-run of typecheck + test-story green after review fixes. e2e: none (no render harness) — gap: no test sees the rendered tab bar or popover header; display is proven by the pure helper plus source-level wiring checks.
+AC → test, all passed: AC1 pipeline (unused, doneOnStart) + derivations "counts an orphan it hid as hidden" + hiddenSessions wiring; AC2 "the popover keeps the settled count and adds the hidden count beside it" + "the hidden tooltip names filters, never tray recency"; AC3 "the tooltip names every responsible filter by its Settings label"; AC4 "nothing hidden renders nothing" + filter-off branches; AC5 pipeline `sessions` stays empty + "never hides a session Claude Code reports busy or waiting"; AC6 history equal on/off in pipeline. No manual residue.
+Review 1 (default): FAIL on CHANGELOG placement (fixed: moved under `## Unreleased`) and weak/vacuous wiring assertions (fixed: tooltip rendering and badge-after-settled order now asserted).
+
+Decisions:
+- `HiddenSessions`/`HiddenCause` live in `src/core/model/types.ts` (engine re-exports) — `shared/ipc.ts` importing from `engine.ts` broke the web tsconfig.
+- Guard predicate verified against 020: `underBusy`/reported `waiting` yield exactly working/stale/queued/waiting with `statusSource: 'reported'`.
+- Unfixed finding: the guard is a no-op for the `unused` and `doneOnStart` filters (a `starting`/`done` status is never in-flight); only the orphan filter can see a reported-in-flight session. Kept as one predicate for all three per plan; harmless.
+- Side effect noted by reviewer, anticipated by decisions: a registry-waiting orphan now counts toward attention/badge.
+- Cosmetic nits left (Fragment indentation, popover local `hidden` vs `hiddenBadge` naming).
+
+tiers: D 2 / hard 0 · review default · cycles 1 · agents 5

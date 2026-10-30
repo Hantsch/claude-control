@@ -643,11 +643,13 @@ describe('engine', () => {
     expect(hiding.getSnapshot().sessions).toHaveLength(0);
     expect(hiding.getSnapshot().groups).toHaveLength(0);
     expect(hiding.getSnapshot().trayState).toBe('none');
+    expect(hiding.getSnapshot().hidden).toEqual({ count: 1, causes: ['unused'] });
     await hiding.stop();
 
     const showing = makeEngine(false);
     await showing.start();
     expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['starting']);
+    expect(showing.getSnapshot().hidden).toEqual({ count: 0, causes: [] });
     await showing.stop();
   });
 
@@ -727,11 +729,17 @@ describe('engine', () => {
     await showing.start();
     expect(showing.getSnapshot().sessions.map((session) => session.status)).toEqual(['done']);
     expect(showing.getSnapshot().attention).toBe(1);
+    expect(showing.getSnapshot().hidden).toEqual({ count: 0, causes: [] });
+    const historyWhenShowing = { count: showing.getSnapshot().historyCount, entries: showing.listHistory() };
     await showing.stop();
 
     const engine = makeEngine(true);
     await engine.start();
     expect(engine.getSnapshot().sessions).toHaveLength(0);
+    expect(engine.getSnapshot().hidden).toEqual({ count: 1, causes: ['doneOnStart'] });
+    // Hiding is presentation only: history is the same with the filter on.
+    expect(engine.getSnapshot().historyCount).toBe(historyWhenShowing.count);
+    expect(engine.listHistory()).toEqual(historyWhenShowing.entries);
     expect(engine.getSnapshot().groups).toHaveLength(0);
     expect(engine.getSnapshot().trayState).toBe('none');
     expect(engine.getSnapshot().attention).toBe(0);
@@ -752,6 +760,7 @@ describe('engine', () => {
     await engine.refreshNow();
     expect(engine.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['sess-old']);
     expect(engine.getSnapshot().attention).toBe(1);
+    expect(engine.getSnapshot().hidden.count).toBe(0);
 
     await engine.stop();
   });

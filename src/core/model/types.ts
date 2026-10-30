@@ -488,3 +488,11 @@ export interface StatusTransition {
   seeded: boolean;
   view: SessionView;
 }
+
+export type HiddenCause = 'unused' | 'doneOnStart' | 'orphan';
+
+/** Live sessions the presentation filters removed from `sessions`, each counted once. */
+export interface HiddenSessions {
+  count: number;
+  causes: HiddenCause[];
+}

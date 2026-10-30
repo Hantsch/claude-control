@@ -13,6 +13,8 @@ import type { SessionStatus, TrayState } from '../core/model/status.ts';
 import type { ProjectGroup } from '../core/state/aggregate.ts';
 import type {
   ContextPressure,
+  HiddenCause,
+  HiddenSessions,
   HistoryEntry,
   HistoryQuery,
   ProjectRef,
@@ -27,6 +29,8 @@ import type {
 export type {
   AppSettings,
   ContextPressure,
+  HiddenCause,
+  HiddenSessions,
   HistoryEntry,
   HistoryQuery,
   ProjectGroup,
@@ -53,6 +57,8 @@ export interface AppState {
   at: number;
   indexingHistory: boolean;
   historyCount: number;
+  /** Live sessions the list filters removed — so a count can say what is not on screen. */
+  hidden: HiddenSessions;
 }
 
 export interface HistoryPage {

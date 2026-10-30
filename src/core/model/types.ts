@@ -166,6 +166,7 @@ export interface SubagentNode {
   /**
    * Newest write to the run's *own* transcript (or one of its descendants'), while it runs —
    * `null` once it has finished, and whenever no subagent transcript could be found at all.
+   * A background (`launched`) run counts as running: its end is never recorded.
    *
    * This is the one interim fact a running subagent does offer: Claude Code writes each run
    * to `projects/<slug>/<sessionId>/subagents/agent-<agentId>.jsonl`, so its `mtime` says the
@@ -290,6 +291,12 @@ export interface TranscriptTailFacts {
    * budget the call is (§6.2).
    */
   subagentActivityAt: number | null;
+  /**
+   * Newest write across the session's whole `subagents/` dir (any file, pending call or not).
+   * Only filled when the tail ends in `end_turn`; `null` otherwise or with no evidence. The
+   * machine reads it to keep a turn that ended while its subagent still writes at `working`.
+   */
+  subagentsWrittenAt: number | null;
   /** Agent version recorded on the newest record — makes schema drift detectable (§12). */
   agentVersion: string | null;
   /** Diagnostics from the tail read. */

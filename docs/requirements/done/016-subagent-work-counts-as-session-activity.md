@@ -1,7 +1,7 @@
 ---
 id: 016
 title: A session working through a subagent is not `done`
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-23
 ---
 
@@ -75,21 +75,21 @@ Build after 020.
 
 ## Acceptance Criteria
 
-- [ ] A session whose only current activity is a subagent writing under
+- [x] A session whose only current activity is a subagent writing under
       `projects/<slug>/<sessionId>/subagents/` is not shown as settled on any live surface —
       not in the main window, not in the popover, not in the tray badge, not in the CLI
-- [ ] This holds for a subagent that was launched in the background, and for one whose `Agent`
+- [x] This holds for a subagent that was launched in the background, and for one whose `Agent`
       call already returned and that is being kept working by `SendMessage`
-- [ ] The row's "last activity" reflects the newest subagent write, not the parent's last record
+- [x] The row's "last activity" reflects the newest subagent write, not the parent's last record
       — no more "26m ago" next to a file that was written four seconds ago
-- [ ] No `done` notification fires while subagent work is demonstrably still going on
-- [ ] When the subagent work really stops, the session settles within a bounded, stated time and
+- [x] No `done` notification fires while subagent work is demonstrably still going on
+- [x] When the subagent work really stops, the session settles within a bounded, stated time and
       stays settled — no flapping between working and done
-- [ ] The status reason names the evidence, the way the `pendingTool` branch already does
+- [x] The status reason names the evidence, the way the `pendingTool` branch already does
       ("its subagent wrote 4s ago")
-- [ ] The added disk work stays inside the tick budget (N4) and still opens no subagent
+- [x] The added disk work stays inside the tick budget (N4) and still opens no subagent
       transcript — metadata only, per CONCEPT §4
-- [ ] A session with no `subagents/` directory, and an agent version that writes none, behaves
+- [x] A session with no `subagents/` directory, and an agent version that writes none, behaves
       exactly as it does today
 
 ## Open Questions
@@ -316,3 +316,20 @@ tests in `test/unit/{subagentActivity,machine,pipeline}.test.ts`.
   `test/unit/machine.test.ts` suite
 
 ## Done
+
+Summary: a session whose turn ended but whose subagents keep writing under `subagents/` now stays `working` ("subagent still running — it wrote Ns ago"), for background launches and re-tasked agents alike. New `SubagentActivityReader.sessionActivity` (hot/cold cached, metadata only), new fact `subagentsWrittenAt`, engine refreshes the evidence while the parent transcript is quiet, and "last activity" is the newest of parent record and subagent writes.
+
+Commit message: `016: subagent writes after end_turn keep the session working; session-wide subagent mtime, fresh evidence on quiet transcripts`
+
+Verification: narrow gate only — `npm run build`, `npm run typecheck`, `npx vitest run --changed HEAD` (6 files / 245 tests) green, run twice (before and after review fixes; the fix agent also ran the full `npm test`, 525 green). Review: default tier, 1 cycle; findings fixed: engine test used the forced refresh and never reached the unchanged-transcript path (now non-forced, proven red without the call), re-tasked test strengthened, launched-node stamp test added, CONCEPT wording aligned, stale stamps cleared on the refresh path. Full regression gate pending (sprint).
+AC → test: AC1/AC3/AC4 pipeline "a session delegating to a background subagent stays live, current and silent until the subagent stops" · AC2 same + "a re-tasked subagent kept working by SendMessage keeps its session working" · AC5 machine "settles to done once the subagents have been quiet…" + engine single transition · AC6 machine "a turn that ended while its subagent is still writing…" and "a registry busy session names its subagent evidence…" · AC7 subagentActivity "a steady-state pass stats…", "opens no subagent transcript" · AC8 "reports nothing when the session has no subagent directory" + existing machine suite — all passed. Gap: `e2e: none`, "every live surface" proven at the engine snapshot. No manual residue.
+
+Decisions:
+- Fallback lift applies only when the registry carries no `status`; an unrecognised status value keeps the plain transcript verdict.
+- CHANGELOG has no `# Fixes` heading; entry added as a bullet under `## Unreleased`.
+- Launched nodes only stamp their own `lastActivityAt`, not `subagentActivityAt` (not a pending call).
+- A cold agent resuming after the window is caught by the next full pass (<= 60 s), so a second `done` notification is possible in that rare case; accepted per plan.
+- Refresh path clears earlier stamps first so a vanished file cannot leave a stale "wrote Ns ago".
+- Minor review notes left: `statAll`/`newestMtime` and `wroteAgo` formatters overlap slightly; not extracted.
+
+tiers: D 3 / hard 1 · review default · cycles 1 · agents 6

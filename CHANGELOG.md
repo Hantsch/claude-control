@@ -30,6 +30,9 @@ while that section is empty, and promotes it to the new version section on relea
   time you start it. No relaunch, no releases page to babysit, no EXE to overwrite by hand. Off
   by default, and Settings tells you exactly when it last checked, what's staged, and why it
   didn't work if it didn't.
+- **Handing work to a subagent no longer reads as done.** A session whose last word was "on it"
+  while a subagent kept writing used to flip to done and ping you, then sulk in the corner. It
+  now stays working until the subagent has been quiet for ten minutes.
 - **A one-time "Updated to vX.Y.Z" toast** on the first start that's actually running the new
   version, so you know it happened.
 

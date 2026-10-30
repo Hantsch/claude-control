@@ -541,7 +541,12 @@ export class ControlEngine {
       if (path && (await this.isUnchanged(path, cached))) {
         // `ref` comes from `discoverLiveSessions`, which already PID-verified the session,
         // so it is alive by construction and only the registry facts can have changed.
-        return { ...cached.snapshot, ref, alive: true, readAt: this.now() };
+        const reused: SessionSnapshot = { ...cached.snapshot, ref, alive: true, readAt: this.now() };
+        // The parent file is quiet while a delegated run works, so its evidence must be
+        // re-read here or it would freeze at the last full read.
+        return this.adapter.refreshSubagentActivity
+          ? this.adapter.refreshSubagentActivity(reused, reused.readAt)
+          : reused;
       }
     }
 
@@ -602,7 +607,7 @@ export class ControlEngine {
       pid: ref.pid,
       alive: snapshot.alive,
       startedAt: ref.startedAt,
-      lastActivityAt: facts.last?.at ?? null,
+      lastActivityAt: newestOf(facts.last?.at, facts.subagentActivityAt, facts.subagentsWrittenAt),
       run: describeRun(facts, derived.status),
       pendingTool: facts.pendingTool ?? facts.stalledTools[0] ?? null,
       context: this.context.estimate(snapshot.sessionId, facts.model, facts.usage),
@@ -658,6 +663,13 @@ export class ControlEngine {
         /* best effort: the transcript may already be gone */
       });
   }
+}
+
+/** Newest of the given times; null/undefined ones are "no evidence" and ignored. */
+function newestOf(...times: Array<number | null | undefined>): number | null {
+  let newest: number | null = null;
+  for (const at of times) if (at != null && (newest === null || at > newest)) newest = at;
+  return newest;
 }
 
 /** Statuses in which the current run is still going, so its duration keeps ticking. */

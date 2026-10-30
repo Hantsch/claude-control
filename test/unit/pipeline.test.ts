@@ -10,7 +10,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { appendFile, readFile, readdir, stat } from 'node:fs/promises';
+import { appendFile, readFile, readdir, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ClaudeAdapter } from '../../src/core/adapters/claude/adapter.ts';
@@ -756,6 +756,113 @@ describe('engine', () => {
     await engine.start();
 
     expect(engine.getSnapshot().sessions[0]!.run).toEqual({ startedAt: T0, endedAt: T0 + 90_000 });
+    await engine.stop();
+  });
+
+  it('a session delegating to a background subagent stays live, current and silent until the subagent stops', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-bg', name: 'cc-bg' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    await tree.writeTranscript(
+      slug,
+      'sess-bg',
+      toJsonl([
+        prompt('u1', 0, 'run the long job in the background'),
+        assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 'toolu_bg', name: 'Agent', input: { description: 'Long job' } }] }),
+        agentLaunchedResult('r1', 2_000, { assistantUuid: 'a1', toolUseId: 'toolu_bg' }),
+        assistant({ uuid: 'a2', at: 3_000, stopReason: 'end_turn', text: 'It is running in the background.' }),
+      ]),
+    );
+    const subagent = await tree.writeSubagent({
+      slug,
+      sessionId: 'sess-bg',
+      agentId: 'abg',
+      toolUseId: 'toolu_bg',
+      at: T0 + 4_000,
+    });
+    const touch = (at: number): Promise<void> => utimes(subagent, new Date(at), new Date(at));
+
+    let clock = T0 + 5_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now: () => clock,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    const transitions: StatusTransition[] = [];
+    engine.on('transitions', (batch) => transitions.push(...batch.filter((transition) => !transition.seeded)));
+    await engine.start();
+
+    const session = () => engine.getSnapshot().sessions.find((entry) => entry.sessionId === 'sess-bg');
+    // The timer's entry point: not forced, so an untouched parent transcript is not re-read.
+    const runTick = (): Promise<void> =>
+      (engine as unknown as { refresh(reason: 'tick'): Promise<void> }).refresh('tick');
+    expect(session()?.status).toBe('working');
+    expect(session()?.statusReason).toMatch(/subagent/);
+    expect(session()?.lastActivityAt).toBe(T0 + 4_000);
+    expect(engine.getSnapshot().trayState).toBe('working');
+
+    // The parent transcript is never touched again; only the subagent's file moves.
+    let wrote = T0 + 4_000;
+    for (let tick = 1; tick <= 4; tick += 1) {
+      clock += 5 * 60_000;
+      wrote = clock - 1_000;
+      await touch(wrote);
+      await runTick();
+      expect(session()?.status).toBe('working');
+      expect(session()?.lastActivityAt).toBe(wrote);
+      expect(engine.getSnapshot().trayState).toBe('working');
+    }
+    expect(transitions).toEqual([]);
+
+    clock = wrote + 10 * 60_000 + 1_000;
+    await runTick();
+    expect(session()?.status).toBe('done');
+    await runTick();
+    clock += 60_000;
+    await runTick();
+    expect(transitions.map((transition) => transition.to)).toEqual(['done']);
+    await engine.stop();
+  });
+
+  it('a re-tasked subagent kept working by SendMessage keeps its session working', async () => {
+    const tree = await makeFixtureTree();
+    await tree.writeRegistry(LIVE_PID, registryEntry({ pid: LIVE_PID, sessionId: 'sess-sm', name: 'cc-sm' }));
+    const slug = 'c--development-Hantsch-claude-control';
+    await tree.writeTranscript(
+      slug,
+      'sess-sm',
+      toJsonl([
+        prompt('u1', 0, 'keep the helper busy'),
+        assistant({ uuid: 'a1', at: 1_000, tools: [{ id: 'toolu_old', name: 'Agent', input: { description: 'Helper' } }] }),
+        agentResult('r1', 2_000, { assistantUuid: 'a1', toolUseId: 'toolu_old', status: 'completed' }),
+        assistant({ uuid: 'a2', at: 3_000, tools: [{ id: 'toolu_m1', name: 'SendMessage', input: { to: 'helper' } }] }),
+        toolResult('r2', 4_000, { assistantUuid: 'a2', toolUseId: 'toolu_m1' }),
+        assistant({ uuid: 'a3', at: 5_000, tools: [{ id: 'toolu_m2', name: 'SendMessage', input: { to: 'helper' } }] }),
+        toolResult('r3', 6_000, { assistantUuid: 'a3', toolUseId: 'toolu_m2' }),
+        assistant({ uuid: 'a4', at: 7_000, stopReason: 'end_turn', text: 'Handed over.' }),
+      ]),
+    );
+    const helper = await tree.writeSubagent({
+      slug,
+      sessionId: 'sess-sm',
+      agentId: 'ahelp',
+      toolUseId: 'toolu_old',
+      at: T0 + 8_000,
+    });
+
+    const clock = T0 + 9_000;
+    const engine = new ControlEngine({
+      adapter: makeAdapter(tree, new FakeProbe(new Set([LIVE_PID])), () => clock),
+      settings: mergeSettings({ ...DEFAULT_SETTINGS, indexHistoryOnStart: false }),
+      now: () => clock,
+      createWatcher: () => ({ start: async () => {}, stop: async () => {} }),
+    });
+    await engine.start();
+    const row = engine.getSnapshot().sessions[0]!;
+    expect(row.status).toBe('working');
+    expect(row.statusReason).toMatch(/subagent/);
+    expect(row.lastActivityAt).toBe((await stat(helper)).mtimeMs);
     await engine.stop();
   });
 

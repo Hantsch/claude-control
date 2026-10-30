@@ -32,7 +32,7 @@ export function buildSubagentTree(calls: readonly ToolCallEvent[], now: number):
 }
 
 /**
- * Stamp `lastActivityAt` onto the running nodes from a `tool_use id → newest write` map.
+ * Stamp `lastActivityAt` onto the running and background-launched nodes from a `tool_use id → newest write` map.
  *
  * Kept apart from `buildSubagentTree` on purpose: the tree is a pure function of records, and
  * the activity times come from the filesystem, which only the adapter may touch (§9). A node
@@ -45,7 +45,8 @@ export function withSubagentActivity(
   if (activity.size === 0) return nodes as SubagentNode[];
   return nodes.map((node) => {
     const children = withSubagentActivity(node.children, activity);
-    const at = node.status === 'running' ? activity.get(node.id) ?? null : null;
+    const open = node.status === 'running' || node.status === 'launched';
+    const at = open ? activity.get(node.id) ?? null : null;
     if (at === node.lastActivityAt && children === node.children) return node;
     return { ...node, lastActivityAt: at, children };
   });

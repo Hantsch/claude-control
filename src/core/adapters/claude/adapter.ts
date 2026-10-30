@@ -18,6 +18,7 @@ import type {
   SessionDetail,
   SessionId,
   SessionSnapshot,
+  SubagentNode,
   TimelineEvent,
   TranscriptTailFacts,
   UsageTotals,
@@ -212,7 +213,7 @@ export class ClaudeAdapter implements AgentAdapter {
       });
       facts.runStartedAt = await this.resolveRunStart(ref.sessionId, path, facts.runStartedAt);
       facts.aiTitle = await this.resolveAiTitle(ref.sessionId, path, facts.aiTitle);
-      await this.applySubagentActivity(ref.sessionId, path, facts);
+      await this.applySubagentActivity(ref.sessionId, path, facts, readAt);
       return { sessionId: ref.sessionId, ref: { ...ref, transcriptPath: path }, project, alive, facts, readAt };
     } catch (error) {
       const message = describe(error);
@@ -295,10 +296,10 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /**
-   * Fill in what the *running* subagents have written, which `summarizeRecords` cannot know:
+   * Fill in what the *running* (and background-launched) subagents have written, which `summarizeRecords` cannot know:
    * the parent transcript says nothing between an `Agent` call and its result, while the run
    * itself keeps appending to its own file. One `stat` of the subagent directory plus one per
-   * running run — nothing is opened, so no subagent prompt or output is read (§4).
+   * open run — nothing is opened, so no subagent prompt or output is read (§4).
    *
    * Failures are swallowed on purpose: a missing directory is the normal case for an agent
    * version that writes none, and then `subagentActivityAt` stays `null` and the state machine
@@ -308,12 +309,22 @@ export class ClaudeAdapter implements AgentAdapter {
     sessionId: SessionId,
     path: string,
     facts: TranscriptTailFacts,
+    now: number,
   ): Promise<void> {
-    const running = facts.subagents.filter((node) => node.status === 'running');
-    if (running.length === 0) return;
+    const dir = subagentDirForTranscript(path);
+    facts.subagentsWrittenAt = null;
+    if (facts.last?.kind === 'assistant' && facts.last.stopReason === 'end_turn') {
+      // The stamp lets the reader tell "the parent changed" from "only a child wrote".
+      facts.subagentsWrittenAt = await this.subagentActivity
+        .sessionActivity(sessionId, dir, `${facts.read.fileSize}:${facts.read.mtimeMs}`, now)
+        .catch(() => null);
+    }
+
+    const open = facts.subagents.filter((node) => node.status === 'running' || node.status === 'launched');
+    if (open.length === 0) return;
 
     const activity = await this.subagentActivity
-      .newestActivity(sessionId, subagentDirForTranscript(path), running.map((node) => node.id))
+      .newestActivity(sessionId, dir, open.map((node) => node.id))
       .catch(() => new Map<string, number>());
     if (activity.size === 0) return;
 
@@ -329,6 +340,23 @@ export class ClaudeAdapter implements AgentAdapter {
       if (newest === null || at > newest) newest = at;
     }
     facts.subagentActivityAt = newest;
+  }
+
+  /**
+   * Re-derive the subagent evidence of an already-read snapshot without touching the parent
+   * transcript, which stays quiet for as long as a delegated run works.
+   */
+  async refreshSubagentActivity(snapshot: SessionSnapshot, now: number): Promise<SessionSnapshot> {
+    const path = snapshot.ref.transcriptPath;
+    if (!path) return snapshot;
+    // Stamps from the earlier read must not survive when this read finds no evidence.
+    const facts = {
+      ...snapshot.facts,
+      subagentActivityAt: null,
+      subagents: clearSubagentActivity(snapshot.facts.subagents),
+    };
+    await this.applySubagentActivity(snapshot.sessionId, path, facts, now);
+    return { ...snapshot, facts, readAt: now };
   }
 
   /** Drop the cached run start of a session that is gone, so the map cannot grow forever. */
@@ -595,6 +623,7 @@ function emptyFacts(note: string, error: string | null): TranscriptTailFacts {
     lastAssistantText: note,
     subagents: [],
     subagentActivityAt: null,
+    subagentsWrittenAt: null,
     agentVersion: null,
     read: {
       fileSize: 0,
@@ -705,4 +734,12 @@ async function exists(path: string): Promise<boolean> {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function clearSubagentActivity(nodes: readonly SubagentNode[]): SubagentNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    lastActivityAt: null,
+    children: clearSubagentActivity(node.children),
+  }));
 }

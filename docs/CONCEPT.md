@@ -279,7 +279,7 @@ leaves the tray surfaces the ordinary way, through the recency window or "Mark a
 - `waiting` → `waiting`, and `waitingFor` is shown on the row, toast and detail.
 - `busy` → never `done`, `interrupted` or `starting`; lifted to `working`. An `end_turn` under `busy` stays `working` (background agents).
 - `idle` (stamp not more than 2 s older than the newest transcript record) → never `working` or `queued`; in-flight verdicts become `interrupted`. `done`, `interrupted` and `starting` still come from the transcript.
-- Any other value, or no `status` → the transcript rules below, unchanged.
+- No registry `status` at all → the transcript rules below, unchanged, with one fallback: an `end_turn` tail reads `working` (inferred) while a subagent has written to the session's `subagents/` dir within the liveness window (10 min), because the turn's work is not over. It settles to `done` at most 10 min after the newest subagent write, plus one tick. Under a reported `busy` the status is unchanged and the reason names the newest write.
 
 The transcript still supplies the sub-state (tool, working/stale split).
 

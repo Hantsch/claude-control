@@ -81,6 +81,7 @@ export function summarizeRecords(
     // The filesystem is the adapter's business, not this function's — `readStatus` fills
     // this in (and leaves it `null` for the history index, which reads no live subagents).
     subagentActivityAt: null,
+    subagentsWrittenAt: null,
     agentVersion: newestField(records, (r) => (typeof r.version === 'string' && r.version ? r.version : null)),
     read: options.read,
   };

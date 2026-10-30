@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { summarizeRecords } from '../../src/core/adapters/claude/summarize.ts';
 import type { TranscriptRecord } from '../../src/core/adapters/claude/records.ts';
-import { DEFAULT_THRESHOLDS } from '../../src/core/model/settings.ts';
+import { DEFAULT_THRESHOLDS, SUBAGENT_LIVENESS_MS } from '../../src/core/model/settings.ts';
 import type { SessionStatus } from '../../src/core/model/status.ts';
 import { deriveHistoricalStatus, deriveStatus } from '../../src/core/state/machine.ts';
 import {
@@ -641,5 +641,69 @@ describe('deriveHistoricalStatus', () => {
 
   it('reports unknown when there is nothing semantic', () => {
     expect(deriveHistoricalStatus(facts([lastPrompt('x')]), DEFAULT_THRESHOLDS)).toBe('unknown');
+  });
+});
+
+describe('subagent writes after the turn ended', () => {
+  const ended = [assistant({ uuid: 'a1', at: 0, stopReason: 'end_turn', text: 'Dispatched.' })];
+  const LIVENESS = SUBAGENT_LIVENESS_MS;
+
+  /** Derives at `atMs` with the subagents last having written `wroteAgoMs` earlier. */
+  function deriveWith(
+    wroteAgoMs: number | null,
+    atMs: number,
+    reported?: { status: string | null; waitingFor: string | null; at: number | null },
+  ) {
+    const now = T0 + atMs;
+    const f = facts(ended, now);
+    f.subagentsWrittenAt = wroteAgoMs === null ? null : now - wroteAgoMs;
+    return deriveStatus({ alive: true, facts: f, now, thresholds: DEFAULT_THRESHOLDS, reported });
+  }
+
+  it('a turn that ended while its subagent is still writing stays working and says so', () => {
+    const result = deriveWith(30 * SECOND, 40 * SECOND);
+    expect(result.status).toBe('working');
+    expect(result.statusSource).toBe('inferred');
+    expect(result.reason).toBe(
+      "subagent still running — it wrote 30s ago, so this turn's work is not over",
+    );
+    expect(deriveWith(5 * MINUTE, 6 * MINUTE).reason).toContain('wrote 5 min ago');
+  });
+
+  it('settles to done once the subagents have been quiet for the liveness window, and stays there', () => {
+    const wroteAt = 10 * SECOND;
+    const at = (afterMs: number) => {
+      const now = T0 + wroteAt + afterMs;
+      const f = facts(ended, now);
+      f.subagentsWrittenAt = T0 + wroteAt;
+      return deriveStatus({ alive: true, facts: f, now, thresholds: DEFAULT_THRESHOLDS }).status;
+    };
+    expect(at(LIVENESS - SECOND)).toBe('working');
+    expect(at(LIVENESS)).toBe('done');
+    expect(at(60 * MINUTE)).toBe('done');
+  });
+
+  it('a registry busy session names its subagent evidence in the reason', () => {
+    const busy = { status: 'busy', waitingFor: null, at: T0 };
+    const withEvidence = deriveWith(12 * SECOND, 20 * SECOND, busy);
+    expect(withEvidence.status).toBe('working');
+    expect(withEvidence.statusSource).toBe('reported');
+    expect(withEvidence.reason).toContain('subagent still running, wrote 12s ago');
+    const quiet = deriveWith(2 * LIVENESS, 3 * LIVENESS, busy);
+    expect(quiet.status).toBe('working');
+    expect(quiet.reason).toContain('wrote 20 min ago');
+    expect(deriveWith(null, 20 * SECOND, busy).reason).not.toContain('subagent still running');
+  });
+
+  it('a registry idle session stays settled whatever its subagents wrote', () => {
+    const result = deriveWith(SECOND, 20 * SECOND, { status: 'idle', waitingFor: null, at: T0 + 10 * SECOND });
+    expect(result.status).toBe('done');
+    expect(result.statusSource).toBe('reported');
+  });
+
+  it("a finished session's history status ignores subagent writes after its last record", () => {
+    const f = facts(ended);
+    f.subagentsWrittenAt = T0 + 5 * SECOND;
+    expect(deriveHistoricalStatus(f, DEFAULT_THRESHOLDS)).toBe('done');
   });
 });

@@ -55,7 +55,7 @@
  */
 
 import type { Thresholds } from '../model/settings.ts';
-import { isSlowTool, workThresholdFor } from '../model/settings.ts';
+import { SUBAGENT_LIVENESS_MS, isSlowTool, workThresholdFor } from '../model/settings.ts';
 import type { SessionStatus } from '../model/status.ts';
 import type { TranscriptTailFacts } from '../model/types.ts';
 
@@ -139,7 +139,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
   const inferred = applyQueuedPrompt(base, facts);
 
   const reported = input.reported;
-  if (reported?.status === 'busy') return underBusy(base, inferred);
+  if (reported?.status === 'busy') return underBusy(base, inferred, facts, now);
   if (
     reported?.status === 'idle' &&
     (reported.at === null ||
@@ -148,6 +148,7 @@ export function deriveStatus(input: DeriveInput): DeriveResult {
   ) {
     return underIdle(base);
   }
+  if (!reported?.status) return liftWhileSubagentWrites(base, inferred, facts, now);
   return inferred;
 }
 
@@ -284,7 +285,12 @@ function applyQueuedPrompt(base: TranscriptVerdict, facts: TranscriptTailFacts):
  * call keeps its own nuance: below budget it is `working`, over budget `stale` — never
  * `waiting`, since Claude Code reports a prompt as `waiting` itself.
  */
-function underBusy(base: TranscriptVerdict, inferred: DeriveResult): DeriveResult {
+function underBusy(
+  base: TranscriptVerdict,
+  inferred: DeriveResult,
+  facts: TranscriptTailFacts,
+  now: number,
+): DeriveResult {
   let status: SessionStatus = 'working';
   let detail: string;
   if (base.overdueTool !== null) {
@@ -301,6 +307,9 @@ function underBusy(base: TranscriptVerdict, inferred: DeriveResult): DeriveResul
     // `end_turn` while background agents still run: the turn is over in the transcript, not
     // in the session — and that can last any length of time, so there is no age cut-off.
     detail = 'the turn ended, background agents are still running';
+    if (facts.subagentsWrittenAt !== null) {
+      detail += ` — subagent still running, wrote ${wroteAgo(now, facts.subagentsWrittenAt)} ago`;
+    }
   } else if (base.status === 'interrupted') {
     detail = 'a new turn is under way after the interrupted one';
   } else if (base.status === 'starting') {
@@ -314,6 +323,33 @@ function underBusy(base: TranscriptVerdict, inferred: DeriveResult): DeriveResul
     ageMs: base.ageMs,
     appliedWorkMs: base.appliedWorkMs,
     statusSource: 'reported',
+  };
+}
+
+/** "12s" below two minutes, "3 min" from there on. */
+function wroteAgo(now: number, at: number): string {
+  const ms = Math.max(0, now - at);
+  return ms >= 120_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)}s`;
+}
+
+/**
+ * Without a registry status, an `end_turn` tail is `done` only once the subagents have gone
+ * quiet: one still writing means the turn's work is not over. Settles at most
+ * `SUBAGENT_LIVENESS_MS` after its newest write — the clock, not a record, ends it.
+ */
+function liftWhileSubagentWrites(
+  base: TranscriptVerdict,
+  inferred: DeriveResult,
+  facts: TranscriptTailFacts,
+  now: number,
+): DeriveResult {
+  const wrote = facts.subagentsWrittenAt;
+  if (base.status !== 'done' || wrote === null || now - wrote >= SUBAGENT_LIVENESS_MS) return inferred;
+  return {
+    ...inferred,
+    status: 'working',
+    reason: `subagent still running — it wrote ${wroteAgo(now, wrote)} ago, so this turn's work is not over`,
+    statusSource: 'inferred',
   };
 }
 
@@ -345,5 +381,5 @@ export function deriveHistoricalStatus(
 ): SessionStatus {
   const at = facts.last?.at;
   if (at === undefined) return 'unknown';
-  return deriveStatus({ alive: true, facts, now: at, thresholds }).status;
+  return deriveStatus({ alive: true, facts: { ...facts, subagentsWrittenAt: null }, now: at, thresholds }).status;
 }

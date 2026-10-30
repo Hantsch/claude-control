@@ -52,6 +52,7 @@ import { formatAge, formatDuration } from './lib/format.ts';
 import { shouldFocusTopRow } from './lib/popoverFocus.ts';
 import {
   SUBAGENT_FLAT_LIST_NOTE,
+  rowPlace,
   subagentMessage,
   subagentSummary,
 } from './lib/popoverModel.ts';
@@ -941,6 +942,7 @@ function Popover(): React.JSX.Element {
                 const waiting = session.status === 'waiting';
                 const subagents = subagentSummary(session.subagents);
                 const uptime = formatUptime(session.startedAt);
+                const place = rowPlace(session);
                 const nodeKey = `s:${session.sessionId}`;
                 const isOpen = openNodes.has(nodeKey);
                 const toggleOpen = (event: React.SyntheticEvent): void => {
@@ -978,7 +980,7 @@ function Popover(): React.JSX.Element {
                   }}
                 >
                   {/* Line 1 — identity and numbers: chevron, status glyph, index in the
-                      group, branch, context, model, mute toggle. */}
+                      group, project · branch, context, model, mute toggle. */}
                   <span className="l1">
                     {/* D4: clicking the chevron toggles the detail block below, without also
                         firing the row's own jump-on-click (stopPropagation, same idiom as the
@@ -996,15 +998,21 @@ function Popover(): React.JSX.Element {
                     <StatusDot status={session.status} />
                     <span className="idx">{index + 1}</span>
                     {/* Identity, in the order you ask about it: *which run is this* first,
-                        then where it runs. The branch alone cannot tell two sessions on the
-                        same branch apart — a routine case (two agents on one sprint branch) —
-                        so the name leads and the branch trails it, quieter. */}
+                        then where it runs, as project · branch. The branch alone cannot tell two
+                        sessions apart — the same branch name recurs across projects — so the
+                        name leads and the place trails it, quieter. */}
                     <span className="ident">
                       <span className="name" title={sessionLabel(session)}>
                         {sessionLabel(session)}
                       </span>
-                      <span className="branch" title={session.branch ?? session.project.name}>
-                        {session.branch ? session.branch : session.project.name}
+                      <span className="place" title={place.title}>
+                        <span className="proj">{place.project}</span>
+                        {place.branch !== null && (
+                          <>
+                            <span className="sep">·</span>
+                            <span className="branch">{place.branch}</span>
+                          </>
+                        )}
                       </span>
                     </span>
                     <ContextBar context={session.context} valueFormat="tokens" />

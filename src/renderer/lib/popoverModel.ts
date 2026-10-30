@@ -123,3 +123,17 @@ export function subagentMessage(
   }
   return { kind: 'none', text: null };
 }
+
+/**
+ * Where a row's session runs: always the project, plus the branch when there is one. A blank
+ * branch is no branch, so the row never renders an empty segment behind the separator.
+ */
+export function rowPlace(session: { project: { name: string }; branch: string | null }): {
+  project: string;
+  branch: string | null;
+  title: string;
+} {
+  const project = session.project.name;
+  const branch = session.branch?.trim() ? session.branch : null;
+  return { project, branch, title: branch === null ? project : `${project} · ${branch}` };
+}

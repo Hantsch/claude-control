@@ -11,6 +11,8 @@ while that section is empty, and promotes it to the new version section on relea
 
 <!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
 
+- **Popover rows name their project.** Two agents on `main` in different repos used to be
+  twins; each row now reads `project · branch`, and the branch is the first to be ellipsized.
 - **An aborted turn is its own status.** Interrupting a session (Esc) leaves a `user` record
   behind, which read as "a prompt was just submitted" → `working`. Because `working` means a
   turn is in flight, the row could never leave the popover and "Mark as seen" refused to touch

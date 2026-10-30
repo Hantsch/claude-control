@@ -1185,10 +1185,10 @@ table.history .title {
   text-align: right;
 }
 
-/* Identity cell: the session's own name, then the branch behind it. The name gets the
-   emphasis and whatever width is left, because it is the only part that tells two sessions
-   on the same branch apart; the branch keeps a slice of the cell for itself (`flex: 0 1 auto`
-   plus a cap) so it never disappears entirely behind a long name. */
+/* Identity cell: the session's own name leads, then project · branch. The name gets the
+   emphasis and whatever width is left, because it tells two sessions on one branch apart; the
+   place keeps a capped slice of the cell, and inside it the branch gives up width first
+   (flex-shrink 2 vs 1) so the project stays recognisable. */
 .popover-row .ident {
   display: flex;
   align-items: baseline;
@@ -1203,13 +1203,31 @@ table.history .title {
   font-size: 12px;
 }
 
-.popover-row .branch {
-  /* `0 0` on purpose: a long *name* must not squeeze the branch — the name shrinks and
-     ellipsizes first, and the branch only clips once it alone exceeds its 45% cap. */
+.popover-row .place {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   flex: 0 0 auto;
-  max-width: 45%;
-  color: var(--text-dim);
+  max-width: 55%;
+  min-width: 0;
   font-size: 11px;
+}
+
+.popover-row .place .proj {
+  color: var(--text-dim);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.popover-row .place .sep {
+  color: var(--text-faint);
+  flex: none;
+}
+
+.popover-row .place .branch {
+  color: var(--text-faint);
+  flex: 0 2 auto;
+  min-width: 0;
 }
 
 /* Muted sessions still show up in the popover, just quieter — same treatment as the main
@@ -1261,7 +1279,8 @@ table.history .title {
 }
 
 .popover-row .name,
-.popover-row .branch,
+.popover-row .place .proj,
+.popover-row .place .branch,
 .popover-row .model,
 .popover-row .l2 .txt {
   overflow: hidden;

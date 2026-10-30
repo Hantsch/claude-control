@@ -48,3 +48,17 @@
 - 2026-10-30 12:19:06 · 021 · review 1 · started
 - 2026-10-30 12:20:16 · 021 · review 1 · done
 - 2026-10-30 12:20:16 · 021 · story · done
+- 2026-10-30 12:20:26 · 017 · build · started
+- 2026-10-30 12:20:39 · 017 · D1 popover row names its project · started
+- 2026-10-30 12:21:57 · 017 · D1 popover row names its project · done
+- 2026-10-30 12:21:57 · 017 · verify · started
+- 2026-10-30 12:22:21 · 017 · verify · done
+- 2026-10-30 12:22:21 · 017 · review 1 · started
+- 2026-10-30 12:22:51 · 017 · review 1 · done (FAIL: styles.css duplicated block)
+- 2026-10-30 12:22:59 · 017 · D1 fix css duplication · started
+- 2026-10-30 12:23:32 · 017 · D1 fix css duplication · done
+- 2026-10-30 12:23:32 · 017 · verify · started
+- 2026-10-30 12:23:55 · 017 · verify · done
+- 2026-10-30 12:23:55 · 017 · review 2 · started
+- 2026-10-30 12:24:17 · 017 · review 2 · done
+- 2026-10-30 12:24:25 · 017 · story · done

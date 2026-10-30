@@ -1,7 +1,7 @@
 ---
 id: 017
 title: The popover row says which project it is
-status: ready # draft -> ready -> in-progress -> done
+status: done # draft -> ready -> in-progress -> done
 created: 2026-08-23
 ---
 
@@ -31,15 +31,15 @@ whether one project is live or five.
 
 ## Acceptance Criteria
 
-- [ ] With exactly one project group live, the popover names the project
-- [ ] A row identifies its project without depending on a group head being visible on screen
-- [ ] Two sessions on identically-named branches in different projects are distinguishable at a
+- [x] With exactly one project group live, the popover names the project
+- [x] A row identifies its project without depending on a group head being visible on screen
+- [x] Two sessions on identically-named branches in different projects are distinguishable at a
       glance
-- [ ] Nothing else on line 1 loses its space: the context bar, the token figure, the model, the
+- [x] Nothing else on line 1 loses its space: the context bar, the token figure, the model, the
       mute bell and the expand affordance keep working at the popover's width, and the two-line
       row layout 010 settled on is not turned back into an eight-column row
-- [ ] A session with no branch recorded shows the project once, not twice
-- [ ] The main window and the tray menu are unchanged — both already name the project
+- [x] A session with no branch recorded shows the project once, not twice
+- [x] The main window and the tray menu are unchanged — both already name the project
 
 ## Open Questions
 
@@ -108,7 +108,7 @@ window.
 
 ## Deliverables
 
-- [ ] **D1: a popover row names its project.** Renderer only. Files:
+- [x] **D1: a popover row names its project.** Renderer only. Files:
   `src/renderer/lib/popoverModel.ts`, `src/renderer/popover.tsx`, `src/renderer/styles.css`,
   `test/unit/popoverModel.test.ts`, `test/unit/popoverRowLayout.test.ts` (new),
   `CHANGELOG.md`.
@@ -183,3 +183,15 @@ the project has no render or e2e harness. Nothing machine-checks how the row tru
 620 px. Listed for the sprint review.
 
 ## Done
+
+Popover rows now read `project · branch` in the trailing identity span (project emphasised, branch shrinks first, 55% cap; project alone when no branch). New pure `rowPlace` helper in `popoverModel.ts`; `.l1` grid untouched; group head, `SubagentRow`, tray and main window unchanged.
+
+Commit message: `017: popover row names its project (project · branch place span, rowPlace helper)`
+
+Verification: narrow gate — `npm run build`, `npm run typecheck`, `npx vitest run --changed HEAD` all green (21 tests in the changed files; the deliverable agent also ran full `npm test`, 540/540). Review: stage 1 (default) FAIL once (styles.css carried a duplicated ~900-line block and the stale 45% `.branch` rule), repaired, layout test now also asserts exactly one `.popover-row .l1` rule; review 2 PASS.
+AC → test (all passed): AC1/AC2 `popoverModel.test.ts` › rowPlace › "a row names its project when only one project is live"; AC3 › "two sessions on the same branch in different projects get different places"; AC5 › "a session without a branch shows its project once"; AC4 `popoverRowLayout.test.ts` › "the popover row's first line keeps its eight-track grid"; AC6 diff-scope check in review (nothing under `src/main/`, no main-window component) — PASS.
+Open: no render/e2e harness, so truncation at 620 px is not machine-checked (named gap, for the sprint review). Stale pre-existing comment "branch column" at styles.css ~1117 left as is.
+
+Decisions: (1) CHANGELOG has no `# Features` heading, only bullets under `## Unreleased`; bullet added at the top there. (2) Layout test reads the shared `.l1` rule (`.popover-row .l1, .popover-subagent-row .l1`) by selector match. (3) Placed `rowPlace` tests with inline objects, no fixtures needed.
+
+tiers: D 1 / hard 0 · review default · cycles 1 · agents 6

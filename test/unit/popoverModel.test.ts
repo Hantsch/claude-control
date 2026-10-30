@@ -9,6 +9,7 @@ import type { SubagentNode } from '../../src/shared/ipc.ts';
 import {
   SUBAGENT_FLAT_LIST_NOTE,
   SUBAGENT_NO_INTERIM_STATE,
+  rowPlace,
   subagentMessage,
   subagentSummary,
 } from '../../src/renderer/lib/popoverModel.ts';
@@ -181,5 +182,29 @@ describe('SUBAGENT_FLAT_LIST_NOTE', () => {
     expect(SUBAGENT_FLAT_LIST_NOTE).toBe(
       'flat list — a subagent that itself spawned subagents would not be recognisable as a parent here.',
     );
+  });
+});
+
+describe('rowPlace', () => {
+  it('a row names its project when only one project is live', () => {
+    const place = rowPlace({ project: { name: 'claude-control' }, branch: 'sprint/S06' });
+    expect(place.project).toBe('claude-control');
+    expect(place.title).toContain('claude-control');
+    expect(place.branch).toBe('sprint/S06');
+  });
+
+  it('two sessions on the same branch in different projects get different places', () => {
+    const a = rowPlace({ project: { name: 'alpha' }, branch: 'main' });
+    const b = rowPlace({ project: { name: 'beta' }, branch: 'main' });
+    expect(a.title).not.toBe(b.title);
+  });
+
+  it('a session without a branch shows its project once', () => {
+    for (const branch of [null, '', '   ']) {
+      const place = rowPlace({ project: { name: 'alpha' }, branch });
+      expect(place.branch).toBeNull();
+      expect(place.title).toBe('alpha');
+      expect(place.title).not.toContain('·');
+    }
   });
 });

@@ -76,3 +76,6 @@
 - 14:22:13 · gate · short-suites · done
 - 14:22:25 · gate · recorded
 - 14:23:09 · review · done
+- 14:23:09 · gate · roadmap-check · started
+- 14:23:43 · gate · roadmap-check · done
+- 14:23:43 · gate · release-verify · started

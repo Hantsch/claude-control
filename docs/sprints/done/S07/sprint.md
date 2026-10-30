@@ -26,7 +26,7 @@ suite is cleaner and less flaky behind them.
 
 ## Notes
 
-- Source: [test setup review 2026-10-30](../../reviews/2026-10-30-tests-review.md). It was
+- Source: [test setup review 2026-10-30](../../../reviews/2026-10-30-tests-review.md). It was
   triggered by a release that failed on `expected 2053 to be less than 2000`
   (pipeline.test.ts:1343, N5). The story map, the lane decision (§3b) and the findings are there.
 - Scope was decided by the user on 2026-10-30: all five stories in one sprint, not just the two

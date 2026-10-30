@@ -29,7 +29,7 @@ Design of record: [CONCEPT.md](CONCEPT.md). Milestones are ordered by payoff per
 | M5 | Exact context windows | done 2026-08-23 | [S05](sprints/done/S05/review.md) | The LiteLLM lookup is an opt-in, off by default, and the "no network" claim was reworded. |
 | M6 | Attribution | done 2026-08-22 | [S04](sprints/done/S04/review.md) | Live counts per project group and history grouped by project, branch and model, from one shared source. |
 | M8 | Trust the live list | done 2026-10-30 | [S06](sprints/done/S06/review.md) | Claude Code's own status, subagent activity, VS Code session names and hidden-session counts. |
-| M9 | Trustworthy test lanes | done 2026-10-30 | [S07](sprints/done/S07/review.md) | |
+| M9 | Trustworthy test lanes | done 2026-10-30 | [S07](sprints/done/S07/review.md) | Timing budgets run in a weekly perf lane, the release lane tests only a due release, and the lanes are written down in CLAUDE.md. |
 | M7 | Second agent | planned, last in the phase | — | Story [008](requirements/008-second-agent-adapter.md) is a draft and gets a sprint of its own. |
 
 ## Open / unprioritised

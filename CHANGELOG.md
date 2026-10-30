@@ -9,6 +9,10 @@ while that section is empty, and promotes it to the new version section on relea
 
 ## Unreleased
 
+<!-- Add your changes here as '- ...' items. A release is blocked while this section is empty. -->
+
+## 1.1.2 — 2026-10-30
+
 - **History rows open for real.** Click a past session (or Tab to it and press Enter) and it
   opens in its own resizable window: the facts, the subagent tree and the run timeline, instead
   of a little note that mostly told you where the file lives.

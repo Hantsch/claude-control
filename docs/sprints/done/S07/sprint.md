@@ -1,6 +1,6 @@
 ---
 sprint: S07
-status: in-progress
+status: done
 branch: dev
 milestone: M9 — Trustworthy test lanes
 ---
@@ -42,4 +42,11 @@ suite is cleaner and less flaky behind them.
 
 ## Regression gate
 
-<!-- Filled by `/sprint` phase 2b: the commands run, minutes taken, result, commit, and a verdict per failure. -->
+Ran on `784c7e4` (dev), 2026-10-30 14:21, all green, no failures:
+
+- `npm run build` — green, < 0.1 min
+- `npm run typecheck` — green, < 0.1 min
+- `npm test` — green, 0.2 min (42 files, 587 tests)
+- `e2e`, `e2e-all` — `none` in the profile, nothing to run
+
+No quarantine entries (`e2e-quarantine: none`), no unexpected passes.

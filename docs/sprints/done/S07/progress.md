@@ -72,3 +72,7 @@
 - 14:19:57 · 027 · review 1 · started
 - 14:21:25 · 027 · review 1 · done
 - 14:21:26 · 027 · story · done
+- 14:21:38 · gate · short-suites · started
+- 14:22:13 · gate · short-suites · done
+- 14:22:25 · gate · recorded
+- 14:23:09 · review · done

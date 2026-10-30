@@ -8,9 +8,9 @@ The one source of status and planning. It is a map: story truth lives in
 
 As of 2026-10-30:
 - **Current:** Phase 3, Accuracy & breadth.
-- **Last finished:** M8, Trust the live list (S06, merged into `dev`).
-- **Next:** [S07](sprints/S07/sprint.md), M9 — trustworthy test lanes. It comes out of the [test review](reviews/2026-10-30-tests-review.md) after a release failed on a 2 s timing assert. Start it with `/sprint S07`.
-- **After that:** M7 (second agent) in a sprint of its own.
+- **Last finished:** M9, Trustworthy test lanes (S07, committed on `dev`): timing budgets in their own perf lane, a release lane that tests only a due release and recovers a tag without a release.
+- **Next:** M7 (second agent) in a sprint of its own.
+- **Waiting on the user:** pushing `dev`.
 
 ## Phase overview
 
@@ -18,7 +18,7 @@ As of 2026-10-30:
 | --- | --- | --- | --- |
 | 1 — v1 tray app | Every running Claude Code session is visible, its status is inferred correctly, and you are told when one finishes or is blocked | — | ✔ done |
 | 2 — Daily use | The popover answers "which session needs me, and what for" without a click, and the app is running when it matters | 4/4 | ✔ done 2026-08-21 |
-| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | 3/5 | ▶ in progress |
+| 3 — Accuracy & breadth | The context gauge stops being an estimate, history attributes work over time, and the adapter seam is proven by a second agent | 4/5 | ▶ in progress |
 
 ## Current phase: 3 — Accuracy & breadth
 
@@ -29,7 +29,7 @@ Design of record: [CONCEPT.md](CONCEPT.md). Milestones are ordered by payoff per
 | M5 | Exact context windows | done 2026-08-23 | [S05](sprints/done/S05/review.md) | The LiteLLM lookup is an opt-in, off by default, and the "no network" claim was reworded. |
 | M6 | Attribution | done 2026-08-22 | [S04](sprints/done/S04/review.md) | Live counts per project group and history grouped by project, branch and model, from one shared source. |
 | M8 | Trust the live list | done 2026-10-30 | [S06](sprints/done/S06/review.md) | Claude Code's own status, subagent activity, VS Code session names and hidden-session counts. |
-| M9 | Trustworthy test lanes | planned | [S07](sprints/S07/sprint.md) | Stories 023–027 from the [test review](reviews/2026-10-30-tests-review.md); a release fails only on a real defect. |
+| M9 | Trustworthy test lanes | done 2026-10-30 | [S07](sprints/done/S07/review.md) | |
 | M7 | Second agent | planned, last in the phase | — | Story [008](requirements/008-second-agent-adapter.md) is a draft and gets a sprint of its own. |
 
 ## Open / unprioritised
@@ -46,7 +46,9 @@ Design of record: [CONCEPT.md](CONCEPT.md). Milestones are ordered by payoff per
 - The CLI reads the exact-window cache but never fetches. Confirm this is what "the CLI honours the setting" meant ([S05 review](sprints/done/S05/review.md)).
 - 021: origin markers are only tested together; the history sidecar branch and `readDetail` titles have no dedicated test ([S06 review](sprints/done/S06/review.md)).
 - 022: `EventRow.hasMore` is computed but not rendered, so a clipped event row does not say so ([S06 review](sprints/done/S06/review.md)).
-- No e2e harness: every UI criterion since S01 is proven below the rendered app ([S06 review](sprints/done/S06/review.md)).
+- No e2e harness: every UI criterion since S01 is proven below the rendered app, and 027 removed the source pins on the renderer half of the navigate/detail flows ([S06 review](sprints/done/S06/review.md), [S07 review](sprints/done/S07/review.md)).
+- 024: the recovery path's package.json-vs-tag mismatch and missing-CHANGELOG-section throws have no test ([S07 review](sprints/done/S07/review.md)).
+- `networkPromiseWording` pins "are the two exceptions" but not "no outbound requests" in the README ([S07 review](sprints/done/S07/review.md)).
 - History paging is unbuilt: the `≥` marker says totals are a lower bound, not complete ([015](requirements/done/015-s04-residuals.md)).
 
 ## History

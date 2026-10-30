@@ -1,6 +1,6 @@
 ---
 sprint: S06
-status: in-progress
+status: done
 branch: sprint/S06
 milestone: M8 — Trust the live list
 ---
@@ -35,7 +35,7 @@ opens in its own resizable window.
 
 Extended before the sprint started, after the user reported that running stories are
 "sometimes not recognised or carry the wrong name" and pointed at their `scrum-cockpit` mod,
-which gets this right. Measured the same morning ([RESEARCH.md §6](../../RESEARCH.md)):
+which gets this right. Measured the same morning ([RESEARCH.md §6](../../../RESEARCH.md)):
 
 - **12 live sessions, 3 on screen.** `hideDoneOnStart` hid 9 on a cold start — among them two
   running sprints that the transcript misread as `done` (parent `end_turn` right after an
@@ -91,3 +91,16 @@ being able to tell from the app what was happening — which is the app's single
 - Carried out of S05 and still open, deliberately not picked up here (different theme — numbers,
   not the live list): 005's subagent chips render `'estimated'` unconditionally, and 005's CLI
   reads the exact-window cache but never refreshes it.
+
+## Regression gate
+
+Ran 2026-10-30 on `2b6439d` (sprint/S06, after the last story). Green.
+
+| Command | Result | Minutes |
+|---|---|---|
+| `npm run build` | green | 0.03 |
+| `npm test` (full) | green — 38 files, 577 tests | 0.1 |
+| `npm run typecheck` | green | 0.02 |
+| `e2e` / `e2e-all` | not run — `none` in the profile | — |
+
+No failures, nothing attributed, no quarantine entries (`e2e-quarantine: none`).

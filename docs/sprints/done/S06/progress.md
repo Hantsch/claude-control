@@ -92,3 +92,5 @@
 - 2026-10-30 12:37:45 · 022 · verify (after fix 1) · started
 - 2026-10-30 12:38:29 · 022 · verify (after fix 1) · done
 - 2026-10-30 12:38:29 · 022 · story · done
+- 2026-10-30 12:38:43 · gate · short-suites · started
+- 2026-10-30 12:39:17 · gate · short-suites · done

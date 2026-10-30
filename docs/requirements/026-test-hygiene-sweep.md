@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Test hygiene: fake timers, dead PIDs, shared helpers, one Node pin, tighter timeouts, timing artifact
-status: draft # draft -> ready -> in-progress -> done
+status: ready # draft -> ready -> in-progress -> done
 created: 2026-10-30
 ---
 
@@ -68,68 +68,172 @@ This story follows 023, which moves N5 and its tree into the perf lane and touch
 
 ## Open Questions
 
-- **testTimeout 15 s from a measurement.** The judge: 15 s, not 10 s, after one verbose run of the
-  slowest per-test durations; a 10 s cap risks new timeout flakes on cold runners. Confirm 15 s or
-  derive it from the run.
-- **F10 mechanism.** The refuter: a full "FakeProbe only" route needs an injectable alive-check in
-  `readStatus` (adapter.ts:187), which is more than S. The judge's cut is N5 only, with fabricated
-  PIDs from a clearly dead range. Decide: dead range, or inject through `FakeProbe`.
-- **F12 temp-dir lifecycle on Windows.** Moving cleanup out of `beforeEach`/`afterEach` can leak
-  dirs or break Windows cleanup, and both `stubFetch` copies mutate `globalThis.fetch`, so the
-  shared helper needs restore handling.
-- **Artifact scope.** The judge: release.yml first, because that run failed; JUnit, trend
-  dashboards and retry logic stay out. Decide whether validate.yml gets the artifact in the same
-  change.
+- ~~**testTimeout 15 s from a measurement.**~~ answered → Decisions (Sprint)
+- ~~**F10 mechanism.** Dead range, or inject through `FakeProbe`.~~ answered → Decisions (Sprint)
+- ~~**F12 temp-dir lifecycle on Windows** and `globalThis.fetch` restore.~~ answered → Decisions (Sprint)
+- ~~**Artifact scope.** Does validate.yml get the artifact in the same change?~~ answered → Decisions (Sprint)
 - **Not in scope:** the view/entry/detail factories (judge and refuter), the 17 `LIVE_PID` engine
   sites, `hookTimeout`, per-test timeout hunting, and splitting pipeline.test.ts and
   derivations.test.ts (F11 rest; opportunistic, no story).
 
 ## Decisions (Sprint)
 
-<Leave empty. Filled by `/sprint`'s clarification round and by `/refine 026` when it runs
-inside a sprint: one line per decision the user made, with the answer and why. Empty outside
-a sprint.>
+- testTimeout is 15 s (judge's figure); D1 measures the slowest test first and stops if it is above 5 s, because a cap with less than 3x margin would trade slowness for cold-runner flakes.
+- F10 uses a dead PID range, not an injected alive-check: the refuter showed the `FakeProbe` route needs a product change in `readStatus`, and this story changes no product code.
+- Dead PIDs come from one helper `deadPids(count)` in `test/fixtures/pids.ts` that walks down from 0x7FFFFFFC in steps of 4 and keeps only PIDs `isAliveSync` reads as dead, because Windows PIDs are multiples of 4 (low bits ignored by OpenProcess) and a fixed number is never guaranteed dead.
+- N5 keeps session 0 on `LIVE_PID` (alive) and moves sessions 1-5 to `deadPids(5)`, and asserts 6 listed / 5 `ended`, because that is today's real outcome on a runner where those PIDs are free, so the premise guards keep running on the path they run today.
+- AC3 applies to every N5 site after 023 (the blocking premise test in `test/unit/pipeline.test.ts` and the perf test under `test/perf/`); the `LIVE_PID + 1` at the "huge name" discovery test is a registry file key outside N5 and stays.
+- The AC4 signal-0 test lives in `describe('registry')` of `test/unit/derivations.test.ts`, which already imports `liveness.ts`, so no new file per story.
+- The temp-dir helper replaces creation only: each file keeps its own `beforeEach`/`afterEach` placement and its own `rm`, and the helper also registers the dir with the setup file's `cleanupFixtureTrees` as a safety net, so no cleanup moves and no Windows cleanup timing changes.
+- AC6's `rg "mkdtemp" test` is read as `rg "mkdtemp(Sync)?\(" test`, because `boundaries.test.ts:79` names `mkdtemp` inside a forbidden-call regex for product code, which is not a temp-dir site.
+- The shared `stubFetch` installs through `vi.stubGlobal('fetch', spy)` and both files restore with `vi.unstubAllGlobals()` in their existing `afterEach`, so restore is vitest's job and no module-level `originalFetch` remains.
+- The timing artifact goes into both workflows in this story, because AC10 already requires both and the second step is a copy of the first.
+- If 024 moved the release lane's `npm test` into `ci-release.ps1`, the reporter flags go on that invocation and the upload step follows the Release step with `if-no-files-found: ignore`, because a push that releases nothing writes no report.
+- No CHANGELOG entry: tests and CI only, nothing user-facing changes.
 
 ## Plan
 
-<Leave empty. Filled by `/refine 026`: a short, precise overview — max. ~50 lines.
-Concrete steps, affected files, order. No essay.>
+Builds after 023 (N5 split into a blocking premise test plus a perf test under `test/perf/`, builders.ts
+cleanup) and 024 (release.yml step order). Refer to tests by name, not line: 023 shifts lines.
+
+1. **Baseline + timeout (D1):** one `npx vitest run --reporter=verbose` records total test count and
+   slowest test; then `vitest.config.ts` `testTimeout: 15_000` (hookTimeout stays 60_000).
+2. **Fake timers (D2):** "coalesces a burst of events and never waits longer than the ceiling" in
+   `test/unit/pipeline.test.ts` switches to `vi.useFakeTimers()`, waits derived from named
+   `debounceMs`/`maxWaitMs` constants, real timers restored in `afterEach`. The real-watcher
+   `sleep(300)` negative wait stays.
+3. **Dead PIDs (D3):** `test/fixtures/pids.ts` `deadPids(count)`; N5 sites use it; one signal-0 test
+   in `derivations.test.ts`.
+4. **Fetch helper (D4):** `test/fixtures/http.ts` with `stubFetch` + `jsonResponse`; two consumers.
+5. **Temp-dir helper (D5):** `makeTempDir(prefix)` replaces the 5 `mkdtemp` sites; final test-count
+   check (baseline + 1).
+6. **CI (D6):** `.node-version`, `node-version-file` in both workflows, CONTRIBUTING.md, json reporter
+   + `actions/upload-artifact` (14 days, `if: always()`).
+
+No product code (`src/`) changes. No systems doc exists for tests/CI (`docs/systems` is absent).
 
 ## Deliverables
 
-<Leave empty. Filled by `/refine 026`: small pieces, each with its own acceptance
-(scrum-like) and the files it touches. `/build` implements them in order, in one go.
-Every acceptance criterion above must be covered by at least one deliverable **and** by the
-test named for it in `## Acceptance Tests` — the test is part of the deliverable that
-implements the behaviour, never a clean-up afterwards. Refine checks both before
-`status: ready`, build refuses to start without them.>
-
-- [ ] D1 — <smallest useful, individually acceptable result; names the files it touches>
-- [ ] D2 — ...
+- [ ] D1 — **Baseline and tighter test timeout.** Before touching anything, run
+  `npx vitest run --reporter=verbose` and record (a) the total test count and (b) the slowest
+  test with its duration; report both in your result (the build keeps the count as the AC11
+  baseline). If the slowest test in `npm test` takes more than 5 s, stop and report instead of
+  changing the timeout. Otherwise set `testTimeout: 15_000` in `vitest.config.ts`; keep
+  `hookTimeout: 60_000` and any per-test override in a perf config/file untouched. Acceptance:
+  `vitest.config.ts` shows `testTimeout: 15_000` and `hookTimeout: 60_000`; `npm test` exits 0.
+  Files: `vitest.config.ts`.
+- [ ] D2 — **Debounce/ceiling test on fake timers.** In `test/unit/pipeline.test.ts`, the test
+  "coalesces a burst of events and never waits longer than the ceiling" (drives a
+  `FileWatcher` from `src/core/watch/watcher.ts` through its private `enqueue`, injected
+  `now: () => clock`) today waits with real `sleep(400)` and 12 x `sleep(100)`. Change it to:
+  `const debounceMs = 250; const maxWaitMs = 1_000;` passed to the watcher; `vi.useFakeTimers()`
+  at the start; burst phase advances `vi.advanceTimersByTime(debounceMs + 1)` and expects
+  `[1]`; stream phase advances `clock` and timers in steps shorter than `debounceMs` (e.g.
+  `debounceMs / 2.5`) until past `maxWaitMs`, then expects at least one flush. Add
+  `afterEach(() => { vi.useRealTimers(); })` in that test's `describe` scope (import
+  `afterEach`, `vi` from vitest). Do not touch the `sleep(300)` negative wait in the real-watcher
+  registry-flip test or the `sleep` helper. Seeded-defect check (do it, then revert, and report
+  it): change `Math.min(debounce, deadline - at)` in `watcher.ts` `enqueue` to `debounce` — the
+  test must fail; restore the file exactly. Acceptance: `rg "sleep\(" test/unit/pipeline.test.ts`
+  shows only the negative wait and the helper definition;
+  `rg "sleep\(400\)|advanceTimersByTime\(400\)" test/unit/pipeline.test.ts` is empty; the next
+  test in the file ("changes no file after a full pipeline run (N2)", real fs) passes in the same
+  run. Files: `test/unit/pipeline.test.ts`.
+- [ ] D3 — **Dead PIDs for N5, plus one real signal-0 test.** New `test/fixtures/pids.ts`
+  exporting `deadPids(count: number): number[]`: start at `0x7FFFFFFC`, step down by 4 (Windows
+  ignores the low two PID bits), keep each pid for which `isAliveSync` from
+  `src/core/registry/liveness.ts` returns false, until `count` are collected. In every N5 site
+  — the blocking N5 premise test in `test/unit/pipeline.test.ts` and the N5 perf test under
+  `test/perf/` (both from story 023; find them by "N5" / `liveIds`) — replace
+  `LIVE_PID + index`: session 0 keeps `LIVE_PID`, sessions 1-5 take `deadPids(5)`, used both
+  for `writeRegistry` and the `FakeProbe` alive set (discovery must still list them). Fix the
+  comment above the count assertion so it states the truth: all six are listed, the five whose
+  PIDs signal 0 reads as dead are `ended`; assert `sessions.length === 6` and exactly 5 with
+  `status === 'ended'`. Leave the `LIVE_PID + 1` registry key in the "huge name" discovery test
+  and all `new ControlEngine({` sites alone. Add one test inside `describe('registry')` in
+  `test/unit/derivations.test.ts`: "signal 0 reads this process as alive and a dead pid as not
+  alive" — `isAliveSync(process.pid)` true, `isAliveSync(deadPids(1)[0])` false. Acceptance:
+  `rg "LIVE_PID \+ " test/unit/pipeline.test.ts test/perf` finds no N5 line; both N5 tests and
+  the new test pass. Files: `test/fixtures/pids.ts`, `test/unit/pipeline.test.ts`,
+  `test/perf/*` (023's N5 file), `test/unit/derivations.test.ts`.
+- [ ] D4 — **One shared fetch stub.** New `test/fixtures/http.ts` exporting
+  `stubFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>)`,
+  which builds `vi.fn(async (url, init) => handler(String(url), init))`, installs it with
+  `vi.stubGlobal('fetch', spy)` and returns the spy, and `jsonResponse(payload, status = 200)`
+  (copy the existing body from `test/unit/updateSource.test.ts`). In
+  `test/unit/updateSource.test.ts` and `test/unit/windowSource.test.ts`: delete the local
+  `stubFetch`, `jsonResponse` and `originalFetch`, import from `../fixtures/http.ts`, and replace
+  `globalThis.fetch = originalFetch` in `afterEach` with `vi.unstubAllGlobals()`. windowSource's
+  callers pass a zero-argument handler, which fits the signature. Acceptance:
+  `rg "function stubFetch" test/unit` empty; both files import `stubFetch` from the fixture; both
+  files' tests pass with the same count as before. Files: `test/fixtures/http.ts`,
+  `test/unit/updateSource.test.ts`, `test/unit/windowSource.test.ts`.
+- [ ] D5 — **One temp-dir helper.** New `test/fixtures/tempDir.ts` exporting
+  `makeTempDir(prefix: string): Promise<string>` (`mkdtemp(join(tmpdir(), prefix))`) that also
+  registers the path with the fixture-tree cleanup list in `test/fixtures/builders.ts` (export a
+  small `registerTempDir(path)` there, or move the list; `cleanupFixtureTrees` in
+  `test/setup.ts` stays the single after-all cleanup). Replace the 5 sites: `makeFixtureTree` in
+  `test/fixtures/builders.ts`, and the `beforeEach` creations in `test/unit/updateSource.test.ts`,
+  `test/unit/windowSource.test.ts`, `test/unit/selfUpdate.test.ts`,
+  `test/unit/detailWindowState.test.ts` (that one turns its `beforeEach` async and drops
+  `mkdtempSync`). Each file keeps its existing `afterEach` `rm` exactly where it is — only
+  creation moves. Do not move the `view()`/`entry()`/`detail()` factories. Add one line each for
+  `http.ts`, `pids.ts`, `tempDir.ts` to `test/fixtures/README.md`. Acceptance:
+  `rg "mkdtemp(Sync)?\(" test` finds only `tempDir.ts` (the `mkdtemp` name inside the regex in
+  `boundaries.test.ts` is a forbidden-call pattern, not a site);
+  `rg "function view|function entry|function detail" test/unit` still finds all three;
+  `npx vitest run` total equals the D1 baseline + 1 (D3's signal-0 test). Files:
+  `test/fixtures/tempDir.ts`, `test/fixtures/builders.ts`, `test/fixtures/README.md`, the four
+  test files above.
+- [ ] D6 — **One Node pin and a timing artifact in CI.** Create `.node-version` containing `22`.
+  In `.github/workflows/validate.yml` and `.github/workflows/release.yml`, replace
+  `node-version: 22` with `node-version-file: .node-version` (keep `cache: npm`). In
+  `CONTRIBUTING.md`, next to "Node 22+ required.", name `.node-version` as the pinned version
+  CI uses. Test reporting: in validate.yml the `Test` step runs
+  `npm test -- --reporter=default --reporter=json --outputFile.json=test-results/vitest.json`,
+  followed by `- uses: actions/upload-artifact@v4` with `if: always()`, `name: vitest-timings`,
+  `path: test-results/vitest.json`, `retention-days: 14`, `if-no-files-found: ignore`. In
+  release.yml do the same at the release lane's test run as story 024 left it: if it is a
+  workflow `Test` step, identical change; if 024 moved `npm test` into `scripts/ci-release.ps1`,
+  put the reporter flags on that invocation and the upload step after the `Release` step.
+  `test-results/` is already in `.gitignore`. Acceptance: `rg "node-version: 22" .github/workflows`
+  empty; `rg -c "node-version-file: .node-version" .github/workflows` and
+  `rg -c "upload-artifact" .github/workflows` list both files; the json reporter line runs
+  locally (`npm test -- --reporter=default --reporter=json --outputFile.json=test-results/vitest.json`
+  exits 0 and writes the file). Files: `.node-version`, both workflows, `CONTRIBUTING.md`,
+  possibly `scripts/ci-release.ps1`.
 
 ## Model Hints
 
-<Agent tier per deliverable. Default is the cheap tier with `/build`'s effort — leave
-unmarked. If a step needs more brainpower: "D3 (balancing formula) → deliverable-hard" (Opus +
-high effort, agent in `.claude/agents/`) plus a one-sentence risk justification.
-Plus one line for the code review, default: "Review: → default".>
+All Ds default tier: each is a bounded test/CI edit with an explicit acceptance check.
+
+Review: → default
 
 ## Acceptance Tests
 
-<Leave empty. Filled by `/refine 026`: one line per acceptance criterion above, naming the
-automated test that proves it — level, file, and the test name it will carry. The tests are
-written by the deliverables, not afterwards; `/build` re-checks this mapping and that the
-tests pass before `status: done`. This section replaces the manual test plan: acceptance is
-the suite, not a click list.
+- AC1 → unit `test/unit/pipeline.test.ts` › "coalesces a burst of events and never waits longer
+  than the ceiling" (D2), plus D2's seeded-defect run (ceiling removed in `watcher.ts` → red,
+  reverted) and the `rg "sleep\("` check
+- AC2 → unit `test/unit/pipeline.test.ts` › "coalesces a burst of events and never waits longer
+  than the ceiling" and the following › "changes no file after a full pipeline run (N2)" passing
+  in the same run (D2), plus the `rg "sleep\(400\)|advanceTimersByTime\(400\)"` check
+- AC3 → unit: the N5 premise test in `test/unit/pipeline.test.ts` (023's name, asserting 6 listed
+  / 5 `ended`) and the N5 perf test under `test/perf/` (D3), plus the `rg "LIVE_PID \+ "` check
+- AC4 → unit `test/unit/derivations.test.ts` › "signal 0 reads this process as alive and a dead pid
+  as not alive" (D3)
+- AC5 → unit: the existing `test/unit/updateSource.test.ts` and `test/unit/windowSource.test.ts`
+  suites passing on the shared stub (D4), plus the `rg "function stubFetch" test/unit` check
+- AC6 → unit: the existing suites of the four files and every `makeFixtureTree` consumer passing
+  on `makeTempDir` (D5), plus the `rg "mkdtemp(Sync)?\(" test` check
+- AC7 → check: `rg "function view|function entry|function detail" test/unit` finds all three (D5)
+- AC8 → check: `.node-version` content, `rg "node-version: 22"` empty, `node-version-file` in both
+  workflows, CONTRIBUTING.md names the file (D6)
+- AC9 → check: `vitest.config.ts` values and `npm test` exit 0 (D1; re-confirmed by the build gate)
+- AC10 → check: reporter flags, `upload-artifact` with `if: always()` and `retention-days: 14` in
+  both workflows, plus the local json-reporter run (D6)
+- AC11 → check: `npx vitest run` total after D5 = D1 baseline + 1 (D5)
 
-Example paths below; your real test layout and the commands that run it are in
-`.claude/ai-scrum.md` (`e2e-story`, `test-story`).
-
-- AC1 → e2e `tests/e2e/<flow>.spec.ts` › "<test name>" (real surface, per
-  `ui-acceptance-required`)
-- AC2 → unit `tests/core/<module>.test.ts` › "<test name>"
-- AC3 → **manual residue:** <the real reason it cannot be automated — an OS dialog, a
-  specific machine, a paid external service>. Goes into the sprint review; blocks nothing.>
+No e2e: every criterion is about tests and CI, nothing the user does in the app.
 
 ## Done
 
